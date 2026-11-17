@@ -592,7 +592,7 @@ def test_every_note_has_a_chinese_line():
         and isinstance(node.elts[0].value, str)
         and isinstance(node.elts[1], ast.Dict)
     ]
-    assert len(notes) == 25, notes
+    assert len(notes) == 27, notes
     assert [n for n in notes if n not in phrases] == []
 
 
@@ -1399,6 +1399,7 @@ ALL_TRUE = {
     "default_policy": True,
     "no_writes": True,
     "references_intact": True,
+    "native_record": True,
 }
 
 
@@ -1433,6 +1434,8 @@ def test_every_fact_established_is_a_match():
         ({"no_writes": None}, "NOT_COMPARED"),
         ({"references_intact": False}, "REFUSED"),
         ({"references_intact": None}, "NOT_COMPARED"),
+        ({"native_record": False}, "NOT_COMPARED"),
+        ({"native_record": None}, "NOT_COMPARED"),
         ({"default_policy": None}, "NOT_COMPARED"),
         ({"default_policy": False}, "MATCH_CUSTOM_POLICY"),
     ],
@@ -1715,3 +1718,109 @@ def test_a_custom_policy_match_is_named_in_the_report_file_and_in_json(ws, tmp_p
     on_file = json.loads((folder / "replay_report.json").read_text())
     assert on_file["verdict"] == "MATCH_CUSTOM_POLICY"
     assert on_file["custom_policy"] == out["report"]["custom_policy"]
+
+
+# --- a record an earlier version of Lobster wrote ("migrated") ----------------------
+
+
+def _migrate(notebook: Path) -> Path:
+    """The export record of a session an earlier version wrote: it has a ``migrated`` block."""
+    nb = json.loads(notebook.read_text())
+    for cell in nb["cells"]:
+        source = "".join(cell["source"])
+        if "data_integrity_manifest" in source:
+            record = json.loads(source.split("```json\n", 1)[1].split("\n```", 1)[0])
+            record["data_integrity_manifest"]["migrated"] = {
+                "source": "metadata.json",
+                "lobster": "1.2.2",
+                "software_versions": {"lobster": "1.2.2"},
+                "input": "not recorded by the source version",
+            }
+            cell["source"] = f"## Export record\n\n```json\n{json.dumps(record)}\n```\n"
+    notebook.write_text(json.dumps(nb))
+    return notebook
+
+
+MIGRATED_LABEL = "migrated: input not recorded"
+
+
+@needs_kernel
+def test_a_migrated_record_never_matches_even_when_every_fact_holds(ws):
+    plain = _notebook(ws / "notebooks" / "plain.ipynb", COPY)
+    assert _verify(ws, COPY, notebook=plain).exit_code == 0  # the same facts, native
+    nb = _migrate(_notebook(ws / "notebooks" / "nb.ipynb", COPY))
+    result = _verify(ws, COPY, notebook=nb)
+    assert result.exit_code == 3, result.output
+    out = json.loads(result.stdout)
+    assert out["verdict"] == "NOT_COMPARED"
+    assert out["report"]["verdict"] == "NOT_COMPARED"
+
+
+@needs_kernel
+def test_a_migrated_replay_shows_each_file_under_its_label(ws):
+    nb = _migrate(_notebook(ws / "notebooks" / "nb.ipynb", COPY))
+    out = json.loads(_verify(ws, COPY, notebook=nb).stdout)
+    assert out["report"]["migrated"] == {
+        "label": MIGRATED_LABEL,
+        "files": [{"file": "pbmc.h5ad", "status": "MATCH", "diffs": []}],
+    }
+    assert any(MIGRATED_LABEL in n for n in out["notes"])
+    assert any(n == "pbmc.h5ad: MATCH" for n in out["notes"])
+    assert all(s["status"] != "MATCH" for s in out["report"]["slots"])
+
+
+@needs_kernel
+def test_a_migrated_replay_names_the_keys_that_differ(ws):
+    nb = _migrate(_notebook(ws / "notebooks" / "nb.ipynb", SHIFTED))
+    result = _verify(ws, SHIFTED, notebook=nb)
+    assert result.exit_code == 3, result.output
+    out = json.loads(result.stdout)
+    (entry,) = out["report"]["migrated"]["files"]
+    assert entry["file"] == "pbmc.h5ad" and entry["status"] == "MISMATCH"
+    assert any("pbmc.h5ad/X" in d for d in entry["diffs"])
+    assert any(n.startswith("pbmc.h5ad: MISMATCH") and "X" in n for n in out["notes"])
+
+
+@needs_kernel
+def test_the_console_shows_the_per_file_result_of_a_migrated_replay(ws):
+    nb = _migrate(_notebook(ws / "notebooks" / "nb.ipynb", COPY))
+    result = _verify(ws, COPY, notebook=nb, as_json=False)
+    assert "Verdict: NOT_COMPARED" in result.stdout
+    assert MIGRATED_LABEL in result.stdout and "pbmc.h5ad: MATCH" in result.stdout
+
+
+@needs_kernel
+def test_a_record_without_the_migrated_block_still_withholds_the_per_file_result(ws):
+    nb = _notebook(ws / "notebooks" / "nb.ipynb", COPY, loaded=[])
+    out = json.loads(_verify(ws, COPY, notebook=nb).stdout)
+    assert out["verdict"] == "NOT_COMPARED"
+    assert "migrated" not in out["report"]
+    assert not any(MIGRATED_LABEL in n for n in out["notes"])
+    (slot,) = out["report"]["slots"]
+    assert slot["status"] == "NOT_COMPARED"
+    assert any("not established: loaded_is_input" in x for x in slot["not_compared"])
+
+
+def test_only_a_native_record_is_granted_a_match():
+    facts = dict(
+        comparison=Verdict.MATCH,
+        record_complete=True,
+        input_disjoint=True,
+        loaded_is_input=True,
+        outputs_compared=True,
+        default_policy=True,
+        no_writes=True,
+        references_intact=True,
+    )
+    assert replay_commands._grant_match(
+        replay_commands.MatchFacts(**facts, native_record=True)
+    ) == ("MATCH", [])
+    word, why = replay_commands._grant_match(
+        replay_commands.MatchFacts(**facts, native_record=False)
+    )
+    assert (word, why) == ("NOT_COMPARED", ["native_record"])
+    mismatch = {**facts, "comparison": Verdict.MISMATCH}
+    word, _ = replay_commands._grant_match(
+        replay_commands.MatchFacts(**mismatch, native_record=False)
+    )
+    assert word == "NOT_COMPARED"  # a migrated record has no verdict either way

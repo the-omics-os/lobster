@@ -87,6 +87,7 @@ EXIT_CODES = {
 NOTEBOOK_FAILED = (
     "NOTEBOOK_FAILED"  # the verdict word of exit 5 (the report says ERROR)
 )
+MIGRATED_LABEL = "migrated: input not recorded"  # shown with a migrated record's files
 MATCH_CUSTOM_POLICY = "MATCH_CUSTOM_POLICY"  # a match under a policy of the user's own
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 OUTPUT_PREFIX = "out"
@@ -154,6 +155,7 @@ class Outcome:
     notes: List[Note] = field(default_factory=list)
     custom_match: bool = False  # MATCH, but only under the user's own policy
     custom_policy: Dict[str, List[str]] = field(default_factory=dict)  # what it covers
+    migrated_files: Optional[List[Dict[str, Any]]] = None  # per file, migrated record
 
     @property
     def report_file(self) -> Path:
@@ -191,6 +193,9 @@ class MatchFacts:
     default_policy: Optional[bool] = None  # no policy of the user's own
     no_writes: Optional[bool] = None  # the notebook changed nothing it should read
     references_intact: Optional[bool] = None  # each saved file holds its recorded bytes
+    native_record: Optional[bool] = (
+        None  # the export record was written by this version
+    )
 
 
 _FACTS = tuple(f.name for f in fields(MatchFacts))
@@ -215,6 +220,8 @@ def _grant_match(facts: Any) -> Tuple[str, List[str]]:
     refused = [name for name in _VIOLATIONS_REFUSE if values[name] is False]
     if refused:
         return Verdict.REFUSED.value, refused
+    if values["native_record"] is not True:  # no input was recorded: no verdict
+        return Verdict.NOT_COMPARED.value, ["native_record"]
     if values["loaded_is_input"] is None:  # the input is not tied to the loaded data
         return Verdict.NOT_COMPARED.value, ["loaded_is_input"]
     if values["comparison"] is Verdict.MISMATCH:
@@ -807,6 +814,25 @@ def _working_in(folder: Path):
         os.chdir(previous)
 
 
+def _per_file(slots, names: List[str]) -> List[Dict[str, Any]]:
+    """What the comparison found for each file: its status and the keys that differ."""
+    everything_matched = all(slot.status is SlotStatus.MATCH for slot in slots)
+    found = []
+    for name in names:
+        diffs = [
+            d
+            for slot in slots
+            for d in slot.diffs
+            if d.startswith((f"files/{name}/", f"{name}/"))
+        ]
+        if diffs:
+            status = "MISMATCH"
+        else:
+            status = "MATCH" if everything_matched else "NOT_COMPARED"
+        found.append({"file": name, "status": status, "diffs": diffs[:20]})
+    return found
+
+
 def _not_compared(slots, lines: Tuple[str, ...]):
     """Slots that cannot say MATCH while some output was left out of the comparison."""
     return tuple(
@@ -875,6 +901,7 @@ def verify_notebook(
         catalog.link_input(input_data)
     entries = _record_entries(notebook)
     recorded = _recorded_hashes(notebook)
+    migrated = isinstance(_manifest(notebook).get("migrated"), dict)
     find = (
         (lambda stem: catalog.reference(stem, recorded, _recorded_file_paths(notebook)))
         if run_uid and catalog.has_session
@@ -1260,6 +1287,7 @@ def verify_notebook(
 
     policy = user_policy or _default_policy(sorted(expected))
     slots = compare({"files": expected}, {"files": actual}, policy) if actual else ()
+    compared_slots = slots
     if left_out:
         slots = _not_compared(
             slots, tuple(f"{name}: not compared with a saved file" for name in left_out)
@@ -1278,6 +1306,7 @@ def verify_notebook(
             record_complete=bool(entries) and not without_hash,
             input_disjoint=True,  # a saved result as the input was refused above
             loaded_is_input=loaded_state,
+            native_record=not migrated,
             outputs_compared=any(slot.compared for slot in slots),
             default_policy=user_policy is None,
             no_writes=True,  # a change was refused above
@@ -1294,7 +1323,29 @@ def verify_notebook(
             names[0],
         )
     verdict = Verdict.MATCH if word == MATCH_CUSTOM_POLICY else Verdict(word)
-    if verdict is Verdict.NOT_COMPARED and comparison in (
+    if migrated and verdict is Verdict.NOT_COMPARED and compared_slots:
+        # what the notebook produced is shown per file, as a comparison and not a
+        # verdict: the session did not record the input it read
+        outcome.migrated_files = _per_file(compared_slots, sorted(expected))
+        outcome.notes.append(
+            ("migrated: input not recorded. Per file, not a verdict:", {})
+        )
+        for entry in outcome.migrated_files:
+            keys = ", ".join(entry["diffs"][:5])
+            result = entry["status"] + (f" ({keys})" if keys else "")
+            outcome.notes.append(
+                ("{name}: {result}", {"name": entry["file"], "result": result})
+            )
+        slots = tuple(
+            replace(
+                slot,
+                status=SlotStatus.NOT_COMPARED,
+                diffs=(),
+                not_compared=slot.not_compared + (MIGRATED_LABEL,),
+            )
+            for slot in slots
+        )
+    elif verdict is Verdict.NOT_COMPARED and comparison in (
         Verdict.MATCH,
         Verdict.MISMATCH,
     ):
@@ -1499,6 +1550,11 @@ def _report_dict(outcome: Outcome) -> Dict[str, Any]:
     if outcome.custom_match:
         report["verdict"] = MATCH_CUSTOM_POLICY
         report["custom_policy"] = outcome.custom_policy
+    if outcome.migrated_files is not None:
+        report["migrated"] = {
+            "label": MIGRATED_LABEL,
+            "files": outcome.migrated_files,
+        }
     return report
 
 

@@ -834,3 +834,70 @@ def test_a_project_run_with_the_catalog_on_replays_to_a_match(tmp_path):
         code, tmp_path, env_extra={"PROJ": str(root)}, drop_enable=True, timeout=900
     )
     assert r["verdict"] == "MATCH" and r["exit"] == 0, r
+
+
+def _persisted(tmp_path):
+    folder = tmp_path / WORKSPACE / ".lobster" / "sessions" / "s1"
+    return lambda manager: manager.attach_session_dir(folder)
+
+
+def _session_folder(workspace):
+    (folder,) = (workspace / ".lobster" / "sessions").iterdir()
+    return folder
+
+
+def _export_again(workspace, name="nb2"):
+    """What a new process does: open the session's folder again and export."""
+    from lobster.core.runtime.data_manager import DataManagerV2
+
+    again = DataManagerV2(
+        workspace_path=workspace,
+        session_dir=_session_folder(workspace),
+    )
+    return Path(again.export_notebook(name, "S", filter_strategy="replay"))
+
+
+@needs_kernel
+def test_a_native_session_writes_the_marker_and_matches(tmp_path, monkeypatch):
+    workspace, notebook, raw = _geo_session(
+        tmp_path, monkeypatch, on_manager=_persisted(tmp_path)
+    )
+    metadata = json.loads((_session_folder(workspace) / "metadata.json").read_text())
+    assert metadata["record_format"]
+    assert "migrated" not in _base.replay_commands._manifest(notebook)
+    result = _verify_real(workspace, notebook, raw)
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert json.loads(result.stdout)["verdict"] == "MATCH"
+
+
+@needs_kernel
+def test_a_native_session_opened_again_is_not_migrated(tmp_path, monkeypatch):
+    workspace, notebook, raw = _geo_session(
+        tmp_path, monkeypatch, on_manager=_persisted(tmp_path)
+    )
+    again = _export_again(workspace)
+    assert "migrated" not in _base.replay_commands._manifest(again)
+    metadata = json.loads((_session_folder(workspace) / "metadata.json").read_text())
+    assert metadata["record_format"]
+
+
+@needs_kernel
+def test_the_same_session_without_the_marker_is_migrated_and_never_matches(
+    tmp_path, monkeypatch
+):
+    workspace, notebook, raw = _geo_session(
+        tmp_path, monkeypatch, on_manager=_persisted(tmp_path)
+    )
+    meta = _session_folder(workspace) / "metadata.json"
+    written = json.loads(meta.read_text())
+    del written["record_format"]
+    meta.write_text(json.dumps(written))
+    migrated = _export_again(workspace)
+    block = _base.replay_commands._manifest(migrated)["migrated"]
+    assert block["lobster"] == written["software_versions"]["lobster"]
+    result = _verify_real(workspace, migrated, raw)
+    out = json.loads(result.stdout)
+    assert result.exit_code == 3, (result.output, result.exception)
+    assert out["verdict"] == "NOT_COMPARED"
+    files = out["report"]["migrated"]["files"]
+    assert files and all(f["status"] in ("MATCH", "MISMATCH") for f in files)

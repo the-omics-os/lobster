@@ -146,6 +146,25 @@ def pipeline_export(
             name, description, filter_strategy=mode
         )
 
+        links = getattr(
+            getattr(client.data_manager, "notebook_exporter", None),
+            "dangling_links",
+            None,
+        )
+        if isinstance(links, list) and links:  # a migrated workspace; replay refuses
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        h(
+                            "Links in the workspace that point to missing files: "
+                            "{names} (restore or remove before replay)."
+                        ).format(names=", ".join(links)),
+                        level="warning",
+                    )
+                ],
+            )
+
         _render_blocks(
             output,
             [

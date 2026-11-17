@@ -2195,5 +2195,12 @@
   "[red]Error:[/red] --provider is for a project made without a terminal: {line}. In a terminal, pick the provider in the setup.": "[red]错误：[/red]--provider 用于无终端创建的项目：{line}。在终端中请在设置向导里选择提供方。",
   "project": "项目",
   "Records go to the catalog of this project in {path}.": "记录会写入此项目在 {path} 中的目录。",
-  "Runs of this project are not recorded: this catalog was made before projects recorded their runs. To record them, move it aside: {line}": "此项目的运行未被记录：该目录创建时项目还不记录运行。要记录它们，请先移开该目录：{line}"
+  "Runs of this project are not recorded: this catalog was made before projects recorded their runs. To record them, move it aside: {line}": "此项目的运行未被记录：该目录创建时项目还不记录运行。要记录它们，请先移开该目录：{line}",
+  "Migrated from a {source}: the cells were rebuilt from its record; the input file the session read was not recorded.": "从 {source} 迁移而来：各单元格由其记录重建；该会话读取的输入文件未被记录。",
+  "Links in the workspace that point to missing files: {names} (restore or remove before replay).": "工作区中指向缺失文件的链接：{names}（重放前请恢复或移除）。",
+  "Not executed: custom code from a {source} (it may use paths of the machine it ran on)": "未执行：来自 {source} 的自定义代码（它可能使用了运行它的那台机器上的路径）",
+  "Lobster {version} session": "Lobster {version} 会话",
+  "Lobster session of unknown version": "未知版本的 Lobster 会话",
+  "migrated: input not recorded. Per file, not a verdict:": "迁移：未记录输入。逐文件结果，不是结论：",
+  "{name}: {result}": "{name}：{result}"
 }

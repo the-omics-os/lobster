@@ -24,6 +24,12 @@ import anndata
 
 from lobster.core.utils.h5ad_utils import sanitize_value
 
+# A session record written by this version carries this key in its metadata.json.
+# A record without it was written by an earlier version ("migrated"); the version
+# string cannot tell, as a build keeps its number until the next release.
+RECORD_FORMAT_KEY = "record_format"
+RECORD_FORMAT = "lobster-1.3"
+
 if TYPE_CHECKING:
     from lobster.core.provenance.analysis_ir import AnalysisStep
 
@@ -59,6 +65,8 @@ class ProvenanceTracker:
         self.agents: Dict[str, Dict[str, Any]] = {}
         self.logger = logger
         self._software_versions_cache: Optional[Dict[str, str]] = None
+        # Set when a record an earlier version wrote was loaded: where it came from
+        self._origin: Optional[Dict[str, Any]] = None
 
         # Disk persistence attributes
         if session_dir is not None:
@@ -97,6 +105,7 @@ class ProvenanceTracker:
         # An activity id is unique, so loading a file the tracker already holds (or the
         # same file twice) adds nothing instead of repeating every step.
         held = {activity.get("id") for activity in self.activities}
+        before = len(self.activities)
 
         with open(target_path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, start=1):
@@ -131,6 +140,42 @@ class ProvenanceTracker:
                 except (json.JSONDecodeError, Exception) as e:
                     warnings.warn(f"Skipping corrupt provenance line {line_num}: {e}")
                     continue  # Line-independent recovery
+
+        if len(self.activities) > before:
+            self._note_origin(target_path.parent / "metadata.json")
+
+    def _note_origin(self, metadata_file: Path) -> None:
+        """Remember that a loaded record was written by an earlier version.
+
+        Read once per tracker: the first record without the format key decides.
+        An unreadable or absent metadata.json counts as an earlier version too,
+        which can only remove a verdict, never grant one.
+        """
+        if self._origin is not None:
+            return
+        try:
+            data = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, dict) and data.get(RECORD_FORMAT_KEY):
+            return
+        versions = data.get("software_versions") if isinstance(data, dict) else None
+        if isinstance(versions, dict):
+            self._origin = {
+                "source": "metadata.json",
+                "lobster": versions.get("lobster"),
+                "software_versions": versions,
+            }
+        else:
+            self._origin = {
+                "source": "unknown (metadata unreadable)",
+                "lobster": None,
+                "software_versions": None,
+            }
+
+    def migrated_from(self) -> Optional[Dict[str, Any]]:
+        """Where the record came from when an earlier version wrote it, else None."""
+        return dict(self._origin) if self._origin is not None else None
 
     def _entity_of_loaded_file(self, activity: Dict[str, Any]) -> None:
         """A restored load step brings back the entity that names the file it read.
@@ -203,6 +248,13 @@ class ProvenanceTracker:
             "activity_count": len(self.activities),
             "software_versions": self._get_software_versions(),
         }
+        if self._origin is None:
+            metadata[RECORD_FORMAT_KEY] = RECORD_FORMAT
+        elif self._origin["software_versions"] is not None:
+            # the versions that wrote the record stay; this build wrote none of it
+            metadata["software_versions"] = self._origin["software_versions"]
+        else:
+            del metadata["software_versions"]
 
         with open(self._metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)

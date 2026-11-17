@@ -12,6 +12,7 @@ import ast
 import hashlib
 import json
 import logging
+import re
 import subprocess  # nosec B404 # Only fixed metadata argv is executed below; no shell commands.
 import sys
 from datetime import datetime
@@ -30,6 +31,7 @@ from lobster.core.provenance.analysis_ir import (
 )
 from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.session_identity import display_client_session_id
+from lobster.i18n import h
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,13 @@ _OBSERVE: Any = object()
 SESSION_WRITER_FALLBACK_LINE = (
     "Written without the session writer (lobster not importable); "
     "the saved file may differ from the session's."
+)
+
+
+MIGRATED_RECORD_LINE = (
+    "- `migrated`: an earlier version of Lobster wrote the session record. `lobster` and "
+    "`software_versions` are that version's; `system` is the version that exported this "
+    "notebook. The input file the session read was not recorded.\n"
 )
 
 
@@ -155,7 +164,54 @@ class NotebookExporter:
         """
         self.provenance = provenance
         self.data_manager = data_manager
+        # Set by each export of a migrated session: links in data/ that point nowhere
+        self.dangling_links: List[str] = []
         logger.debug("Initialized NotebookExporter with IR support")
+
+    def _migrated_origin(self) -> Optional[Dict[str, Any]]:
+        """Where the session record came from when an earlier version wrote it."""
+        origin = getattr(self.provenance, "migrated_from", lambda: None)()
+        return origin if isinstance(origin, dict) else None
+
+    @staticmethod
+    def _source_words(origin: Dict[str, Any]) -> str:
+        version = str(origin.get("lobster") or "").split("+")[0]
+        if not version:
+            return h("Lobster session of unknown version")
+        return h("Lobster {version} session").format(version=version)
+
+    def _find_dangling_links(self) -> List[str]:
+        """Links in the workspace's ``data/`` folder whose target is missing."""
+        workspace = Path(self.data_manager.workspace_path)
+        found = []
+        try:
+            for path in sorted((workspace / "data").rglob("*")):
+                if path.is_symlink() and not path.exists():
+                    found.append(path.relative_to(workspace).as_posix())
+        except OSError:
+            pass
+        return found
+
+    @staticmethod
+    def _is_custom_code(activity: Dict[str, Any], ir: AnalysisStep) -> bool:
+        return (
+            activity.get("type") in NotebookExporter._EXCLUDED_STEP_TYPES
+            or ir.operation in NotebookExporter._EXCLUDED_STEP_TYPES
+        )
+
+    def _unrun_cell(self, ir: AnalysisStep, origin: Dict[str, Any]) -> NotebookNode:
+        """Custom code of an earlier version: shown, never a code cell."""
+        try:
+            code = ir.render()
+        except Exception:  # shown, not run: the raw template is enough
+            code = ir.code_template
+        longest = max((len(m) for m in re.findall(r"`+", code)), default=0)
+        fence = "`" * max(3, longest + 1)
+        label = h(
+            "Not executed: custom code from a {source} "
+            "(it may use paths of the machine it ran on)"
+        ).format(source=self._source_words(origin))
+        return new_markdown_cell(f"**{label}**\n\n{fence}python\n{code}\n{fence}\n")
 
     def export(
         self,
@@ -249,6 +305,13 @@ class NotebookExporter:
         )
         exportable_count = len(exportable_pairs)
         filtered_count = len(activities) - exportable_count
+        origin = self._migrated_origin()
+        self.dangling_links = self._find_dangling_links() if origin else []
+        unrun = {
+            id(activity)
+            for activity, ir in exportable_pairs
+            if origin and self._is_custom_code(activity, ir)
+        }
         exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
         excluded_activity_types = [
             self._omitted_label(activity)
@@ -263,7 +326,7 @@ class NotebookExporter:
         )
 
         # Extract IRs for imports and parameters collection
-        irs = [ir for _, ir in exportable_pairs]
+        irs = [ir for activity, ir in exportable_pairs if id(activity) not in unrun]
 
         if exportable_count == 0:
             raise ValueError(
@@ -351,6 +414,10 @@ class NotebookExporter:
                 notebook.cells.append(_rebind_cell(rebind[position]))
 
             # Add executable code cell from IR (no placeholder fallback)
+            if id(activity) in unrun:
+                notebook.cells.append(self._unrun_cell(ir, origin))
+                after(position)
+                continue
             code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
             if "fig" in (ir.output_entities or []):
                 # replay names each figure it drew without comparing it
@@ -699,7 +766,7 @@ class NotebookExporter:
 
 {description if description else "Bioinformatics analysis workflow"}
 
-**Created:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+{self._migrated_header()}**Created:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 **Lobster Version:** {self._get_lobster_version()}
 **Export mode:** {mode_text}
 **Steps included:** {n_irs} of {len(self.provenance.activities)} recorded activities
@@ -724,6 +791,24 @@ code recorded for it.
 ---
 """
         return new_markdown_cell(header_content)
+
+    def _migrated_header(self) -> str:
+        """The header lines of a migrated session; empty for any other."""
+        origin = self._migrated_origin()
+        if origin is None:
+            return ""
+        text = h(
+            "Migrated from a {source}: the cells were rebuilt from its record; "
+            "the input file the session read was not recorded."
+        ).format(source=self._source_words(origin))
+        lines = f"**{text}**\n\n"
+        if self.dangling_links:
+            note = h(
+                "Links in the workspace that point to missing files: {names} "
+                "(restore or remove before replay)."
+            ).format(names=", ".join(self.dangling_links))
+            lines += f"**{note}**\n\n"
+        return lines
 
     def _client_session_identity(self) -> Optional[str]:
         """The client session id bound on the data manager, or None when unknown.
@@ -775,6 +860,13 @@ code recorded for it.
                 "system": self._get_system_info(),
             }
         }
+        origin = self._migrated_origin()
+        if origin is not None:
+            record["data_integrity_manifest"]["migrated"] = {
+                **origin,
+                "input": "not recorded by the source version",
+                "dangling_links": list(self.dangling_links),
+            }
 
         content = f"""## Export record (hashes)
 
@@ -788,7 +880,7 @@ Recorded when this notebook was exported, for your own checks.
 - `input_files`: SHA-256 of each modality's saved `.h5ad` file at export time: the file Lobster last saved it to, else `data/<name>.h5ad`, else its auto-save `data/<name>_autosave.h5ad`, else `data/<name>_raw.h5ad`, else `<name>.h5ad` in the workspace folder. `input_file_paths` names the file that was hashed, relative to the workspace. `not_saved`: the session never saved that modality; `file_not_found`: it saved it and the file is gone.
 - `input_roles`: `loaded` lists the name, SHA-256 and size of each file a modality was loaded from, read when it was loaded (no path); `saved` repeats `input_files`.
 - `provenance.sha256`: SHA-256 of the session ID (`null` when the client session identity was unavailable or ambiguous at export time), the provenance namespace and the activity and entity counts only. It does not cover the content of the provenance record.
-- `system`: Lobster and Python versions, the platform, and the short Git commit of the directory the export ran in (if any), as plain text.
+{MIGRATED_RECORD_LINE if origin is not None else ""}- `system`: Lobster and Python versions, the platform, and the short Git commit of the directory the export ran in (if any), as plain text.
 
 **Limits**
 - Nothing in this notebook checks these hashes when it runs, so changed input files are not detected automatically. Compare the hashes yourself if you need to.
@@ -1024,6 +1116,18 @@ Recorded when this notebook was exported, for your own checks.
             ]
         else:
             imports = extract_unique_imports(irs)
+        if self._migrated_origin() is not None:
+            # an earlier version recorded some entries that are not statements; the
+            # record is not rewritten, only this cell leaves them out, visibly
+            imports = [
+                (
+                    line
+                    if line.lstrip().startswith(("import ", "from ", "#"))
+                    else "# Not an import statement in the 1.2.x record, left out: "
+                    + " ".join(line.split())
+                )
+                for line in imports
+            ]
 
         imports_code = "# Required imports\n" + "\n".join(imports)
 

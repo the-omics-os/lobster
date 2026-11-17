@@ -164,3 +164,30 @@ def test_command_unknown_option_exits_nonzero_with_json(tmp_path, capsys):
     envelope = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert envelope["success"] is False
     assert "Unknown option: --foo" in envelope["error"]
+
+
+def test_export_lists_the_dangling_links_of_a_migrated_workspace(tmp_path):
+    shown = []
+    client = _client(tmp_path)
+    client.data_manager.notebook_exporter = SimpleNamespace(
+        dangling_links=["data/in.h5ad"]
+    )
+    with patch(
+        "lobster.cli_internal.commands.light.pipeline_commands._render_blocks",
+        lambda output, blocks: shown.extend(map(repr, blocks)),
+    ):
+        pipeline_export(client, Mock(), "nb", "")
+    text = "\n".join(shown)
+    assert "data/in.h5ad" in text and "restore or remove before replay" in text
+
+
+def test_export_says_nothing_of_links_when_there_are_none(tmp_path):
+    shown = []
+    client = _client(tmp_path)
+    client.data_manager.notebook_exporter = SimpleNamespace(dangling_links=[])
+    with patch(
+        "lobster.cli_internal.commands.light.pipeline_commands._render_blocks",
+        lambda output, blocks: shown.extend(map(repr, blocks)),
+    ):
+        pipeline_export(client, Mock(), "nb", "")
+    assert "restore or remove" not in "\n".join(shown)
