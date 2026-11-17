@@ -377,6 +377,55 @@ def test_strict_version(bad):
         v.version_string(bad)
 
 
+LABEL = "1.2.3+c1a2b3c4d"
+
+
+def test_label_is_refused_by_default():
+    # The publish path never passes the tester flag, so a labelled version can never be released.
+    with pytest.raises(v.VerificationError):
+        v.version_string(LABEL)
+    with pytest.raises(SystemExit):
+        v.main(["source", LABEL])
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "1.2.3+c1a2b3c4",  # 7 hex digits
+        "1.2.3+c1a2b3c4d5",  # 9 hex digits
+        "1.2.3+c1A2B3C4D",  # upper case
+        "1.2.3+local",
+        "1.2.3+c1a2b3c4d\n",
+        "1.2.3rc1+c1a2b3c4d",
+        "1.2+c1a2b3c4d",
+    ],
+)
+def test_tester_label_must_be_c_and_eight_lower_case_hex(bad):
+    with pytest.raises(v.VerificationError):
+        v.version_string(bad, tester_label=True)
+
+
+def test_tester_label_accepts_plain_and_labelled(suite):
+    assert v.version_string("1.2.3", tester_label=True) == "1.2.3"
+    assert v.version_string(LABEL, tester_label=True) == LABEL
+
+
+def test_source_with_tester_flag_checks_a_labelled_tree(suite):
+    for path in suite.rglob("*"):
+        if path.is_file():
+            path.write_text(path.read_text().replace(VERSION, LABEL))
+    assert set(v.source(LABEL, tester_label=True)) == set(NAMES)
+    with pytest.raises(v.VerificationError):
+        v.source(LABEL)
+    assert v.main(["source", LABEL, "--tester-build"]) is None
+
+
+def test_registry_commands_have_no_tester_flag():
+    for command in ("registry", "tui-available", "requirements"):
+        with pytest.raises(SystemExit):
+            v.main([command, LABEL, "--tester-build", "--index", "pypi"])
+
+
 @pytest.mark.parametrize(
     "target",
     ["lobster/version.py", "pyproject.toml", "packages/lobster-ai-tui/pyproject.toml"],

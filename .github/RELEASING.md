@@ -4,6 +4,15 @@ Release tags publish immutable packages. Obtain explicit release approval and me
 release changes through the protected PR process before tagging. A package release
 does **not** deploy Omics-OS Cloud.
 
+## Tester builds
+
+A build handed to testers before release may carry the PEP 440 local label
+`X.Y.Z+c<8 lower-case hex digits of the commit>`. Check it with
+`scripts/verify_release_artifacts.py source|artifacts|installed X.Y.Z+c<sha8> --tester-build`.
+Only those three commands accept the flag; the publisher workflows and the
+registry commands never do, so a labelled version cannot be tagged or uploaded.
+After the release, testers run `uv tool install --reinstall "lobster-ai[full]==X.Y.Z"`.
+
 ## Preparation
 
 1. Set the same `X.Y.Z` in `lobster/version.py`, root

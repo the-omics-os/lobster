@@ -657,3 +657,13 @@ def test_summary_rejects_any_skipped_production_dependency(shell, job_name):
     assert result.returncode != 0
     assert job_name in result.stderr
     assert f"| {job_name} | skipped |" in shell.summary.read_text()
+
+
+def test_publish_workflows_never_allow_a_tester_label():
+    # A labelled (1.2.3+c<sha8>) build is for testers only: the publisher workflows must call the
+    # verifier without the tester flag and must not mention the label form.
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        if "verify_release_artifacts" in text:
+            assert "--tester-build" not in text, path.name
+            assert "tester_label" not in text, path.name

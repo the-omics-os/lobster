@@ -48,10 +48,15 @@ def require(condition, message):
         raise VerificationError(message)
 
 
-def version_string(value):
+def version_string(value, tester_label=False):
+    # Release versions are strict X.Y.Z. A tester build (never published) may carry the PEP 440 local label
+    # +c<8 lower-case hex digits> (the commit); only the explicit --tester-build flag allows it.
+    label = r"(?:\+c[0-9a-f]{8})?" if tester_label else ""
     require(
         isinstance(value, str)
-        and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value),
+        and re.fullmatch(
+            r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)" + label, value
+        ),
         f"Expected strict X.Y.Z version, got {value!r}",
     )
     return value
@@ -87,8 +92,8 @@ def manifests():
     return result
 
 
-def source(version):
-    version_string(version)
+def source(version, tester_label=False):
+    version_string(version, tester_label)
     suite = manifests()
     tree = ast.parse((ROOT / "lobster" / "version.py").read_text(encoding="utf-8"))
     values = []
@@ -112,8 +117,8 @@ def source(version):
     return list(suite)
 
 
-def expected_files(version, name, platform=None):
-    version_string(version)
+def expected_files(version, name, platform=None, tester_label=False):
+    version_string(version, tester_label)
     name = normalized_name(name)
     require(name in manifests(), f"Unknown suite distribution: {name}")
     stem = f"{name.replace('-', '_')}-{version}"
@@ -314,8 +319,8 @@ def check_sdist(path, name, version):
     check_metadata(metadata, name, version)
 
 
-def artifacts(version, name, directory, platform=None):
-    expected = expected_files(version, name, platform)
+def artifacts(version, name, directory, platform=None, tester_label=False):
+    expected = expected_files(version, name, platform, tester_label)
     directory = Path(directory)
     entries = list(directory.iterdir())
     # uv build creates this exact sentinel; it is not a distribution artifact.
@@ -432,8 +437,8 @@ def requirements(version, index, output):
     Path(output).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def installed(version):
-    version_string(version)
+def installed(version, tester_label=False):
+    version_string(version, tester_label)
     actual = {name: importlib.metadata.version(name) for name in manifests()}
     for name, found in actual.items():
         print(f"{name}=={found}")
@@ -456,7 +461,9 @@ def main(argv=None):
         "installed",
     ):
         sub = commands.add_parser(command)
-        sub.add_argument("version", type=version_string)
+        sub.add_argument("version")
+        if command in ("source", "artifacts", "installed"):
+            sub.add_argument("--tester-build", action="store_true")
         if command in ("artifacts", "registry"):
             sub.add_argument("name")
             sub.add_argument("directory", type=Path)
@@ -467,11 +474,16 @@ def main(argv=None):
         if command == "requirements":
             sub.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    tester = getattr(args, "tester_build", False)
+    try:
+        version_string(args.version, tester)
+    except VerificationError as error:
+        parser.error(str(error))
     if args.command == "source":
-        for name in source(args.version):
+        for name in source(args.version, tester):
             print(f"{name}=={args.version}")
     elif args.command == "artifacts":
-        artifacts(args.version, args.name, args.directory, args.platform)
+        artifacts(args.version, args.name, args.directory, args.platform, tester)
     elif args.command == "registry":
         registry(args.version, args.name, args.directory, args.index)
     elif args.command == "tui-available":
@@ -479,7 +491,7 @@ def main(argv=None):
     elif args.command == "requirements":
         requirements(args.version, args.index, args.output)
     else:
-        installed(args.version)
+        installed(args.version, tester)
 
 
 if __name__ == "__main__":
