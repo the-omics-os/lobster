@@ -922,6 +922,10 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         code_template = """# Highly variable gene selection
 # Using scanpy's HVG method (flavor={{ flavor | string | repr }})
 
+# Genes with no expression in any cell are dropped first, as
+# PreprocessingService.select_features_hvg does (its zero-expression filter)
+adata = adata[:, np.asarray(adata.X.sum(axis=0)).ravel() != 0].copy()
+
 sc.pp.highly_variable_genes(
     adata,
     n_top_genes={{ n_top_genes }},
@@ -939,7 +943,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
             description=f"Select top {n_top_genes} highly variable genes using {flavor} method",
             library="scanpy",
             code_template=code_template,
-            imports=["import scanpy as sc"],
+            imports=["import numpy as np", "import scanpy as sc"],
             parameters={
                 "n_top_genes": n_top_genes,
                 "flavor": flavor,

@@ -1209,6 +1209,25 @@ class TestSelectFeaturesHVG:
             == adata_result.var["highly_variable"].to_numpy()
         ).all()
 
+    def test_the_exported_hvg_cell_drops_nothing_when_every_gene_is_expressed(
+        self, preprocessing_service, normalized_adata
+    ):
+        from lobster.testing.provenance_replay import replay_ir
+
+        adata = normalized_adata.copy()
+        X = adata.X.toarray() if spr.issparse(adata.X) else np.asarray(adata.X)
+        X[0, X.sum(axis=0) == 0] = 1  # no gene is all zero
+        adata.X = X
+        assert (np.asarray(adata.X.sum(axis=0)).ravel() != 0).all()
+        adata_result, _, ir = preprocessing_service.select_features_hvg(adata)
+        cell = replay_ir(ir, adata=adata.copy())["adata"]
+        assert list(adata_result.var_names) == list(adata.var_names)
+        assert list(cell.var_names) == list(adata.var_names)
+        assert (
+            cell.var["highly_variable"].to_numpy()
+            == adata_result.var["highly_variable"].to_numpy()
+        ).all()
+
     def test_hvg_ir_structure(self, preprocessing_service, normalized_adata):
         """Test IR structure for HVG selection."""
         _, _, ir = preprocessing_service.select_features_hvg(normalized_adata)
