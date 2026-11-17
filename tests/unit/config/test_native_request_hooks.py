@@ -89,7 +89,7 @@ async def test_native_hook_covers_every_execution_mode(native_model, operation):
 async def test_bound_cap_and_unconfigured_default_reach_native_request(
     cap, operation, monkeypatch
 ):
-    """Bound caps survive native construction; unbound defaults add no limit."""
+    """Bound caps survive native construction; unbound defaults send the model bound."""
     require_bedrock()
     from unittest.mock import Mock, patch
 
@@ -123,7 +123,7 @@ async def test_bound_cap_and_unconfigured_default_reach_native_request(
                 },
                 agent_name="test_agent",
             )
-        assert model.max_tokens is None
+        assert model.max_tokens == 64000
     else:
         context = InferenceContext(
             "bedrock", BEDROCK_MODEL, "synthetic-binding", "version-a", 200000, cap
@@ -152,8 +152,7 @@ async def test_bound_cap_and_unconfigured_default_reach_native_request(
         assert len(probe.hooks) == len(probe.sent) == 1
         payload = json.loads(probe.sent[0].body)
         if cap is None:
-            assert "maxTokens" not in payload.get("inferenceConfig", {})
-            assert "max_tokens" not in payload
+            assert payload["inferenceConfig"]["maxTokens"] == 64000
         else:
             assert payload["inferenceConfig"]["maxTokens"] == cap
             assert len(authorizer.descriptors) == len(authorizer.outcomes) == 1

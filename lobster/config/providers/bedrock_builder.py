@@ -4,6 +4,8 @@ import logging
 import os
 from typing import Any, Optional
 
+from lobster.config.output_bound import above_thinking_budget, default_output_bound
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,9 +29,11 @@ def build_bedrock_converse(
     - Gateway path: pass `client` (runtime) + `bedrock_client` (control stub)
     - Direct AWS path: pass AWS credentials + region
 
-    ``max_tokens`` is an optional output-token limit. When it is ``None`` (the
-    default) no limit is sent and Bedrock applies the model's own maximum; an
-    explicit value is forwarded unchanged.
+    ``max_tokens`` is the output-token limit. An explicit value is forwarded
+    unchanged. When it is ``None`` (the default) the model's documented output
+    bound is sent (``lobster.config.output_bound``): Bedrock's own default, which
+    applies when nothing is sent, is far below the model maximum and cut long
+    answers off mid-sentence.
 
     Returns:
         ChatBedrockConverse instance with full tool calling support
@@ -42,11 +46,14 @@ def build_bedrock_converse(
     if temperature is not None:
         params["temperature"] = temperature
 
-    # Send an output-token limit only when the caller asks for one. Without it
-    # Bedrock applies the model's own maximum, whereas a built-in default would
-    # silently cap every call (and sit below extended-thinking budgets).
-    if max_tokens is not None:
-        params["max_tokens"] = max_tokens
+    # Always send an output-token bound. Without one Bedrock applies a default far
+    # below the model maximum. The default is the documented model maximum and
+    # stays above an extended-thinking budget.
+    if max_tokens is None:
+        max_tokens = above_thinking_budget(
+            default_output_bound(model_id), additional_model_request_fields
+        )
+    params["max_tokens"] = max_tokens
 
     # Gateway path: inject pre-built clients
     if client is not None:

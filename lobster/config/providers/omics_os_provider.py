@@ -130,7 +130,7 @@ class OmicsOSProvider(ILLMProvider):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> Any:
-        # max_tokens=None sends no output limit: Bedrock applies the model maximum.
+        # max_tokens=None sends the model's documented output bound (output_bound).
         from lobster.config.credentials import get_api_key, get_endpoint
         from lobster.config.providers.bedrock_builder import build_bedrock_converse
         from lobster.config.providers.gateway_bedrock_client import (

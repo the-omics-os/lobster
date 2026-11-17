@@ -182,14 +182,14 @@ def test_forward_output_token_limit(mode, max_tokens, constructor):
 @pytest.mark.parametrize(
     "requested", [{}, {"max_tokens": None}], ids=["default", "explicit-none"]
 )
-def test_omit_output_token_limit_unless_requested(mode, requested, constructor):
-    """Without an explicit limit Bedrock must apply the model's own maximum."""
+def test_send_the_model_bound_unless_requested(mode, requested, constructor):
+    """Without an explicit limit the documented model bound is sent, never nothing."""
     kwargs = _client_kwargs(mode)
     build_bedrock_converse(
         model_id="test-model", temperature=0.5, **requested, **kwargs
     )
     params = constructor.call_args.kwargs
-    assert "max_tokens" not in params
+    assert params["max_tokens"] == 8192
     assert params["model_id"] == "test-model"
     assert params["temperature"] == 0.5
     for key, value in kwargs.items():

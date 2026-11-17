@@ -27,6 +27,18 @@ from lobster.core.session_identity import bind_client_session
 _SPECIALIST_SUFFIXES = ("_expert", "_agent", "_assistant")
 
 
+def _with_truncation_note(content: Any) -> Any:
+    """End a reply cut off at the output limit with the plain note."""
+    note = truncation_note()
+    if isinstance(content, dict):
+        return {
+            **content,
+            "text": content.get("text", "") + note,
+            "combined": content.get("combined", "") + note,
+        }
+    return content + note
+
+
 def _detect_speaker_transition(message_chunk: Any) -> Optional[str]:
     """Detect agent transitions from handoff/transfer_back tool calls.
 
@@ -81,6 +93,11 @@ from lobster.config.inference_context import (
     InferenceModelSelection,
     resolve_inference_model,
     validate_inference_binding,
+)
+from lobster.config.output_bound import (
+    stop_reason_of,
+    stopped_at_length,
+    truncation_note,
 )
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
@@ -709,6 +726,8 @@ class AgentClient(BaseClient):
             seen_message_ids: set = set()
             seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
+            # True while the supervisor's latest model call ended at the length limit.
+            reply_cut_off = False
             was_cancelled = False
             pending_interrupts = {}
 
@@ -808,6 +827,11 @@ class AgentClient(BaseClient):
                         source = active_speaker
                     else:
                         source = node_name or "specialist"
+
+                    # A final reply cut off at the output limit gets a note below.
+                    stop_metadata = getattr(message_chunk, "response_metadata", None)
+                    if source == "supervisor" and stop_reason_of(stop_metadata):
+                        reply_cut_off = stopped_at_length(stop_metadata)
 
                     # Emit agent change events for specialist agents
                     if source != "supervisor" and source != last_agent:
@@ -979,6 +1003,16 @@ class AgentClient(BaseClient):
                     "timestamp": datetime.now().isoformat(),
                 }
 
+            if reply_cut_off:
+                note = truncation_note()
+                accumulated_text += note
+                yield {
+                    "type": "content_delta",
+                    "delta": note,
+                    "source": "supervisor",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
             # Persist assistant response for multi-turn context (parity with _run_query).
             # Without this, streaming chat mode loses conversation history.
             if accumulated_text:
@@ -1119,6 +1153,8 @@ class AgentClient(BaseClient):
                 ):
                     content = self._extract_content_from_message(msg)
                     if content:
+                        if stopped_at_length(getattr(msg, "response_metadata", None)):
+                            content = _with_truncation_note(content)
                         return content
 
         return "No response generated."

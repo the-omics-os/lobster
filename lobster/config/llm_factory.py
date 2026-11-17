@@ -28,6 +28,7 @@ from lobster.config.inference_context import (
     create_bound_model,
     validate_inference_binding,
 )
+from lobster.config.output_bound import attach_output_limit_watch
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,8 @@ class LLMFactory:
             model_config: Configuration dictionary with model parameters
                 - temperature: float (optional; when absent the model default applies)
                 - max_tokens: int (optional; when absent the provider applies
-                  its own default, and Bedrock sends no limit)
+                  its own default, and Bedrock sends the model's documented
+                  output bound)
                 - model_id: str (optional, can be overridden)
             agent_name: Optional agent name for logging and per-agent config
             provider_override: Explicit provider name from CLI flag
@@ -162,8 +164,8 @@ class LLMFactory:
         if model_config.get("temperature") is not None:
             model_params["temperature"] = model_config["temperature"]
         # Forward an output-token limit only when the config sets one. Otherwise each
-        # provider applies its own default; Bedrock sends no limit, so the model's
-        # maximum applies (a factory-wide default would cap every Bedrock request).
+        # provider applies its own default; Bedrock sends the model's documented
+        # output bound (a factory-wide default would cap every provider alike).
         if "max_tokens" in model_config:
             model_params["max_tokens"] = model_config["max_tokens"]
 
@@ -181,10 +183,13 @@ class LLMFactory:
         # Pass additional_fields as kwargs to support provider-specific features:
         # - Bedrock: thinking config via additional_model_request_fields
         # - Anthropic: extended thinking via additional_model_request_fields
-        return provider.create_chat_model(
+        llm = provider.create_chat_model(
             **model_params,
             **additional_fields,  # Pass thinking config and other provider-specific params
         )
+        # A reply that ends at the output limit is logged with this agent's name.
+        attach_output_limit_watch(llm, agent_name)
+        return llm
 
     @classmethod
     def get_available_providers(cls) -> List[str]:

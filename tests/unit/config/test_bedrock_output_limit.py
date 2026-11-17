@@ -1,10 +1,12 @@
-"""Bedrock-family providers send no output-token limit unless one is configured.
+"""Bedrock-family providers send the model's output bound unless one is configured.
 
 LLMFactory used to inject ``max_tokens=4096`` for every provider and the Bedrock
 providers forwarded it, so each Bedrock request carried ``maxTokens=4096``. That
 cap is far below the model maximum and below extended-thinking budgets
-(5000/10000 tokens). Without an explicit limit Bedrock applies the model's own
-maximum; an explicit value must still reach the request unchanged.
+(5000/10000 tokens). Sending nothing did not help: Bedrock then applied its own
+small default and cut long answers off. The default is now the model's documented
+output bound (``lobster.config.output_bound``); an explicit value must still reach
+the request unchanged. The bound itself is tested in ``test_output_bound.py``.
 """
 
 import os
@@ -64,9 +66,9 @@ def _create_llm(model_config, provider_name):
 
 
 @pytest.mark.parametrize("provider_name", BEDROCK_FAMILY)
-def test_provider_default_sends_no_output_limit(provider_name, constructor):
+def test_provider_default_sends_the_model_bound(provider_name, constructor):
     _provider(provider_name).create_chat_model(MODEL)
-    assert "max_tokens" not in constructor.call_args.kwargs
+    assert constructor.call_args.kwargs["max_tokens"] == 64000
 
 
 @pytest.mark.parametrize("provider_name", BEDROCK_FAMILY)
@@ -79,11 +81,11 @@ def test_provider_forwards_explicit_output_limit(
 
 
 @pytest.mark.parametrize("provider_name", BEDROCK_FAMILY)
-def test_factory_default_sends_no_output_limit(provider_name, constructor):
+def test_factory_default_sends_the_model_bound(provider_name, constructor):
     config = {"model_id": MODEL, "temperature": 0.5}
     _create_llm(config, provider_name)
     kwargs = constructor.call_args.kwargs
-    assert "max_tokens" not in kwargs
+    assert kwargs["max_tokens"] == 64000
     assert kwargs["model_id"] == MODEL
     assert kwargs["temperature"] == 0.5
 
@@ -99,7 +101,7 @@ def test_factory_forwards_configured_output_limit(
 
 
 def test_extended_thinking_budget_is_not_paired_with_a_smaller_default_cap(constructor):
-    """A 5000-token thinking budget needs a larger (or no) output limit."""
+    """A 5000-token thinking budget needs a larger output limit."""
     from lobster.config.agent_defaults import THINKING_PRESETS
 
     thinking = THINKING_PRESETS["extended"].to_dict()["thinking"]
@@ -111,11 +113,11 @@ def test_extended_thinking_budget_is_not_paired_with_a_smaller_default_cap(const
     _create_llm(config, "bedrock")
     kwargs = constructor.call_args.kwargs
     assert kwargs["additional_model_request_fields"] == {"thinking": thinking}
-    assert "max_tokens" not in kwargs
+    assert kwargs["max_tokens"] > thinking["budget_tokens"]
 
 
-def test_gateway_model_has_no_output_limit_by_default():
-    """The real langchain-aws model keeps max_tokens unset (nothing is sent)."""
+def test_gateway_model_carries_the_model_bound_by_default():
+    """The real langchain-aws model sends the documented bound unless one is set."""
     pytest.importorskip("langchain_aws")
     from langchain_aws import ChatBedrockConverse
 
@@ -123,7 +125,7 @@ def test_gateway_model_has_no_output_limit_by_default():
     default = provider.create_chat_model(MODEL)
     explicit = provider.create_chat_model(MODEL, max_tokens=2048)
     assert isinstance(default, ChatBedrockConverse)
-    assert default.max_tokens is None
+    assert default.max_tokens == 64000
     assert explicit.max_tokens == 2048
 
 

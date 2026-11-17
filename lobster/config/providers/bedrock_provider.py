@@ -533,8 +533,8 @@ class BedrockProvider(ILLMProvider):
         Args:
             model_id: Bedrock model ID (e.g., "anthropic.claude-sonnet-4-20250514-v1:0")
             temperature: Sampling temperature (None = model default)
-            max_tokens: Maximum tokens in response. Default None sends no limit,
-                so Bedrock applies the model's own maximum.
+            max_tokens: Maximum tokens in response. Default None sends the model's
+                documented output bound (see ``lobster.config.output_bound``).
             **kwargs: Additional parameters:
                 - region_name: AWS region (default: us-east-1)
                 - aws_access_key_id: Override AWS access key
