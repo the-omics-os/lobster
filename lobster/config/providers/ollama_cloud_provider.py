@@ -7,6 +7,10 @@ from dataclasses import replace
 from typing import Any, ClassVar, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.request_bounds import (
+    chat_openai_kwargs,
+    with_request_bounds,
+)
 from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 logger = logging.getLogger(__name__)
@@ -165,9 +169,9 @@ class OllamaCloudProvider(ILLMProvider):
             base_url=_BASE_URL,
             temperature=temperature,
             max_tokens=max_tokens,
-            **kwargs,
+            **chat_openai_kwargs(kwargs),
         )
-        return with_stream_usage_hint(llm)
+        return with_stream_usage_hint(with_request_bounds(llm))
 
     def get_configuration_help(self) -> str:
         return "Get an API key at https://ollama.com/settings/keys and set OLLAMA_API_KEY. Default model: glm-5.2. No local Ollama installation required."

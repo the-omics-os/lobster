@@ -24,6 +24,10 @@ import os
 from typing import Any, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.request_bounds import (
+    chat_openai_kwargs,
+    with_request_bounds,
+)
 from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 logger = logging.getLogger(__name__)
@@ -337,7 +341,8 @@ class OpenAIProvider(ILLMProvider):
         # behind OPENAI_BASE_URL (a proxy) it would return none.
         model_kwargs.setdefault("stream_usage", True)
 
-        return with_stream_usage_hint(ChatOpenAI(**model_kwargs))
+        llm = ChatOpenAI(**chat_openai_kwargs(model_kwargs))
+        return with_stream_usage_hint(with_request_bounds(llm))
 
     def get_configuration_help(self) -> str:
         """

@@ -339,7 +339,13 @@ class OllamaProvider(ILLMProvider):
             f"Creating ChatOllama with model '{model_id}', "
             f"num_ctx={num_ctx}, keep_alive={keep_alive}"
         )
-        return ChatOllama(**ollama_params)
+        from lobster.config.providers.request_bounds import (
+            chat_ollama_kwargs,
+            with_request_bounds,
+        )
+
+        llm = ChatOllama(**chat_ollama_kwargs(ollama_params))
+        return with_request_bounds(llm, idle_default=600, per_request_timeout=False)
 
     def preload_model(self, model_id: str, keep_alive: str = "30m") -> None:
         """

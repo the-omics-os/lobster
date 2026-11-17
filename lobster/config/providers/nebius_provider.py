@@ -28,6 +28,10 @@ import os
 from typing import Any, ClassVar, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.request_bounds import (
+    chat_openai_kwargs,
+    with_request_bounds,
+)
 from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 # Nebius AI Studio (Token Factory) API constants
@@ -347,9 +351,9 @@ class NebiusProvider(ILLMProvider):
             base_url=_BASE_URL,
             temperature=temperature,
             max_tokens=max_tokens,
-            **kwargs,
+            **chat_openai_kwargs(kwargs),
         )
-        return with_stream_usage_hint(llm)
+        return with_stream_usage_hint(with_request_bounds(llm))
 
     def get_configuration_help(self) -> str:
         return (

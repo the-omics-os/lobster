@@ -29,6 +29,10 @@ import os
 from typing import Any, ClassVar, List, Optional, Tuple
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.request_bounds import (
+    chat_openai_kwargs,
+    with_request_bounds,
+)
 from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 logger = logging.getLogger(__name__)
@@ -450,9 +454,9 @@ class OpenRouterProvider(ILLMProvider):
             default_headers=_DEFAULT_HEADERS,
             temperature=temperature,
             max_tokens=max_tokens,
-            **kwargs,
+            **chat_openai_kwargs(kwargs),
         )
-        return with_stream_usage_hint(llm)
+        return with_stream_usage_hint(with_request_bounds(llm))
 
     def verify_connection(self, model_id: Optional[str] = None) -> Tuple[bool, str]:
         """
