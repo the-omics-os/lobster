@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-visualization"
-version = "1.2.6"
+version = "1.3.0"
 description = "Visualization agent for Lobster AI - publication-quality plots and interactive visualizations"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -23,7 +23,7 @@ classifiers = [
 ]
 keywords = ["bioinformatics", "visualization", "plotting", "single-cell", "omics"]
 dependencies = [
-    "lobster-ai~=1.2",
+    "lobster-ai~=1.3",
     "numpy>=1.23.0",
     "pandas>=1.5.0",
     "plotly>=5.0.0",

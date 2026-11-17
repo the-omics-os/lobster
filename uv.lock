@@ -3775,7 +3775,7 @@ requires-dist = [
     { name = "lobster-ai", extras = ["genomics", "proteomics", "transcriptomics"], marker = "extra == 'full'", editable = "." },
     { name = "lobster-ai-tui", marker = "sys_platform != 'win32'", editable = "packages/lobster-ai-tui" },
     { name = "lobster-genomics", marker = "extra == 'genomics'", editable = "packages/lobster-genomics" },
-    { name = "lobster-metadata", marker = "extra == 'full'", specifier = "~=1.2" },
+    { name = "lobster-metadata", marker = "extra == 'full'", specifier = "~=1.3" },
     { name = "lobster-proteomics", extras = ["network-analysis"], marker = "extra == 'proteomics'", editable = "packages/lobster-proteomics" },
     { name = "lobster-research", marker = "extra == 'genomics'", editable = "packages/lobster-research" },
     { name = "lobster-research", marker = "extra == 'proteomics'", editable = "packages/lobster-research" },
@@ -3856,12 +3856,12 @@ notebook-replay = [{ name = "ipykernel", specifier = "==7.4.0" }]
 
 [[package]]
 name = "lobster-ai-tui"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-ai-tui" }
 
 [[package]]
 name = "lobster-drug-discovery"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-drug-discovery" }
 dependencies = [
     { name = "anndata" },
@@ -3913,7 +3913,7 @@ provides-extras = ["chemistry", "docking", "plm", "full"]
 
 [[package]]
 name = "lobster-genomics"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-genomics" }
 dependencies = [
     { name = "anndata" },
@@ -3953,7 +3953,7 @@ provides-extras = ["genebe"]
 
 [[package]]
 name = "lobster-metabolomics"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-metabolomics" }
 dependencies = [
     { name = "anndata" },
@@ -3994,7 +3994,7 @@ wheels = [
 
 [[package]]
 name = "lobster-proteomics"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-proteomics" }
 dependencies = [
     { name = "anndata" },
@@ -4032,7 +4032,7 @@ provides-extras = ["network-analysis"]
 
 [[package]]
 name = "lobster-research"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-research" }
 dependencies = [
     { name = "lobster-ai" },
@@ -4049,7 +4049,7 @@ requires-dist = [
 
 [[package]]
 name = "lobster-transcriptomics"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-transcriptomics" }
 dependencies = [
     { name = "anndata" },
@@ -4095,7 +4095,7 @@ provides-extras = ["seurat-v3", "doublet-detection", "batch-integration"]
 
 [[package]]
 name = "lobster-vector"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-vector" }
 dependencies = [
     { name = "lobster-ai" },
@@ -4147,7 +4147,7 @@ provides-extras = ["chromadb", "openai", "local", "cohere", "graph", "full"]
 
 [[package]]
 name = "lobster-visualization"
-version = "1.2.6"
+version = "1.3.0"
 source = { editable = "packages/lobster-visualization" }
 dependencies = [
     { name = "lobster-ai" },

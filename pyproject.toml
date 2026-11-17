@@ -81,7 +81,7 @@ dependencies = [
     "tomli_w>=1.0",
     "psutil>=7.0.0",
     # Go TUI (default chat UI on supported platforms)
-    'lobster-ai-tui~=1.2; platform_system != "Windows"',
+    'lobster-ai-tui~=1.3; platform_system != "Windows"',
 ]
 
 [project.optional-dependencies]
@@ -126,7 +126,7 @@ classic-tui = ["textual>=6.7.1"]
 # Semantic Vector Search (optional, installed via `lobster init`)
 # =============================================================================
 vector-search = [
-    "lobster-vector[chromadb,openai]~=1.2",
+    "lobster-vector[chromadb,openai]~=1.3",
 ]
 
 # =============================================================================
@@ -158,28 +158,28 @@ extended-data = [
 #   pip install lobster-ai[full]               # Everything
 # =============================================================================
 transcriptomics = [
-    "lobster-transcriptomics[batch-integration]~=1.2",
-    "lobster-research~=1.2",
-    "lobster-visualization~=1.2",
+    "lobster-transcriptomics[batch-integration]~=1.3",
+    "lobster-research~=1.3",
+    "lobster-visualization~=1.3",
 ]
 # Doublet detection requires scrublet → annoy (C++ compilation).
 # Install separately: pip install lobster-transcriptomics[doublet-detection]
 doublet-detection = [
-    "lobster-transcriptomics[doublet-detection]~=1.2",
+    "lobster-transcriptomics[doublet-detection]~=1.3",
 ]
 genomics = [
-    "lobster-genomics~=1.2",
-    "lobster-research~=1.2",
-    "lobster-visualization~=1.2",
+    "lobster-genomics~=1.3",
+    "lobster-research~=1.3",
+    "lobster-visualization~=1.3",
 ]
 proteomics = [
-    "lobster-proteomics[network-analysis]~=1.2",
-    "lobster-research~=1.2",
-    "lobster-visualization~=1.2",
+    "lobster-proteomics[network-analysis]~=1.3",
+    "lobster-research~=1.3",
+    "lobster-visualization~=1.3",
 ]
 research = [
-    "lobster-research~=1.2",
-    "lobster-visualization~=1.2",
+    "lobster-research~=1.3",
+    "lobster-visualization~=1.3",
 ]
 plink = [
     "bed-reader>=0.2.0",
@@ -203,7 +203,7 @@ recommended = ["lobster-ai[anthropic,transcriptomics,classic-tui,extended-data]"
 full = [
     "lobster-ai[transcriptomics,genomics,proteomics]",
     "lobster-ai[all-providers,classic-tui,extended-data,hdf5,docling]",
-    "lobster-metadata~=1.2",
+    "lobster-metadata~=1.3",
 ]
 
 # =============================================================================
@@ -532,7 +532,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.bumpversion]
-current_version = "1.2.6"
+current_version = "1.3.0"
 commit = true
 tag = true
 

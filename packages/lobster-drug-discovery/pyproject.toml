@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-drug-discovery"
-version = "1.2.6"
+version = "1.3.0"
 description = "Drug discovery agent for Lobster AI — target identification, compound profiling, clinical translation, pharmacogenomics"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -22,7 +22,7 @@ classifiers = [
 ]
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "lobster-ai~=1.2",
+    "lobster-ai~=1.3",
     "anndata>=0.9.0",
     "numpy>=1.23.0",
     "pandas>=1.5.0",

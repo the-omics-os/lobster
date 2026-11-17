@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-metadata"
-version = "1.2.6"
+version = "1.3.0"
 description = "Metadata assistant agent for Lobster AI - sample metadata and harmonization operations"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -23,10 +23,10 @@ classifiers = [
 ]
 keywords = ["bioinformatics", "metadata", "harmonization", "sample-mapping", "omics"]
 dependencies = [
-    "lobster-ai~=1.2",
+    "lobster-ai~=1.3",
     "pandas>=1.5.0",
     "pydantic>=2.0.0",
-    "lobster-vector~=1.2",
+    "lobster-vector~=1.3",
     "rapidfuzz>=3.0.0",
 ]
 
