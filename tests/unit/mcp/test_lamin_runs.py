@@ -133,6 +133,7 @@ def test_three_runs_in_one_server_are_all_recorded(tmp_path, make):
                 question="QC this file.",
                 input_path=str(data),
                 output_dir=str(project.root / "runs" / name),
+                plan=False,  # the script hands off to the analysis expert at once
             )
             assert isinstance(run, dict), run
             done = host.finished(run["run_id"])
