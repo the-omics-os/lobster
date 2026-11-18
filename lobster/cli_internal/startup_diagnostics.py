@@ -56,8 +56,9 @@ def _format_missing_credentials_fix_lines(
     workspace_path = Path(workspace) if workspace else None
     if workspace_path is not None:
         env_file = workspace_path / ".env"
-        if not env_file.exists() and (workspace_path / "project.json").is_file():
-            env_file = workspace_path.parent / ".env"  # where lobster init writes it
+        if (workspace_path / "project.json").is_file():
+            # A project reads both; lobster init writes the key beside it.
+            env_file = workspace_path.parent / ".env"
         lines.extend(
             [
                 "1. Add the key to the workspace .env file:",
