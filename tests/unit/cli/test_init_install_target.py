@@ -87,3 +87,13 @@ def test_agent_packages_install_at_lobsters_own_minor_version(
 
     assert calls[0][-1] == f"lobster-research{spec}"
     assert calls[1][-1] == "chromadb>=1.0.0"
+
+
+def test_the_vector_hint_keeps_the_extra_in_the_command(monkeypatch):
+    # Rich read "[vector-search]" as markup and printed `uv pip install 'lobster-ai'`.
+    console = Console(width=300, record=True)
+    monkeypatch.setattr(init_commands, "console", console)
+
+    init_commands._print_vector_backend_unavailable()
+
+    assert "uv pip install 'lobster-ai[vector-search]'" in console.export_text()
