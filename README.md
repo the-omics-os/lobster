@@ -30,7 +30,7 @@
 
 ---
 
-简体中文：[README.zh.md](README.zh.md) · 命令行加上 `--lang zh`，或设置 `LOBSTER_LANG=zh`。
+简体中文：[README.zh.md](https://github.com/the-omics-os/lobster/blob/main/README.zh.md) · 命令行加上 `--lang zh`，或设置 `LOBSTER_LANG=zh`。
 
 # Quickstart
 
@@ -40,16 +40,26 @@ curl -fsSL https://install.lobsterbio.com -o install.sh && bash install.sh
 ```
 *(Download first, then run: the installer asks interactive questions that a piped `curl | bash` cannot read. Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
 
-**2. Configure your LLM** (skip if you already chose a provider during install):
+Prefer to install it yourself? With `uv` (or `pip`):
+<!-- VERIFY: plain lobster-ai includes the default provider, and lobster init installs the chosen analysis packages under uv tool. Remove this comment before publication. -->
 ```bash
-lobster init
+uv tool install --python 3.12 lobster-ai    # or in a virtual environment: uv venv --python 3.12, then uv pip install lobster-ai
 ```
-Pick a provider — Omics-OS Cloud (managed, API key from [app.omics-os.com/account](https://app.omics-os.com/account)), Anthropic, Gemini, or a local Ollama.
+The plain install is small and includes the default provider, Omics-OS Cloud. `lobster init` (step 2) asks which analysis packages and which other providers to install, so you only install what you use. Python 3.12 or 3.13.
+
+**2. Set up a project folder** (skip if you already chose a provider during install):
+```bash
+lobster init ~/my-study    # any subfolder; your home folder itself is refused
+cd ~/my-study
+```
+Pick a provider — Omics-OS Cloud (managed, API key from [app.omics-os.com/account](https://app.omics-os.com/account)), Anthropic, Gemini, or a local Ollama — and the analysis packages you need.
+
+A **project** is a folder whose hidden `.lobster_workspace/` holds `project.json` next to its provider, model and expert settings. Lobster finds the project from the folder you run it in (it walks up; the first `.lobster_workspace` wins), so every run, chat and MCP call inside it uses the same setup. `lobster projects list | info | delete` manage projects (`--json` on each); `delete` removes only what Lobster created, never your folder, and `--dry-run` shows what would go. Running `lobster init` again changes the settings and keeps the project's identity.
 
 Non-interactive setup (agents, CI, scripts):
 ```bash
 export OMICS_OS_API_KEY="..."             # from app.omics-os.com/account
-lobster init --non-interactive --global --use-omics-os --skip-extras
+lobster init --non-interactive --global --use-omics-os --preset scrna-basic   # installs the preset's packages
 lobster status                            # shows configuration, not account proof
 lobster config-test --json                # optional: one real connectivity check
 ```
@@ -83,13 +93,66 @@ Then describe your analysis in plain language:
 
 <br/>
 
+# Use Lobster from Claude Code, Claude Desktop and Codex (MCP)
+
+`lobster mcp --stdio` runs Lobster as an [MCP](https://modelcontextprotocol.io) server on stdin and stdout, so a coding agent or desktop app can hand it an experimental question and get back a result, a notebook and files. It needs Lobster installed locally (the `lobster` command on your PATH) and a project with a provider set up (`lobster init my-project`, above).
+
+The server has nine tools: `lobster_overview`, `lobster_run`, `lobster_status`, `lobster_wait`, `lobster_answer`, `lobster_cancel`, `lobster_continue`, `lobster_inspect` and `lobster_docs`. The host calls `lobster_overview` first: it reports the project, provider, model, whether a key is present (never the key), the project's experts, data files and past runs. A run takes a free-text question and an optional local file.
+
+**Claude Code** — one command, or a `.mcp.json` in your project:
+```bash
+claude mcp add --transport stdio lobster -- lobster mcp --stdio
+```
+```json
+{
+  "mcpServers": {
+    "lobster": {
+      "type": "stdio",
+      "command": "lobster",
+      "args": ["mcp", "--stdio"]
+    }
+  }
+}
+```
+
+**Claude Desktop** — add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`):
+```json
+{
+  "mcpServers": {
+    "lobster": {
+      "command": "lobster",
+      "args": ["mcp", "--stdio"]
+    }
+  }
+}
+```
+
+**Codex** — add to `~/.codex/config.toml` ([full file](https://github.com/the-omics-os/lobster/blob/main/lobster/integrations/codex.config.toml), which also lists every provider key Codex can forward):
+```toml
+[mcp_servers.lobster]
+command = "lobster"
+args = ["mcp", "--stdio"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+env_vars = ["ANTHROPIC_API_KEY"]   # Codex passes only listed variables to the server
+```
+
+Desktop apps do not start from your shell: replace `"lobster"` with the absolute path from `which lobster`, and add `"--workspace", "/path/to/my-project"` to `args` so the server finds your project (Codex: set `cwd` instead). Configurations for Cursor and Open Science are in [`lobster/integrations`](https://github.com/the-omics-os/lobster/tree/main/lobster/integrations).
+
+Before anything else runs, a run that is given a file loads and describes it, writes a short plan and puts the plan to the host as a question; the host shows it to you and answers with `lobster_answer`. Over MCP the host reports whether you or the host agent answered; Lobster records that as reported and cannot verify it. The server reads your provider key from its own environment (the `env` block of the host's MCP configuration), the global credentials file or the project's `.env`; it never puts a key in the project.
+
+<br/>
+
 # CLI Reference
 
 **Core commands:**
 ```bash
 lobster chat                        # Interactive session (default)
 lobster query "your request"        # Single-turn, non-interactive
-lobster init                        # Configure LLM provider and API keys
+lobster init [folder]               # Configure LLM provider and API keys; a folder makes a project
+lobster projects list               # Projects Lobster knows about
+lobster replay --verify nb.ipynb    # Re-run an exported notebook and compare its output
+lobster mcp --stdio                 # MCP server for coding agents and desktop apps
 lobster --help                      # Full command reference
 ```
 
@@ -112,7 +175,7 @@ lobster query --session-id latest "Download the first result"  # resume last ses
 **Developer commands:**
 ```bash
 lobster scaffold agent --name my_expert --display-name "My Expert" \
-  --description "Description" --tier free   # Generate a new agent package
+  --description "Description"               # Generate a new agent package
 lobster validate-plugin ./lobster-my/       # Validate package structure and AQUADIF contract
 ```
 
@@ -124,15 +187,16 @@ Install skills that give Claude Code, Cursor, or Gemini CLI deep knowledge of th
 ```bash
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
-This installs `lobster-use` (analysis workflows) and `lobster-dev` (agent development). With these loaded, your coding agent understands the full 10-package structure, tool patterns, entry point registration, and AQUADIF contract — without needing to read source code manually.
+This installs `lobster-use` (analysis workflows) and `lobster-dev` (agent development). With these loaded, your coding agent understands the package structure, tool patterns, entry point registration, and AQUADIF contract — without needing to read source code manually. The same skills ship inside the package: `lobster skills list` shows them and `lobster skills install` copies them into the skill folders of the coding agents you have.
+
+To let your coding agent *run* analyses rather than write code, connect it through MCP (see above).
 
 **Scaffold a new agent package from the command line:**
 ```bash
 lobster scaffold agent \
   --name epigenomics_expert \
   --display-name "Epigenomics Expert" \
-  --description "ATAC-seq, ChIP-seq, and DNA methylation analysis" \
-  --tier free
+  --description "ATAC-seq, ChIP-seq, and DNA methylation analysis"
 ```
 Generates a complete, contract-compliant package: `pyproject.toml`, entry point wiring, tool stubs with AQUADIF metadata, and contract tests. Then point your coding agent at the generated scaffolding and ask it to implement the domain logic.
 
@@ -162,13 +226,43 @@ End-to-end walkthroughs across omics domains:
 
 <br/>
 
+# Check an exported notebook: `lobster replay --verify`
+
+```bash
+lobster replay --verify analysis.ipynb --input my_data.h5ad
+```
+`lobster replay --verify` runs an exported notebook again and compares what it writes against the files the session saved. It detects changes it can see; it does not prove how the outputs were computed. Only `.h5ad` and `.h5mu` outputs are compared; other files are listed. The replay starts from the file the session loaded (Lobster records its SHA-256 and size), so give it with `--input`; for a GEO download the saved raw file is used and `--input` is optional. Verdicts:
+
+* **MATCH** (exit 0): every saved file was compared and equal, every reference still has the bytes recorded at session time, and the notebook changed no data file in the workspace.
+* **MISMATCH** (exit 1): a compared output differs from the file the session saved.
+* **REFUSED** (exit 4): the replay will not call itself a match, for example the input is not a file the session loaded, or a reference file changed or is missing.
+* **NOT_COMPARED** (exit 3): nothing, or not enough, could be compared. Notebooks exported before 1.3 carry no input record (export them again), and sessions migrated from Lobster 1.2.x always end here.
+
+A notebook that fails to run exits 5. Plot cells run, but figures are not compared.
+
+<br/>
+
+# Optional: LaminDB catalog
+
+Lobster can record its work in a [LaminDB](https://lamin.ai) catalog inside your workspace: sessions, the datasets you save (with versions and content hashes), exported notebooks and a step log. It is **off by default**; with it off, Lobster does not import LaminDB. It needs the optional `[lamin]` extra, which `lobster init` installs at its LaminDB step:
+<!-- VERIFY: lobster init --lamin installs the [lamin] extra through uv tool install --with. Remove this comment before publication. -->
+```bash
+lobster init ~/my-study --lamin         # installs the extra and switches the catalog on for that project
+lobster lamin init                      # or switch it on later in an existing workspace
+lobster lamin status                    # where the catalog is and what it holds
+lobster lamin ls --runs                 # recorded sessions (add --json for data)
+```
+By default the catalog is a local SQLite database in `<workspace>/.lamindb/`; it needs no account and no server. Chat prompts and model replies are not recorded. In a project, one catalog holds every run; keep `.lamindb/` out of a shared repository. If the catalog is on and the extra is missing, Lobster logs a warning and runs without recording; if the catalog fails, Lobster keeps working. The extra is not part of `[full]`.
+
+<br/>
+
 # 🧠 Architecture
 
 Lobster AI is a multi-agent system: specialist agents for each omics domain, orchestrated by a LangGraph supervisor.
 
 * **Local execution:** Analysis runs on your machine. Your data files stay on your machine; messages and tool results are sent to the LLM provider you configure (with a local model such as Ollama, they stay on your machine too).
 * **Scientific libraries:** Agents call Scanpy, PyDESeq2, Harmony and others through tool functions. Some agents also have a code tool for custom analysis, which you can switch off per agent.
-* **Provenance:** Analysis steps are recorded and can be exported as a Jupyter notebook.
+* **Provenance:** Analysis steps are recorded and can be exported as a Jupyter notebook. Decisions Lobster asks you to make are recorded with the answer and who gave it (`human` or `model`).
 
 <div align="center">
   <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
@@ -228,7 +322,7 @@ Configure via `lobster init` or environment variables. All providers use the sam
 | **Anthropic** | Cloud | API key | Claude models — recommended default |
 | **Ollama** | Local | `ollama pull <model>` | Local model: no messages go to an LLM provider (online database searches still use the internet) |
 | **OpenAI** | Cloud | API key | GPT and o-series models |
-| **OpenRouter** | Cloud | API key | Access 200+ models via a single endpoint |
+| **OpenRouter** | Cloud | API key | Many models behind a single endpoint |
 | **Nebius AI Studio** | Cloud | API key | Open-weight models (Qwen, DeepSeek, GLM, Kimi) |
 | **Google Gemini** | Cloud | Google API key | Long context window |
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise compliance, IAM-based auth |
@@ -265,29 +359,38 @@ irm https://install.lobsterbio.com/windows | iex
 
 **uv** (recommended manual install):
 ```bash
-uv tool install 'lobster-ai[full]'   # All bundled domains (transcriptomics, genomics,
-                                     #  proteomics) + metadata assistant; provider at init
-lobster init
+uv tool install --python 3.12 lobster-ai
+lobster init ~/my-study              # asks which analysis packages and providers to install
 ```
+
+**Everything at once** (a larger install): `uv tool install --python 3.12 'lobster-ai[full]'` installs all bundled
+domains (transcriptomics, genomics, proteomics), the metadata assistant and every provider package.
 
 Optional domains ship as separate packages — add them to the same tool environment:
 ```bash
-uv tool install 'lobster-ai[full]' --with lobster-metabolomics --with lobster-ml \
+uv tool install --python 3.12 lobster-ai --with lobster-metabolomics --with lobster-ml \
   --with lobster-drug-discovery --with lobster-structural-viz
 ```
 Re-running `uv tool install` rebuilds the tool environment: extras and `--with` packages
 reset to whatever the new command includes — list them again when upgrading.
 
 **pip**:
+<!-- VERIFY: plain lobster-ai includes the default provider, and lobster init installs the chosen analysis packages under uv tool. Remove this comment before publication. -->
 ```bash
-pip install 'lobster-ai[full]'
-lobster init
+uv venv --python 3.12 .venv && source .venv/bin/activate
+pip install lobster-ai    # or: uv pip install lobster-ai
+lobster init ~/my-study    # a project folder, not your home folder
 ```
+Optional extra for the workspace catalog: `lobster-ai[lamin]` (see above).
 
 **Upgrade**:
 ```bash
-uv tool upgrade lobster-ai    # uv
-pip install -U lobster-ai      # pip
+uv tool upgrade --python 3.12 lobster-ai    # uv tool: also upgrades the packages installed with it (--with)
+```
+In a virtual environment, name every installed `lobster-*` package, or the agent packages stay on the old version
+(list them with `uv pip list --python .venv/bin/python | grep lobster`):
+```bash
+uv pip install --python .venv/bin/python -U lobster-ai lobster-research lobster-transcriptomics   # the lobster-* packages you have
 ```
 </details>
 
@@ -301,8 +404,7 @@ Agents are standalone Python packages that register via PEP 517 entry points. No
 lobster scaffold agent \
   --name my_domain_expert \
   --display-name "My Domain Expert" \
-  --description "Analysis for [your domain]" \
-  --tier free
+  --description "Analysis for [your domain]"
 ```
 
 **2. Implement your tools** in the generated `tools/` directory. Each tool must declare AQUADIF metadata:
