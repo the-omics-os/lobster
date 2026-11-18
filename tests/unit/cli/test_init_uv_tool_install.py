@@ -441,3 +441,16 @@ def test_windows_interactive_init_prints_the_command_once_and_asks_nothing(
     assert out.count("Close Lobster") == 1
     assert "Running uv tool install" not in out
     assert "Next: install them" not in out
+
+
+@pytest.mark.parametrize("options", [(), ("--skip-extras",)])
+def test_from_another_folder_the_next_step_goes_there_first(
+    tool_env, tmp_path, options
+):
+    # `lobster init ~/my-study` from ~: chat in ~ finds no provider.
+    study = tmp_path / "my study"
+    result = _init(*options, str(study))
+
+    assert result.exit_code == 0, result.output
+    assert f"cd '{study}' && lobster chat" in result.output
+    assert "Next: run lobster chat" not in result.output
