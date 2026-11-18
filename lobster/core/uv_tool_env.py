@@ -190,6 +190,11 @@ def build_tool_install_command(
     return cmd
 
 
+def windows_locks_running_tool() -> bool:
+    """Windows locks the running lobster.exe and its venv; uv cannot replace them."""
+    return sys.platform == "win32"
+
+
 def run_tool_install(cmd: list[str]) -> NoReturn:
     """Run a ``uv tool install`` that replaces this tool's venv, then exit.
 
@@ -208,6 +213,16 @@ def run_tool_install(cmd: list[str]) -> NoReturn:
     import subprocess  # nosec B404 # re-runs the installer with an argv list
 
     from lobster.i18n import h, t
+
+    if windows_locks_running_tool():
+        # A reinstall from inside could fail halfway and leave no lobster.
+        # Double quotes work in PowerShell and cmd; ">=" and "[" bare do not.
+        line = " ".join(
+            f'"{arg}"' if any(c in arg for c in " []<>=@&|^") else arg for arg in cmd
+        )
+        print("  " + t("cli.init.windows_tool_install", command=line))
+        sys.stdout.flush()
+        os._exit(0)
 
     # Translate everything before the swap.
     ok = h("✓ Packages installed successfully.")

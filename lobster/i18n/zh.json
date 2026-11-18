@@ -18,6 +18,7 @@
   "cli.init.next_chat": "下一步：运行 lobster chat",
   "cli.init.install_failed": "以下安装失败：{packages}",
   "cli.init.next_install": "下一步：先安装它们，再运行 lobster chat：{command}",
+  "cli.init.windows_tool_install": "请先关闭 Lobster：Windows 不允许其在运行时替换自身。然后运行：{command}",
   "cli.init.done_env": "凭据文件：{path}",
   "cli.init.done_backup": "备份：{path}",
   "cli.init.cancelled": "已取消设置。",
