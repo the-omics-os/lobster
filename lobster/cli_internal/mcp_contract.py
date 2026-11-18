@@ -541,7 +541,8 @@ _OVERVIEW = {
             "never any part of it), the project, its experts (enabled, "
             "installed, installable), data files and past runs.",
             "Call it before the first run and after the user changed the "
-            "setup; it is read fresh on every call.",
+            "setup; it is read fresh on every call. It may refresh a saved "
+            "login, as a run start would.",
             "The server sets up nothing itself: lobster init <folder> starts a "
             "project and lobster agents install <package> adds experts. The "
             "overview gives the exact lines; run them in a shell and tell the "

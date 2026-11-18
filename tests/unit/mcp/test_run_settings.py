@@ -7,6 +7,7 @@ says so and gives the fix, and a run that then finds no provider says the same.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnostic,
     StartupDiagnosticError,
 )
-from lobster.config import global_config
+from lobster.config import credentials, global_config
 from lobster.config.workspace_config import WorkspaceProviderConfig
 from lobster.core import projects
 from tests.unit.mcp.test_run import (  # noqa: F401
@@ -133,6 +134,46 @@ def test_a_run_from_elsewhere_says_so_and_how_to_fix_it(engine, project, data):
     assert message.startswith("No API key found. ")
     assert "started outside the project" in message
     assert mcp_overview.lobster_command("init", "--global") in message
+
+
+@pytest.mark.parametrize("saved", [True, False])
+def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
+    engine, tmp_path, data, monkeypatch, saved
+):
+    monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "omics-os")
+    monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
+    login = tmp_path / "home" / "omics-os.json"
+    monkeypatch.setattr(credentials, "CREDENTIALS_FILE", login)
+    if saved:  # expired, no refresh token: the run got no key from it
+        login.parent.mkdir(parents=True, exist_ok=True)
+        login.write_text(
+            json.dumps(
+                {
+                    "auth_mode": "oauth",
+                    "access_token": "omc_expired_000",
+                    "token_expiry": "2026-01-01T00:00:00+00:00",
+                }
+            )
+        )
+    _opened, script = engine
+    script["raise"] = StartupDiagnosticError(
+        StartupDiagnostic(
+            code="missing_credentials",
+            title="Missing credentials for provider 'omics-os'",
+        )
+    )
+    server = McpServer(ThreadRunner())
+    run = call(
+        server,
+        "lobster_run",
+        {"question": "q", "input_path": str(data), "output_dir": str(tmp_path / "o")},
+    )
+    message = wait_terminal(server, run["run_id"])["error"]["message"]
+    assert message.startswith("Missing credentials for provider 'omics-os'. ")
+    assert mcp_overview.key_fix() in message
+    line = mcp_overview.lobster_command("cloud", "login")
+    assert (line in message) is saved
+    assert "omc_expired_000" not in message
 
 
 def test_a_run_without_a_provider_in_no_project_gets_the_fix(engine, tmp_path, data):

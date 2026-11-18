@@ -690,6 +690,8 @@ def _startup_error(
         message += _missing_key_fix(workspace, project_ws)
     if diagnostic.code in fixes:
         message = f"{message}. {fixes[diagnostic.code]()}"
+        if diagnostic.code == "missing_credentials" and workspace is not None:
+            message += _login_fix(workspace)
         root = project_ws.parent if project_ws is not None else None
         if (
             diagnostic.code == "missing_credentials"
@@ -702,6 +704,18 @@ def _startup_error(
                 "settings."
             )
     return {"code": diagnostic.code, "message": message, "retryable": False}
+
+
+def _login_fix(workspace: Path) -> str:
+    """The line to log in again when the session's provider is omics-os and a
+    saved login exists: the run just got no key from it."""
+    try:
+        provider = mcp_overview.run_settings(workspace)[0]
+    except Exception:
+        return ""
+    if provider != "omics-os" or not mcp_overview.saved_login_present():
+        return ""
+    return f" {mcp_overview.login_line()}"
 
 
 def _missing_key_fix(workspace: Path, project_ws: Optional[Path]) -> str:

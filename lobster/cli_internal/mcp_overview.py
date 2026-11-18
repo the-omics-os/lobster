@@ -586,11 +586,7 @@ def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str,
         presence["fix"] = key_fix(names)
     if login in ("expired", "unusable"):
         presence["login"] = login
-        presence["fix"] = (
-            "The saved login has expired or cannot be used: ask the "
-            f"user to run {lobster_command('cloud', 'login')} in a terminal, "
-            "or: " + presence["fix"]
-        )
+        presence["fix"] = f"{login_line()} Or: {presence['fix']}"
     return presence
 
 
@@ -618,6 +614,25 @@ def provider_fix() -> str:
     )
 
 
+def login_line() -> str:
+    return (
+        "The saved login has expired or cannot be used: ask the user to run "
+        f"{lobster_command('cloud', 'login')} in a terminal."
+    )
+
+
+def saved_login_present() -> bool:
+    """Whether ``lobster cloud login`` saved a key or token; never read for
+    use, never refreshed."""
+    from lobster.config import credentials
+
+    try:
+        saved = credentials.load_active_profile() or {}
+    except Exception:  # unreadable: the provider would not read it either
+        return False
+    return any(str(saved.get(k) or "").strip() for k in ("api_key", "access_token"))
+
+
 def _saved_login() -> Optional[str]:
     """None without a key or token that ``lobster cloud login`` saved; else
     "usable" when the omics-os provider gets a token from it the way a run
@@ -626,12 +641,9 @@ def _saved_login() -> Optional[str]:
     without its OAuth mode, which the provider does not read)."""
     from lobster.config import credentials
 
+    if not saved_login_present():
+        return None
     try:
-        saved = credentials.load_active_profile() or {}
-        if not any(
-            str(saved.get(k) or "").strip() for k in ("api_key", "access_token")
-        ):
-            return None
         if credentials.get_api_key():
             return "usable"
         return "expired" if credentials.is_token_expired() else "unusable"
