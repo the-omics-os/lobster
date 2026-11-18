@@ -16,6 +16,7 @@
   "cli.init.done_provider": "Provider: {provider}",
   "cli.init.done_workspace": "Workspace: {path}",
   "cli.init.next_chat": "Next: run lobster chat",
+  "cli.init.next_chat_in": "Next, in the project folder: {command}",
   "cli.init.install_failed": "These installs failed: {packages}",
   "cli.init.next_install": "Next: install them, then run lobster chat: {command}",
   "cli.init.windows_tool_install": "Close Lobster first: Windows does not let it replace itself while it runs. Then run: {command}",

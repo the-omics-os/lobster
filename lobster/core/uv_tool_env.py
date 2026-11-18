@@ -9,7 +9,7 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 
 @dataclass
@@ -195,7 +195,7 @@ def windows_locks_running_tool() -> bool:
     return sys.platform == "win32"
 
 
-def run_tool_install(cmd: list[str]) -> NoReturn:
+def run_tool_install(cmd: list[str], next_step: Optional[str] = None) -> NoReturn:
     """Run a ``uv tool install`` that replaces this tool's venv, then exit.
 
     After ``uv tool install`` completes, the venv on disk is replaced while
@@ -228,7 +228,7 @@ def run_tool_install(cmd: list[str]) -> NoReturn:
 
     # Translate everything before the swap.
     ok = h("✓ Packages installed successfully.")
-    next_step = "  " + t("cli.init.next_chat")
+    next_step = "  " + (next_step or t("cli.init.next_chat"))
     failed = h("✗ Installation failed.")
     manual = h("  Run manually: {cmd_str}").format(cmd_str=shlex.join(cmd))
 

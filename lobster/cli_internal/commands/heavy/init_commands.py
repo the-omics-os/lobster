@@ -1152,7 +1152,7 @@ def _uv_tool_env_handoff(
 
     info = detect_uv_tool_env()
     if not info:
-        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+        console.print(f"  {_bold_command(_next_chat_text())}")
         return  # Not in a tool env — nothing to do
 
     cmd = _build_uv_tool_init_command(
@@ -1168,7 +1168,7 @@ def _uv_tool_env_handoff(
     existing_cmd = _build_uv_tool_init_command(None, None)
     existing_cmd.insert(3, "--reinstall")
     if cmd == existing_cmd:
-        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+        console.print(f"  {_bold_command(_next_chat_text())}")
         return
 
     # The project first: the install ends the process, and Ctrl-C at the
@@ -1178,7 +1178,7 @@ def _uv_tool_env_handoff(
     from lobster.core.uv_tool_env import windows_locks_running_tool
 
     if windows_locks_running_tool():
-        run_tool_install(cmd)  # prints the command for after Lobster exits
+        run_tool_install(cmd, _next_chat_text())  # prints the command to run later
 
     console.print()
     console.print(
@@ -1192,7 +1192,7 @@ def _uv_tool_env_handoff(
         console.print(h("[dim]  Running uv tool install...[/dim]"))
         if console.file:
             console.file.flush()
-        run_tool_install(cmd)
+        run_tool_install(cmd, _next_chat_text())
     else:
         console.print(
             "  " + t("cli.init.next_install", command=cmd_str),
@@ -1756,7 +1756,7 @@ def _print_init_summary(
     for line in failed:
         console.print(f"  [yellow]{esc(line)}[/yellow]")
     if not failed and next_step:
-        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+        console.print(f"  {_bold_command(_next_chat_text())}")
 
 
 def _tool_install_follows(skip_extras: bool) -> bool:
@@ -2285,6 +2285,20 @@ def _init_without_terminal(
 # Set by _creates_project while init runs: the uv tool install ends the
 # process, so it finishes the project first.
 _finish_before_tool_install: Optional[Callable[[], None]] = None
+# The folder init configures, for the next step (None: global setup).
+_init_folder: Optional[Path] = None
+
+
+def _next_chat_text() -> str:
+    """The next step; from another folder it changes into the project first."""
+    import shlex
+
+    from lobster.i18n import t
+
+    if _init_folder is None or Path.cwd().resolve() == _init_folder.resolve():
+        return t("cli.init.next_chat")
+    command = shlex.join(["cd", str(_init_folder)]) + " && lobster chat"
+    return t("cli.init.next_chat_in", command=command)
 
 
 def _creates_project(func):
@@ -2324,8 +2338,10 @@ def _creates_project(func):
                     kwargs.get("folder"), kwargs.get("project_name"), env_before
                 )
 
-        global _finish_before_tool_install
+        global _finish_before_tool_install, _init_folder
         _finish_before_tool_install = finish
+        if not kwargs.get("global_config"):
+            _init_folder = _init_target(kwargs.get("folder"))[0]
         try:
             result = func(*args, **kwargs)
         except typer.Exit as exc:
@@ -2336,7 +2352,7 @@ def _creates_project(func):
             finish()
             return result
         finally:
-            _finish_before_tool_install = None
+            _finish_before_tool_install = _init_folder = None
             if pinned is not None:
                 _undo_empty_init(pinned, made)
 
@@ -4309,6 +4325,8 @@ def init_impl(
             success_message += "\n".join(
                 f"[yellow]{_markup_escape(line)}[/yellow]" for line in failed_installs
             )
+        elif _init_folder and Path.cwd().resolve() != _init_folder.resolve():
+            success_message += _bold_command(_next_chat_text())
         elif not (_in_uv_tool and not skip_extras):  # else the install says it
             success_message += h(
                 "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
