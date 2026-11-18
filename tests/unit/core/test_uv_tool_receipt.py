@@ -74,3 +74,9 @@ def test_new_agent_packages_get_a_floor_at_lobsters_minor(receipt, monkeypatch):
         "--with",
         "lobster-transcriptomics>=1.3.0",
     ]
+
+
+def test_an_upgrade_takes_lobster_from_the_index(receipt):
+    receipt(f'{{ name = "lobster-ai", extras = ["bedrock"], path = "{WHEEL}" }}')
+
+    assert build_tool_install_command(fresh=True)[3] == "lobster-ai[bedrock]"

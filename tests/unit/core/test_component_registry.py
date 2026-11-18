@@ -640,7 +640,7 @@ class TestInstallCommandHints:
 
         command = get_install_command("classic-tui", is_extra=True)
 
-        assert command == "uv tool install lobster-ai[bedrock,classic-tui]"
+        assert command == "uv tool install 'lobster-ai[bedrock,classic-tui]'"
         assert seen == {"extras": ["classic-tui"], "with_packages": None}
 
     def test_build_tool_install_command_preserves_existing_extras_and_packages(
@@ -659,6 +659,7 @@ class TestInstallCommandHints:
             "lobster.core.uv_tool_env.shutil.which",
             lambda _name: "/usr/local/bin/uv",
         )
+        monkeypatch.setattr("lobster.version.__version__", "1.3.0")
 
         command = build_tool_install_command(
             extras=["classic-tui"],
@@ -669,7 +670,7 @@ class TestInstallCommandHints:
             "/usr/local/bin/uv",
             "tool",
             "install",
-            "lobster-ai[bedrock,classic-tui]",
+            "lobster-ai[bedrock,classic-tui]>=1.3.0",
             "--with",
             "lobster-research",
             "--with",

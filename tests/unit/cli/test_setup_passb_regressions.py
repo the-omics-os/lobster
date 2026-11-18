@@ -75,6 +75,7 @@ def receipt(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(uv_tool_env.sys, "prefix", str(prefix))
     monkeypatch.setattr(uv_tool_env.shutil, "which", lambda name: "uv")
+    monkeypatch.setattr("lobster.version.__version__", "1.3.0")
 
 
 @pytest.mark.parametrize("global_mode", [False, True])
@@ -144,16 +145,17 @@ def test_nonskip_tool_handoff_displays_receipt_preserving_command(
         "anthropic", ["research_agent"], skip_extras=False
     )
     output = printed(capsys)
-    assert "lobster-ai[anthropic,full]" in output
+    assert "lobster-ai[anthropic,full]>=1.3.0" in output
     assert "--with custom-helper" in output
     assert "--with lobster-proteomics" in output
-    assert "--with lobster-research" in output
+    assert "--with 'lobster-research>=1.3.0'" in output
     command = init_commands._build_uv_tool_init_command("anthropic", ["research_agent"])
-    assert "lobster-ai[anthropic,full]" in command
-    assert set(command[command.index("lobster-ai[anthropic,full]") + 1 :]) >= {
+    base = "lobster-ai[anthropic,full]>=1.3.0"
+    assert base in command
+    assert set(command[command.index(base) + 1 :]) >= {
         "custom-helper",
         "lobster-proteomics",
-        "lobster-research",
+        "lobster-research>=1.3.0",
     }
     assert shlex.split(shlex.join(command)) == command
 
@@ -270,8 +272,10 @@ def test_receipt_command_builder_retains_argv_extras_and_supplements(
 ):
     receipt(monkeypatch, tmp_path)
     command = init_commands._build_uv_tool_init_command("anthropic", ["research_agent"])
-    assert "lobster-ai[anthropic,full]" in command
-    assert {"custom-helper", "lobster-proteomics", "lobster-research"} <= set(command)
+    assert "lobster-ai[anthropic,full]>=1.3.0" in command
+    assert {"custom-helper", "lobster-proteomics", "lobster-research>=1.3.0"} <= set(
+        command
+    )
 
 
 def test_cloud_create_key_guidance_and_help_use_verified_account_route():

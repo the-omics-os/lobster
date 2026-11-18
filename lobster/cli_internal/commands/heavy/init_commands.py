@@ -639,7 +639,11 @@ def _build_uv_tool_init_command(
     import importlib.util
 
     from lobster.core.component_registry import AGENT_TO_PACKAGE
-    from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
+    from lobster.core.uv_tool_env import (
+        build_tool_install_command,
+        detect_uv_tool_env,
+        lobster_release,
+    )
 
     info = detect_uv_tool_env()
 
@@ -674,6 +678,8 @@ def _build_uv_tool_init_command(
             pkg.lower().replace("-", "_") for pkg in info.installed_packages
         }
 
+    # A floor, not ~=: the receipt keeps it, and ~= would stop `uv tool upgrade`.
+    major, minor = lobster_release()[:2]
     with_packages: list[str] = []
     for agent in _normalize_selected_agents(selected_agents or []):
         package_name = AGENT_TO_PACKAGE.get(agent)
@@ -681,8 +687,9 @@ def _build_uv_tool_init_command(
             continue
         if package_name.lower().replace("-", "_") in installed_packages:
             continue
-        if package_name not in with_packages:
-            with_packages.append(package_name)
+        requirement = f"{package_name}>={major}.{minor}.0"
+        if requirement not in with_packages:
+            with_packages.append(requirement)
 
     return build_tool_install_command(
         extras=extras or None,

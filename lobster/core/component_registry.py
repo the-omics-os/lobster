@@ -162,7 +162,10 @@ def get_install_command(package: str, *, is_extra: bool = False) -> str:
         if is_extra:
             from lobster.core.uv_tool_env import build_tool_install_command
 
-            return " ".join(build_tool_install_command(extras=[package]))
+            import shlex
+
+            # Quoted: the command can carry ">=" and " @ file://".
+            return shlex.join(build_tool_install_command(extras=[package]))
         else:
             return f"uv tool install lobster-ai --with {specifier}"
     else:

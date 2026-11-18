@@ -19,6 +19,30 @@ class UvToolEnvInfo:
     tool_extras: list[str] = field(default_factory=list)
     installed_packages: list[str] = field(default_factory=list)
     prefix: Path = field(default_factory=lambda: Path(sys.prefix))
+    # Receipt entries by package name, as uv wrote them (new receipt format only).
+    entries: dict[str, dict] = field(default_factory=dict)
+
+
+def _requirement(entry: dict) -> str:
+    """Render a receipt entry back into the requirement uv installed."""
+    text = entry["name"]
+    if entry.get("extras"):
+        text += f"[{','.join(entry['extras'])}]"
+    # shortcut: git and editable entries fall back to the bare name.
+    if entry.get("path") or entry.get("directory"):
+        return f"{text} @ {Path(entry.get('path') or entry['directory']).as_uri()}"
+    if entry.get("url"):
+        return f"{text} @ {entry['url']}"
+    return text + entry.get("specifier", "")
+
+
+def lobster_release() -> tuple[int, ...]:
+    """This Lobster's release numbers, without a local build tag (1.3.0)."""
+    from packaging.version import Version
+
+    import lobster.version
+
+    return Version(lobster.version.__version__).release
 
 
 def detect_uv_tool_env() -> UvToolEnvInfo | None:
@@ -59,10 +83,13 @@ def detect_uv_tool_env() -> UvToolEnvInfo | None:
     requirements = tool_section.get("requirements", [])
     packages: list[str] = []
     tool_extras: set[str] = set()
+    entries: dict[str, dict] = {}
     for req in requirements:
         if isinstance(req, dict):
             # New uv format: {name: "pkg", extras: [...], ...}
             name = req.get("name", "")
+            if name:
+                entries[name] = req
             if name == tool_name:
                 tool_extras.update(req.get("extras", []) or [])
         else:
@@ -86,6 +113,7 @@ def detect_uv_tool_env() -> UvToolEnvInfo | None:
         tool_extras=sorted(tool_extras),
         installed_packages=packages,
         prefix=Path(sys.prefix),
+        entries=entries,
     )
 
 
@@ -97,6 +125,8 @@ def is_uv_tool_env() -> bool:
 def build_tool_install_command(
     extras: list[str] | None = None,
     with_packages: list[str] | None = None,
+    *,
+    fresh: bool = False,
 ) -> list[str]:
     """Build a ``uv tool install`` command preserving existing packages.
 
@@ -106,6 +136,8 @@ def build_tool_install_command(
     Args:
         extras: Extras for the main package (e.g. ``["full", "anthropic"]``).
         with_packages: Additional packages to include via ``--with``.
+        fresh: Take lobster-ai from the index (an upgrade) instead of keeping
+            how it was installed.
 
     Returns:
         Command as a list of strings suitable for ``subprocess.run()``.
@@ -118,10 +150,17 @@ def build_tool_install_command(
     if extras:
         merged_extras.update(extras)
 
-    # Start with the base package specifier
-    base_pkg = "lobster-ai"
-    if merged_extras:
-        base_pkg = f"lobster-ai[{','.join(sorted(merged_extras))}]"
+    # Keep how Lobster itself was installed (a wheel stays that wheel). A bare
+    # name gets a floor at this version: never `==`, uv would then refuse to
+    # upgrade the tool.
+    own = {} if fresh or not info else dict(info.entries.get("lobster-ai", {}))
+    own.update(name="lobster-ai", extras=sorted(merged_extras))
+    base_pkg = _requirement(own)
+    keeps_source = any(
+        own.get(key) for key in ("specifier", "path", "directory", "url")
+    )
+    if not fresh and not keeps_source:
+        base_pkg += ">=" + ".".join(map(str, lobster_release()))
 
     cmd = [uv_path, "tool", "install", base_pkg]
 
@@ -132,7 +171,8 @@ def build_tool_install_command(
             # Normalize for comparison
             norm = pkg.lower().replace("-", "_")
             if norm not in ("lobster_ai", "lobster"):
-                existing_with.add(pkg)
+                entry = info.entries.get(pkg)
+                existing_with.add(_requirement(entry) if entry else pkg)
 
     # Add new packages
     if with_packages:

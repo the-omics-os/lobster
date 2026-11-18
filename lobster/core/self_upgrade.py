@@ -20,6 +20,7 @@ new version (``run_upgrade`` prints this).
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess  # nosec B404 # used only to run the upgrade command with an argv list
 import sys
@@ -107,7 +108,7 @@ def detect_upgrade_plan() -> UpgradePlan:
         from lobster.core.uv_tool_env import build_tool_install_command
 
         base_pkg = "lobster-ai"
-        cmd = list(build_tool_install_command())
+        cmd = list(build_tool_install_command(fresh=True))
         if len(cmd) >= 4 and cmd[1:3] == ["tool", "install"]:
             base_pkg = cmd[3]
         if uv_path is None:
@@ -119,7 +120,7 @@ def detect_upgrade_plan() -> UpgradePlan:
         # refreshes the tool and its --with packages in place.
         if len(cmd) >= 4 and cmd[1:3] == ["tool", "install"]:
             cmd.insert(3, "--upgrade")
-            return UpgradePlan(method="uv-tool", command=cmd, display=" ".join(cmd))
+            return UpgradePlan(method="uv-tool", command=cmd, display=shlex.join(cmd))
         return _manual_plan(
             h("Could not build a uv tool upgrade command from the install receipt.")
         )
