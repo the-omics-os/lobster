@@ -398,3 +398,21 @@ def test_nothing_to_install_still_ends_with_the_next_step(tool_env, capsys):
 
     assert tool_env.installs == []
     assert "Next: run lobster chat" in capsys.readouterr().out
+
+
+def test_windows_prints_the_tool_install_instead_of_running_it(
+    tool_env, monkeypatch, tmp_path
+):
+    # Windows locks the running lobster.exe and its venv: a reinstall from
+    # inside it can fail halfway and leave no lobster at all.
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+
+    result = _init()
+
+    assert result.exit_code == 0, result.output
+    assert tool_env.installs == []
+    assert (tmp_path / ".lobster_workspace" / "project.json").exists()
+    # Double quotes work in PowerShell and cmd; ">=" and "[" unquoted do not.
+    assert '"lobster-ai[lamin]>=1.3.0"' in result.output
+    assert f'"lobster-transcriptomics>=1.3.0" --python {PYTHON}' in result.output
+    assert "Close Lobster" in result.output
