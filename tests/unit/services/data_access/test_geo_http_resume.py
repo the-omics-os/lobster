@@ -308,3 +308,11 @@ def test_the_slow_dropping_stalling_changing_ncbi_pattern_ends_with_the_whole_fi
     assert not list(tmp_path.glob("*.part"))
     assert any(s and s["file"] == "f.gz" for s in seen)  # a host could see it run
     assert len(server.requests) >= 5
+
+
+def test_a_finished_ftp_transfer_leaves_no_progress_behind(ftp, manager, tmp_path):
+    ftp.script = [{}]
+    assert manager._chunked_ftp_download(
+        ftp(), "/geo/f.gz", tmp_path / "f.gz.part", len(BODY), "d"
+    )
+    assert download_activity.snapshot() is None
