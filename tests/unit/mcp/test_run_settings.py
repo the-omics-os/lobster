@@ -136,11 +136,20 @@ def test_a_run_from_elsewhere_says_so_and_how_to_fix_it(engine, project, data):
     assert mcp_overview.lobster_command("init", "--global") in message
 
 
-@pytest.mark.parametrize("saved", [True, False])
+@pytest.mark.parametrize(
+    "provider, saved, said",
+    [
+        ("omics-os", True, True),
+        ("omics-os", False, False),
+        # another provider's missing key: an old omics-os login is not the fix
+        ("anthropic", True, False),
+    ],
+)
 def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
-    engine, tmp_path, data, monkeypatch, saved
+    engine, tmp_path, data, monkeypatch, provider, saved, said
 ):
-    monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "omics-os")
+    monkeypatch.setenv("LOBSTER_LLM_PROVIDER", provider)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
     login = tmp_path / "home" / "omics-os.json"
     monkeypatch.setattr(credentials, "CREDENTIALS_FILE", login)
@@ -159,7 +168,7 @@ def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
     script["raise"] = StartupDiagnosticError(
         StartupDiagnostic(
             code="missing_credentials",
-            title="Missing credentials for provider 'omics-os'",
+            title=f"Missing credentials for provider '{provider}'",
         )
     )
     server = McpServer(ThreadRunner())
@@ -169,10 +178,10 @@ def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
         {"question": "q", "input_path": str(data), "output_dir": str(tmp_path / "o")},
     )
     message = wait_terminal(server, run["run_id"])["error"]["message"]
-    assert message.startswith("Missing credentials for provider 'omics-os'. ")
+    assert message.startswith(f"Missing credentials for provider '{provider}'. ")
     assert mcp_overview.key_fix() in message
     line = mcp_overview.lobster_command("cloud", "login")
-    assert (line in message) is saved
+    assert (line in message) is said
     assert "omc_expired_000" not in message
 
 
