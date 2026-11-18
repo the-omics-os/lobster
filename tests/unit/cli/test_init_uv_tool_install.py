@@ -225,3 +225,176 @@ def test_ctrl_c_at_the_install_prompt_still_leaves_a_project(
 
     assert (workspace / "project.json").exists()
     assert tool_env.installs == []
+
+
+# --- The next step comes after the uv tool install, on every init path ---
+
+RESULT = {
+    "provider": "omics-os",
+    "api_key": "omk_synthetic",
+    "agents": ["transcriptomics_expert"],
+    "lamin_enabled": False,
+    "cancelled": False,
+}
+
+
+def _init_kwargs(**overrides):
+    import inspect
+
+    import typer
+
+    options = {
+        name: (
+            param.default.default
+            if isinstance(param.default, typer.models.OptionInfo)
+            else param.default
+        )
+        for name, param in inspect.signature(init_commands.init_impl).parameters.items()
+    }
+    options.update(skip_ssl_test=True, **overrides)
+    return options
+
+
+def _run_interactive(monkeypatch, capsys, ui_mode):
+    import typer
+
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
+    answers = iter(["1", "1", "omk_synthetic"])  # language, provider, key
+    monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
+    monkeypatch.setattr(
+        init_commands,
+        "_perform_agent_selection_interactive",
+        lambda *a, **k: (["transcriptomics_expert"], None),
+    )
+    monkeypatch.setattr(init_commands, "_ask_language", lambda **k: None)
+    if ui_mode == "go":
+        monkeypatch.setattr(
+            "lobster.ui.bridge.binary_finder.find_tui_binary", lambda: "/fake/tui"
+        )
+        monkeypatch.setattr(
+            "lobster.ui.bridge.go_tui_bridge.run_init_wizard",
+            lambda *a, **k: dict(RESULT),
+        )
+    if ui_mode == "auto":  # no Go binary: the questionary screens
+        monkeypatch.setattr(
+            "lobster.ui.bridge.binary_finder.find_tui_binary", lambda: None
+        )
+        monkeypatch.setattr(
+            "lobster.ui.bridge.questionary_fallback.run_questionary_init",
+            lambda *a, **k: dict(RESULT),
+        )
+    try:
+        init_commands.init_impl(**_init_kwargs(ui_mode=ui_mode))
+    except typer.Exit as exc:
+        assert not exc.exit_code
+    return capsys.readouterr().out
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto", "classic"])
+def test_declining_the_install_never_says_run_lobster_chat_alone(
+    tool_env, monkeypatch, capsys, ui_mode
+):
+    out = _run_interactive(monkeypatch, capsys, ui_mode)
+
+    assert tool_env.installs == []
+    assert "Package installation needed" in out, out
+    # The only next step names the install first.
+    assert "Next: install them, then run lobster chat" in out
+    assert "Next: run lobster chat" not in out
+    assert "Next step:" not in out
+
+
+def test_classic_panel_shows_a_failed_install_instead_of_next_step(
+    monkeypatch, capsys, tmp_path
+):
+    import typer
+
+    from lobster.cli_internal.commands.light import agent_commands
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(init_commands, "console", Console(width=2000))
+    monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
+    answers = iter(["1", "1", "omk_synthetic"])
+    monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
+    monkeypatch.setattr(agent_commands, "FAILED_INSTALLS", ["lobster-research"])
+    monkeypatch.setattr(
+        init_commands,
+        "_perform_agent_selection_interactive",
+        lambda *a, **k: ([], None),
+    )
+
+    try:
+        init_commands.init_impl(**_init_kwargs(ui_mode="classic"))
+    except typer.Exit as exc:
+        assert not exc.exit_code
+
+    out = capsys.readouterr().out
+    assert "lobster-research" in out
+    assert "Next step:" not in out
+
+
+def test_lamin_under_uv_tool_goes_into_the_tool_not_pip(tool_env, monkeypatch):
+    from lobster.cli_internal.commands.light import agent_commands
+
+    pip = []
+    monkeypatch.setattr(agent_commands, "_uv_pip_install", lambda p: pip.append(p))
+
+    init_commands._print_lamin_notes(True, global_config=False, install=True)
+
+    # A pip install would vanish with the next tool rebuild.
+    assert pip == []
+
+
+def test_questionary_ticks_only_the_default_packages(monkeypatch):
+    from types import ModuleType
+
+    from lobster.cli_internal.agent_packages import DEFAULT_AGENT_PACKAGES
+    from lobster.ui.bridge.questionary_fallback import run_questionary_init
+    from lobster.ui.wizard.manifest import (
+        AgentPackageDef,
+        ProviderDef,
+        WizardManifest,
+    )
+
+    questionary = ModuleType("questionary")
+    choices = []
+
+    def _choice(title, **kwargs):
+        choices.append(kwargs)
+        return SimpleNamespace(title=title, **kwargs)
+
+    questionary.Choice = _choice
+    questionary.select = lambda *a, **k: SimpleNamespace(ask=lambda: "omics-os")
+    questionary.checkbox = lambda *a, **k: SimpleNamespace(ask=lambda: [])
+    questionary.confirm = lambda *a, **k: SimpleNamespace(ask=lambda: False)
+    questionary.password = lambda *a, **k: SimpleNamespace(ask=lambda: "omk_x")
+    monkeypatch.setitem(sys.modules, "questionary", questionary)
+    packages = ["lobster-research", "lobster-transcriptomics", "lobster-genomics"]
+    manifest = WizardManifest(
+        providers=[
+            ProviderDef(
+                name="omics-os", display_name="Omics-OS", model_selection="managed"
+            )
+        ],
+        agent_packages=[
+            AgentPackageDef(package_name=name, description=name, agents=[name])
+            for name in packages
+        ],
+    )
+
+    run_questionary_init(manifest)
+
+    ticked = {
+        c["value"] for c in choices if c.get("value") in packages and c["checked"]
+    }
+    assert ticked == set(DEFAULT_AGENT_PACKAGES)
+
+
+def test_nothing_to_install_still_ends_with_the_next_step(tool_env, capsys):
+    init_commands._uv_tool_env_handoff(None, [], skip_extras=False)
+
+    assert tool_env.installs == []
+    assert "Next: run lobster chat" in capsys.readouterr().out
