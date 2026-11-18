@@ -40,6 +40,32 @@ _MAX_ATTEMPTS_WITHOUT_PROGRESS = 5
 _PROGRESS_LOG_INTERVAL_S = 30
 
 
+class _Progress:
+    """When a download call gives up: after ``limit`` failures in a row that did not beat
+    the most bytes ever held for the file in this call. A failure that does beat it resets
+    the count, so a slow line that keeps gaining bytes is never abandoned, and one that
+    drops at the same point (or restarts from zero) every time is."""
+
+    def __init__(self, limit: int):
+        self.limit, self.peak, self.count = limit, 0, 0
+
+    @property
+    def exhausted(self) -> bool:
+        return self.count >= self.limit
+
+    def after_failure(self, size: int) -> bool:
+        """Record a failed attempt that left ``size`` bytes; True = keep trying."""
+        if size > self.peak:
+            self.peak, self.count = size, 0
+        else:
+            self.count += 1
+        return not self.exhausted
+
+
+def _size(path: Path) -> int:
+    return path.stat().st_size if path.exists() else 0
+
+
 def _idle_timeout_s() -> float:
     """Seconds without a byte before a download counts as dropped (default 60)."""
     try:
@@ -585,9 +611,9 @@ class GEODownloadManager:
         part.unlink(
             missing_ok=True
         )  # a leftover from another run has no known validator
-        idle, validator, failed, resumed = _idle_timeout_s(), None, 0, False
-        peak = 0  # the largest partial file so far: an attempt must beat it to count
-        while failed < _MAX_ATTEMPTS_WITHOUT_PROGRESS:
+        idle, validator, resumed = _idle_timeout_s(), None, False
+        progress = _Progress(_MAX_ATTEMPTS_WITHOUT_PROGRESS)
+        while not progress.exhausted:
             if download_activity.stopped():
                 return False  # the partial file stays for a retry in this session
             have = part.stat().st_size if part.exists() else 0
@@ -601,7 +627,7 @@ class GEODownloadManager:
                 )
                 if response.status_code == 416:  # our partial is not part of this file
                     part.unlink(missing_ok=True)
-                    failed += 1
+                    progress.after_failure(0)
                     continue
                 response.raise_for_status()
                 if have and response.status_code != 206:
@@ -641,11 +667,9 @@ class GEODownloadManager:
                     logger.warning(f"Failed to download HTTP {url}: {e}")
                     part.unlink(missing_ok=True)
                     return False
-                failed += 1
+                progress.after_failure(_size(part))
             except requests.exceptions.RequestException as e:
-                size = part.stat().st_size if part.exists() else 0
-                failed = 0 if size > peak else failed + 1
-                peak = max(peak, size)
+                progress.after_failure(_size(part))
                 logger.warning(f"Download of {url} interrupted ({e}); resuming")
         else:
             logger.warning(f"Failed to download HTTP {url}: no progress")
@@ -796,10 +820,10 @@ class GEODownloadManager:
         # is resumed from the partial file; a server that refuses REST starts again.
         part = local_path.with_name(local_path.name + ".part")
         part.unlink(missing_ok=True)
-        attempt, peak = 0, 0  # peak: the largest partial file so far
+        progress = _Progress(max_retries)
 
-        while attempt < max_retries:
-            attempt += 1
+        while not progress.exhausted:
+            attempt = progress.count + 1
             if download_activity.stopped():
                 return False
             have = part.stat().st_size if part.exists() else 0
@@ -843,14 +867,10 @@ class GEODownloadManager:
                         logger.warning(
                             f"Chunked download failed on attempt {attempt}/{max_retries}"
                         )
-                        size = part.stat().st_size if part.exists() else 0
-                        if (
-                            size > peak
-                        ):  # only a partial file that beats the best counts
-                            attempt = 0
+                        size = _size(part)
                         if size <= have:
                             part.unlink(missing_ok=True)
-                        peak = max(peak, size)
+                        progress.after_failure(size)
                         continue
                     part.replace(local_path)
 
@@ -865,6 +885,7 @@ class GEODownloadManager:
                                 f"File likely truncated by FTP throttling."
                             )
                             local_path.unlink()
+                            progress.after_failure(0)
                             continue
 
                     # Verify MD5 checksum if provided
@@ -876,6 +897,7 @@ class GEODownloadManager:
                                 f"expected {md5_checksum}, got {calculated_md5}"
                             )
                             local_path.unlink()
+                            progress.after_failure(0)
                             continue
 
                     # Verify gzip integrity for compressed files
@@ -885,6 +907,7 @@ class GEODownloadManager:
                                 f"Gzip validation failed on attempt {attempt}/{max_retries}"
                             )
                             local_path.unlink()
+                            progress.after_failure(0)
                             continue
 
                     # Success - all validations passed
@@ -901,14 +924,9 @@ class GEODownloadManager:
                 logger.error(f"Download attempt {attempt}/{max_retries} failed: {e}")
                 if local_path.exists():
                     local_path.unlink()
+                progress.after_failure(_size(part))
 
-                if attempt == max_retries:
-                    logger.error(
-                        f"All {max_retries} download attempts failed for {url}"
-                    )
-                    part.unlink(missing_ok=True)
-                    return False
-
+        logger.error(f"All {max_retries} download attempts failed for {url}")
         part.unlink(missing_ok=True)
         return False
 
