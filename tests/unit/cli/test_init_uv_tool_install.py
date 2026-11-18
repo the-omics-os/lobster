@@ -145,3 +145,23 @@ def test_every_uv_tool_install_keeps_the_running_python(tool_env):
     _init()
 
     assert tool_env.installs[0][-2:] == ["--python", PYTHON]
+
+
+@pytest.mark.parametrize("skip_extras", [False, True])
+def test_lamin_in_a_venv_installs_the_extra(tool_env, monkeypatch, skip_extras):
+    from lobster.cli_internal.commands.light import agent_commands, lamin_commands
+
+    monkeypatch.setattr(uv_tool_env, "is_uv_tool_env", lambda: False)
+    monkeypatch.setattr(uv_tool_env, "detect_uv_tool_env", lambda: None)
+    monkeypatch.setattr(lamin_commands, "_engine_installed", lambda: False)
+    installed = []
+    monkeypatch.setattr(
+        agent_commands,
+        "_uv_pip_install",
+        lambda package: installed.append(package) or (True, ""),
+    )
+
+    result = _init(*(["--skip-extras"] if skip_extras else []))
+
+    assert result.exit_code == 0, result.output
+    assert ("lobster-ai[lamin]" in installed) is not skip_extras
