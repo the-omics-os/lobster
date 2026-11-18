@@ -39,6 +39,24 @@ def test_install_targets_the_running_interpreter(monkeypatch):
     ]
 
 
+def test_another_activated_venv_is_not_the_target(monkeypatch, tmp_path):
+    # uv honours VIRTUAL_ENV (and a parent .venv) unless --python names the
+    # interpreter; the package must land where this Lobster runs.
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "other-venv"))
+    calls = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", _run)
+
+    agent_commands._uv_pip_install("lobster-genomics")
+
+    assert calls[0][3:5] == ["--python", sys.executable]
+    assert str(tmp_path) not in " ".join(calls[0])
+
+
 def test_a_failed_install_is_reported_instead_of_next_chat(monkeypatch, tmp_path):
     def _run(cmd, **_kwargs):
         raise subprocess.CalledProcessError(2, cmd, stderr="No virtual environment")
