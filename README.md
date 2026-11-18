@@ -374,12 +374,12 @@ uv tool install --python 3.12 lobster-ai --with lobster-metabolomics --with lobs
 Re-running `uv tool install` rebuilds the tool environment: extras and `--with` packages
 reset to whatever the new command includes — list them again when upgrading.
 
-**pip**:
+**Virtual environment** (uv or pip):
 <!-- VERIFY: plain lobster-ai includes the default provider, and lobster init installs the chosen analysis packages under uv tool. Remove this comment before publication. -->
 ```bash
 uv venv --python 3.12 .venv && source .venv/bin/activate
-pip install lobster-ai    # or: uv pip install lobster-ai
-lobster init ~/my-study    # a project folder, not your home folder
+uv pip install lobster-ai    # a uv venv has no pip; without uv: python3.12 -m venv .venv, activate, pip install lobster-ai
+lobster init ~/my-study      # a project folder, not your home folder
 ```
 Optional extra for the workspace catalog: `lobster-ai[lamin]` (see above).
 
