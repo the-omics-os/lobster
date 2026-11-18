@@ -38,6 +38,9 @@ dependencies = [
     "h5py>=3.9.0",
     # Agent framework (only langchain-core, provider packages are extras)
     "langchain-core>=1.6.12",
+    # The default provider (Omics-OS Cloud) builds its model through langchain-aws
+    "langchain-aws>=1.9.0",
+    "boto3>=1.43.64",
     "langgraph>=1.0.5",
     # CLI
     "rich>=12.0.0",
