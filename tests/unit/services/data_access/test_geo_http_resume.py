@@ -4,6 +4,7 @@ A local HTTP server plays NCBI: it cuts the connection part-way through the body
 ignore Range, or may change the file between requests.
 """
 
+import ftplib
 import gzip
 import random
 import socket
@@ -197,5 +198,80 @@ def test_a_cancel_ends_a_download_in_progress_without_retries(serve, manager, tm
         assert len(server.requests) == 1  # no resume, no fallback
         assert manager.download_file(server.url, target) is False
         assert len(server.requests) == 1  # nothing is started after the cancel
+    finally:
+        download_activity.set_stop(None)
+
+
+class _FakeFTP:
+    """An FTP server that serves BODY; ``script`` has one entry per RETR, the last repeats."""
+
+    script: list = []
+    retrs: list = []  # the REST offset of each RETR
+
+    def connect(self, host, port=21, timeout=None):
+        pass
+
+    def login(self, *args):
+        pass
+
+    def size(self, path):
+        return len(BODY)
+
+    def voidcmd(self, cmd):
+        pass
+
+    def quit(self):
+        pass
+
+    def retrbinary(self, cmd, callback, blocksize=8192, rest=None):
+        step = self.script[min(len(self.retrs), len(self.script) - 1)]
+        self.retrs.append(rest)
+        if rest and step.get("no_rest"):
+            raise ftplib.error_perm("502 REST not implemented")
+        data, cut = BODY[rest or 0 :], step.get("cut")
+        end = len(data) if cut is None else cut
+        for i in range(0, end, blocksize):
+            callback(data[i : min(i + blocksize, end)])
+        if step.get("cancel"):
+            step["cancel"].set()  # the host cancels while the transfer runs
+        if cut is not None:
+            raise ConnectionResetError("dropped")
+
+
+@pytest.fixture
+def ftp(monkeypatch):
+    _FakeFTP.retrs = []
+    monkeypatch.setattr(dl.ftplib, "FTP", _FakeFTP)
+    monkeypatch.setattr(dl.time, "sleep", lambda _s: None)
+    return _FakeFTP
+
+
+FTP_URL = "ftp://files.example.org/geo/f.gz"
+
+
+def test_a_dropped_ftp_transfer_resumes_with_rest(ftp, manager, tmp_path):
+    ftp.script = [{"cut": 40_000}, {"cut": 30_000}, {}]
+    target = tmp_path / "f.gz"
+    assert manager.download_file(FTP_URL, target) is True
+    assert target.read_bytes() == BODY
+    assert ftp.retrs[0] is None and 0 < ftp.retrs[1] < ftp.retrs[2]
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_a_server_without_rest_gets_the_file_again_from_zero(ftp, manager, tmp_path):
+    ftp.script = [{"cut": 40_000}, {"no_rest": True}, {}]
+    target = tmp_path / "f.gz"
+    assert manager.download_file(FTP_URL, target) is True
+    assert target.read_bytes() == BODY  # not 40 KB + a whole second copy
+    assert ftp.retrs[-1] is None
+
+
+def test_a_cancel_ends_an_ftp_transfer_without_retries(ftp, manager, tmp_path):
+    stop = threading.Event()
+    ftp.script = [{"cut": 40_000, "cancel": stop}, {}]
+    download_activity.set_stop(stop)
+    try:
+        assert manager.download_file(FTP_URL, tmp_path / "f.gz") is False
+        assert len(ftp.retrs) == 1  # no second attempt
     finally:
         download_activity.set_stop(None)
