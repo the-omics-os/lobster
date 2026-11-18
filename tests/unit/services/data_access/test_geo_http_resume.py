@@ -41,8 +41,12 @@ class _Server:
                 outer.requests.append((rng, if_range))
                 body, etag = step.get("body", outer.body), step.get("etag", outer.etag)
                 start = 0
-                if rng and step.get("range", True) and if_range in (None, etag):
-                    start = int(rng.split("=")[1].rstrip("-"))
+                if (
+                    rng
+                    and step.get("range", True)
+                    and (step.get("ignore_if_range") or if_range in (None, etag))
+                ):
+                    start = step.get("start_at", int(rng.split("=")[1].rstrip("-")))
                 send = body[start:]
                 self.send_response(206 if start else 200)
                 self.send_header("Content-Length", str(len(send)))
@@ -158,6 +162,29 @@ def test_a_drop_at_the_same_point_without_a_validator_gives_up(
     assert not target.exists()
     assert not list(tmp_path.glob("*.part"))  # a give-up leaves no partial file behind
     assert len(server.requests) <= dl._MAX_ATTEMPTS_WITHOUT_PROGRESS + 1
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"etag": '"v2"', "ignore_if_range": True},  # a changed file, If-Range ignored
+        {"start_at": 0},  # a 206 that starts somewhere else than we asked
+    ],
+    ids=["changed_file_if_range_ignored", "tail_starts_elsewhere"],
+)
+def test_a_206_that_does_not_continue_our_partial_file_is_not_appended(
+    serve, manager, tmp_path, answer
+):
+    """A non-gzip file, so no gzip check can catch a splice: the answer is checked."""
+    old = random.Random(4).randbytes(200_000)
+    new = random.Random(5).randbytes(200_000)
+    served = {"body": new, **answer} if "etag" in answer else answer
+    server = serve([{"cut": 40_000}, served], body=old)  # the last step repeats
+    target = tmp_path / "f.bin"
+    assert _download_bounded(manager, server.url, target) is True
+    assert target.read_bytes() == (new if "etag" in answer else old)
+    assert not list(tmp_path.glob("*.part"))
+    assert server.requests[-1][0] is None  # the last request asked for the whole file
 
 
 def test_a_file_that_changed_between_requests_is_not_glued_together(
