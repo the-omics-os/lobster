@@ -14,7 +14,7 @@ Use a compatible 1.2 engine environment. If missing, get permission before setup
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python 'lobster-ai[anthropic]~=1.2'
+uv pip install --python .venv/bin/python 'lobster-ai[anthropic]~=1.3'
 ```
 
 When npm `lobster` is also present, use `uv run python -m lobster` to address the
@@ -63,7 +63,7 @@ lobster-<domain>/
 Shared `lobster/` and `lobster/agents/` namespace boundaries have no `__init__.py`.
 The optional domain initializer must stay cheap and avoid eager agent imports.
 
-The generated `pyproject.toml` uses `lobster-ai~=1.2`. Keep engine and plugin in the same environment and validate against the version that will run the plugin.
+The generated `pyproject.toml` uses `lobster-ai~=1.3`. Keep engine and plugin in the same environment and validate against the version that will run the plugin.
 
 ## Replace Placeholders, Not the Contract
 

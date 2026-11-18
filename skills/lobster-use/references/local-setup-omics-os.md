@@ -1,16 +1,16 @@
 # Local Python Setup with an Omics-OS Cloud Account
 
 The non-interactive Cloud init flags below require **Lobster AI 1.2.2 or later**.
-Use `[full]` for the default analysis install, not a provider-only/core-only
-install that can leave no specialist agents. `[full]` is a bundle, not every
-optional domain; check the agents needed for the task. If `uv` is absent, obtain
+Install plain `lobster-ai`; `lobster init` installs the analysis packages for the
+`--preset` or `--agents` you pass. Without them a plain install can leave no
+specialist agents; check the agents needed for the task. If `uv` is absent, obtain
 permission to install it first; do not switch to npm or bootstrap with bare pip.
 
 For a **fresh approved project/environment** (POSIX example):
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python 'lobster-ai[full]~=1.2.2'
+uv pip install --python .venv/bin/python 'lobster-ai~=1.3'
 .venv/bin/python -m lobster --version
 ```
 
@@ -31,12 +31,13 @@ in Bash; do not print it, source the file as code, or enable shell tracing.
   umask 077
   : "${OMICS_OS_API_KEY:?Supply an authorized Omics-OS Cloud API key securely}"
   .venv/bin/python -m lobster init --non-interactive --use-omics-os \
-    --skip-extras --skip-ssl-test </dev/null
+    --preset scrna-basic --skip-ssl-test </dev/null   # preset: pick the task's
   .venv/bin/python -m lobster status
   .venv/bin/python -m lobster agents list
 )
 ```
 
+<!-- VERIFY: non-interactive lobster init installs the --preset/--agents packages (fresh-install gate rows) -->
 This selects the **local** gateway provider without requiring an Anthropic,
 OpenAI or personal AWS key. No npm install/login is needed. `--use-omics-os`
 looks up the nonblank Python environment key, then the active saved Python
@@ -60,8 +61,9 @@ Do not call internal credential/config APIs to bypass an unsupported CLI; check
 access, key validity or inference. In Python `status`, inspect `Initialization`,
 `Provider` and `Configuration Source`: expect provider `omics-os`, but
 `Account Access: Not checked (configuration only)` is **not authentication proof**.
-`--skip-extras --skip-ssl-test` skips init's optional installs/SSL test, not all
-possible network activity (a saved OAuth token may refresh). Inspect the agent
+`--skip-ssl-test` skips init's SSL test, not all possible network activity (a saved
+OAuth token may refresh). Do not add `--skip-extras`: it skips every install, the
+preset's packages included. Inspect the agent
 inventory; "No agents installed" is not an analysis-ready setup. Stop on an
 unexpected provider, missing task agents or setup errors.
 

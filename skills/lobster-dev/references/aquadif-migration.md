@@ -82,7 +82,7 @@ edits. See [testing.md](testing.md).
 
 ## Align Versions and Code Access
 
-The 1.2 scaffold generates `lobster-ai~=1.2`. Replace unconditional code-tool
+The scaffold generates `lobster-ai~=1.3`. Replace unconditional code-tool
 construction with `attach_code_tool` using the canonical registry name and declared
 `code_tool_default`; keep its returned tool list. Most participating built-in
 experts default to disabled; supervisor/data/metadata/visualization roles default

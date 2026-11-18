@@ -112,7 +112,7 @@ not save a plot or qualify the science.
 
 ## Compatibility and Tests
 
-The 1.2 scaffold generates `lobster-ai~=1.2`. Keep the plugin's dependency range aligned with the engine version used for validation and execution.
+The scaffold generates `lobster-ai~=1.3`. Keep the plugin's dependency range aligned with the engine version used for validation and execution.
 
 Use the installed engine's canonical validator, not the superseded bundled script:
 

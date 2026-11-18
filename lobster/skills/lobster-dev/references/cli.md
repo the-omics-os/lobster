@@ -1,4 +1,4 @@
-# Developer CLI Reference — Lobster AI 1.2
+# Developer CLI Reference — Lobster AI 1.3
 
 This is the **local Python engine** surface. npm `@omicsos/lobster` owns
 `lobster cloud *` and npm onboarding. When both are installed, use
@@ -112,6 +112,25 @@ This limit is separate from LLM-facing text truncation; inspect completion/save 
 
 **Source:** `lobster/tools/code_tool_switch.py`, `lobster/config/agent_registry.py`,
 participating agent factories, and supervisor assembly in `lobster/agents/graph.py`.
+
+## Projects, MCP, Catalog and Replay (1.3)
+
+```bash
+lobster init [folder]                  # makes the folder a project; --lamin/--no-lamin
+lobster projects list | info | delete  # --json; delete takes --dry-run/--yes
+lobster mcp --stdio [--workspace <folder>]   # MCP server, nine `lobster_*` tools
+lobster agent --stdio                  # JSON Lines host protocol
+lobster commands --json                # lobster.commands/1 manifest
+lobster skills list | install          # skills shipped in the wheel
+lobster lamin status | ls | prune | use
+lobster replay --verify <nb.ipynb> -w <workspace> [--input <file>] [--json]
+```
+
+`replay` exits 0 MATCH, 1 MISMATCH, 2 usage, 3 NOT_COMPARED, 4 REFUSED, 5 notebook
+failed, 6 MATCH_CUSTOM_POLICY. The LaminDB catalog is an optional `[lamin]` extra:
+core talks to a `Catalog` port and only `lobster/core/catalog/lamin.py` imports
+LaminDB, so never import it elsewhere. User-level description of these commands is
+in the `lobster-use` skill (`projects-mcp-replay.md`).
 
 ## Scaffold and Validation
 

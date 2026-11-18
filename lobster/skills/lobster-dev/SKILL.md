@@ -9,7 +9,7 @@ description: |
   Generate new agent packages with lobster scaffold agent, not by hand.
 ---
 
-# Lobster AI Development Guide — 1.2
+# Lobster AI Development Guide — 1.3
 
 Lobster AI is the Python bioinformatics engine powering Omics-OS. Plugins are
 namespace packages discovered through entry points. This skill covers engine
@@ -31,7 +31,7 @@ approval before installation or environment changes:
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python 'lobster-ai[anthropic]~=1.2'
+uv pip install --python .venv/bin/python 'lobster-ai[anthropic]~=1.3'
 ```
 
 A `uv tool` installation is isolated from a project's Python environment. For
@@ -66,7 +66,7 @@ Fill in the generated domain logic and replace placeholder contract fixtures wit
 small real fixtures and scientific assertions. Structural validation does not
 establish that the biology is correct or that a notebook produces the same outputs.
 
-The 1.2 scaffold generates `lobster-ai~=1.2`; keep the plugin's compatibility range aligned with the installed engine.
+The scaffold generates `lobster-ai~=1.3`; keep the plugin's compatibility range aligned with the installed engine.
 
 The bundled `scripts/validate_plugin.py` is **superseded** by
 `lobster validate-plugin`. It is retained for compatibility; use the installed

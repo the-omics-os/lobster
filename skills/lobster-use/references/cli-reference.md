@@ -21,21 +21,24 @@ language up on its next launch. JSON field names and command names stay English.
 ## Installation and Local Configuration
 
 Install or upgrade only with the user's permission. The Cloud init flags in this
-reference require Python engine **1.2.2+**. Use `[full]` by default for local
-analysis; provider-only extras can leave **no specialist agents**. `[full]` does
-not include every optional domain: inspect installed/enabled task agents.
+reference require Python engine **1.2.2+**. Install plain `lobster-ai`, then let
+`lobster init --non-interactive` install the analysis packages with `--preset`
+(scrna-basic, scrna-full, multiomics-full) or `--agents a,b`; without them a plain
+install can leave **no specialist agents**. Inspect installed/enabled task agents.
+`'lobster-ai[full]'` installs everything at once (a larger install).
+<!-- VERIFY: non-interactive lobster init installs the --preset/--agents packages (fresh-install gate rows) -->
 
 ```bash
 # Fresh approved POSIX project/environment; do not replace an existing .venv
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python 'lobster-ai[full]~=1.2.2'
+uv pip install --python .venv/bin/python 'lobster-ai~=1.3'
 .venv/bin/python -m lobster --version
 .venv/bin/python -m lobster agents list
 
 # Alternative user-wide tool install (not a project .venv):
-uv tool install --python 3.12 'lobster-ai[full]~=1.2.2'
+uv tool install --python 3.12 'lobster-ai~=1.3'
 # For an existing tool install, upgrade with permission:
-uv tool upgrade lobster-ai
+uv tool upgrade --python 3.12 lobster-ai
 ```
 
 In an existing approved `.venv`, use its Python with `uv pip install --python`
@@ -56,7 +59,8 @@ export OMICS_OS_API_KEY="$(<"$OMICS_OS_KEY_FILE")"
 ```
 
 Never source a key file as executable code. Use the Python interpreter installed
-above, not an npm binary. For a fresh workspace config in the current directory:
+above, not an npm binary. For a fresh workspace config in the current directory (not the home folder,
+which init refuses):
 
 ```bash
 (
@@ -64,7 +68,7 @@ above, not an npm binary. For a fresh workspace config in the current directory:
   umask 077
   : "${OMICS_OS_API_KEY:?Supply an authorized Omics-OS Cloud API key securely}"
   .venv/bin/python -m lobster init --non-interactive --use-omics-os \
-    --skip-extras --skip-ssl-test </dev/null
+    --preset scrna-basic --skip-ssl-test </dev/null   # preset: pick the task's
   .venv/bin/python -m lobster status
   .venv/bin/python -m lobster agents list
 )
@@ -120,7 +124,7 @@ login requires human approval and is not a non-interactive setup shortcut;
 configure Python separately rather than assuming shared credentials work.
 
 `--skip-extras` also suppresses the entire end-of-wizard `uv tool` installation
-prompt/handoff, not just provider extras. Agent choices can still be recorded and
+prompt/handoff, not just provider extras, and skips the `--preset`/`--agents` packages. Agent choices can still be recorded and
 an optional manual install command printed. Without it, tool-install offers retain
 receipt extras and existing `--with` packages, add requested packages and include
 `--reinstall`; displayed commands are shell-quoted. Run them only with permission.
@@ -222,7 +226,7 @@ this small connectivity test.
 | `--ncbi-key` | Optional NCBI key |
 | `--agents` | Comma-separated enabled agent identifiers |
 | `--preset` | Agent selection preset, e.g. scrna-basic |
-| `--skip-extras` | Skip optional installs and the end-of-wizard tool handoff; agent choices can still be recorded |
+| `--skip-extras` | Skip all installs (the `--preset`/`--agents` packages too) and the end-of-wizard tool handoff; agent choices can still be recorded |
 | `--skip-ssl-test` | Skip init SSL/connectivity test, not all network activity |
 | `--skip-docling` / `--install-docling` | PDF intelligence installation choice |
 | `--global`, `-g` | Global provider/credential writes plus possible CWD side effects |
@@ -342,7 +346,8 @@ is a selected subset, not evidence of execution. `/pipeline export --replay`
 selects steps marked replayable; it refuses failed steps and recorded unreplayable
 data changes. Custom code using attempt-only figure helpers is excluded from
 executable export. Inspect the omission summary, notebook and outputs independently
-before using them as evidence.
+before using them as evidence. To check an exported notebook, see
+[`replay --verify`](projects-mcp-replay.md#verify-an-exported-notebook-lobster-replay---verify).
 
 ## Local Figures and Revisions
 

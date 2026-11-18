@@ -54,7 +54,7 @@ Do not create package scaffolding by hand. The generated namespace, entry points
 configuration and tests are the starting point; placeholder services/fixtures must
 be replaced with domain implementations.
 
-The 1.2 scaffold generates `lobster-ai~=1.2`. Validate the plugin against the engine version that will execute it.
+The scaffold generates `lobster-ai~=1.3`. Validate the plugin against the engine version that will execute it.
 
 Keep engine/plugin compatibility aligned. Preserve shared PEP 420 boundaries:
 no plugin `lobster/__init__.py` or `lobster/agents/__init__.py`. A domain's optional

@@ -9,8 +9,9 @@ installation; see [client selection](../SKILL.md#choose-the-correct-client-befor
 ## Local Setup and Session Continuity
 
 First complete the [local Python Cloud-account setup](local-setup-omics-os.md)
-when that is the task: Python 1.2.2+ engine, default `[full]` analysis bundle,
-then supported non-interactive init or environment-only provider selection.
+when that is the task: Python 1.2.2+ engine, plain `lobster-ai`, then supported
+non-interactive init with `--preset`/`--agents` (it installs the analysis packages)
+or environment-only provider selection.
 Do not install npm instead, pin an older engine or call internal credential APIs
 to work around missing public init flags. A configuration save is not verified
 account access, and an empty agent inventory is not analysis-ready.
