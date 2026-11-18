@@ -383,3 +383,15 @@ def test_a_finished_ftp_transfer_leaves_no_progress_behind(ftp, manager, tmp_pat
         ftp(), "/geo/f.gz", tmp_path / "f.gz.part", len(BODY), "d"
     )
     assert download_activity.snapshot() is None
+
+
+def test_progress_resets_only_when_the_peak_grows_and_stops_at_the_limit():
+    progress = dl._Progress(3)
+    assert progress.after_failure(100) and progress.count == 0  # grew: reset
+    assert progress.after_failure(100) and progress.count == 1  # equal: counts
+    assert progress.after_failure(40) and progress.count == 2  # smaller: counts
+    assert progress.peak == 100  # never goes down
+    assert progress.after_failure(150) and progress.count == 0  # beats the peak
+    assert progress.after_failure(0) and progress.after_failure(0)
+    assert not progress.after_failure(149) and progress.exhausted  # the limit
+    assert progress.peak == 150
