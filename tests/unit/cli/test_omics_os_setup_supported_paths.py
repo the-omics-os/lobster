@@ -20,6 +20,9 @@ from lobster.cli_internal.commands.heavy import init_commands
 from lobster.cli_internal.commands.light import cloud_commands
 from lobster.config import credentials
 from lobster.config.providers.omics_os_provider import OmicsOSProvider
+from lobster.core.uv_tool_env import lobster_release
+
+_MINOR = "{}.{}.0".format(*lobster_release()[:2])
 
 pytestmark = pytest.mark.no_auto_config
 KEY = "omk_local_setup_test"
@@ -676,7 +679,7 @@ def test_skip_extras_records_selected_agents_without_install_and_shows_command(
     output = capsys.readouterr().out
     # One unwrapped line, aimed at the running Python.
     assert (
-        f"Install later: uv pip install --python {sys.executable} lobster-research\n"
+        f"Install later: uv pip install --python {sys.executable} 'lobster-research~={_MINOR}'\n"
         in output
     )
 
@@ -734,6 +737,6 @@ def test_classic_skip_extras_keeps_agent_selection_and_prints_later_command(
     assert agents == selected
     assert preset is None
     assert (
-        f"Install later: uv pip install --python {sys.executable} lobster-research\n"
+        f"Install later: uv pip install --python {sys.executable} 'lobster-research~={_MINOR}'\n"
         in capsys.readouterr().out
     )

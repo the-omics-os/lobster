@@ -708,13 +708,18 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
     )
     if not packages:
         return
+    from lobster.cli_internal.commands.light.agent_commands import _pinned_to_lobster
+
     if is_uv_tool_env():
         from lobster.core.uv_tool_env import build_tool_install_command
 
-        command = build_tool_install_command(with_packages=packages)
+        command = build_tool_install_command(
+            with_packages=[_pinned_to_lobster(p, ">=") for p in packages]
+        )
         command.insert(3, "--reinstall")
     else:
-        command = ["uv", "pip", "install", "--python", sys.executable, *packages]
+        pinned = [_pinned_to_lobster(p) for p in packages]
+        command = ["uv", "pip", "install", "--python", sys.executable, *pinned]
     console.print(
         h("Selected agents recorded; --skip-extras prevented package installation.")
     )
