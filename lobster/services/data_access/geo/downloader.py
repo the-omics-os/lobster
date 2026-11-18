@@ -617,7 +617,7 @@ class GEODownloadManager:
                         f.write(chunk)
                         now = time.monotonic()
                         done = f.tell()
-                        rate = (done - have) / max(now - started, 1e-6)
+                        rate = (done - have) / max(now - started, 1.0)
                         if now - shown >= 1:
                             shown = now
                             download_activity.report(local_path.name, done, total, rate)
@@ -734,7 +734,7 @@ class GEODownloadManager:
                         now = time.monotonic()
                         if now - shown >= 1:
                             shown = now
-                            rate = (downloaded - have) / max(now - started, 1e-6)
+                            rate = (downloaded - have) / max(now - started, 1.0)
                             download_activity.report(
                                 local_path.name.removesuffix(".part"),
                                 downloaded,
@@ -756,6 +756,8 @@ class GEODownloadManager:
         except Exception as e:
             logger.error(f"Chunked FTP download failed: {e}")
             return False
+        finally:
+            download_activity.clear()
 
     def _download_with_retry(
         self,
