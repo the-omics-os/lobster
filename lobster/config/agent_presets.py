@@ -56,7 +56,7 @@ AGENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "metadata_assistant",
             "proteomics_expert",
             "genomics_expert",
-            "machine_learning_expert_agent",
+            "machine_learning_expert",
         ],
         "description": "Complete multi-omics workflow with all available agents including proteomics, genomics, and machine learning capabilities",
     },
