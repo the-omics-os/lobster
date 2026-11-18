@@ -148,3 +148,14 @@ def test_progress_is_logged_per_file(serve, manager, tmp_path, monkeypatch):
     assert manager.download_file(server.url, tmp_path / "f.gz") is True
     lines = [str(c.args[0]) % c.args[1:] for c in log.info.call_args_list]
     assert any("f.gz" in line and "KB/s" in line for line in lines), lines
+
+
+def test_a_resumed_file_that_fails_the_gzip_check_is_fetched_once_more_whole(
+    serve, manager, tmp_path
+):
+    bad_tail = BODY[:30_000] + b"\xff" * (len(BODY) - 30_000)  # same size, damaged
+    server = serve([{"cut": 40_000}, {"body": bad_tail}, {}])
+    target = tmp_path / "f.gz"
+    assert manager.download_file(server.url, target) is True
+    assert target.read_bytes() == BODY
+    assert len(server.requests) == 3 and server.requests[2][0] is None
