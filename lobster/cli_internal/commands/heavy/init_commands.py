@@ -11,7 +11,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import typer
 from rich.markup import escape as _markup_escape
@@ -1164,6 +1164,8 @@ def _uv_tool_env_handoff(
     console.print(f"  {cmd_str}\n", markup=False)
 
     if not confirm or Confirm.ask(h("  Run this now?"), default=True):
+        if _finish_before_tool_install is not None:
+            _finish_before_tool_install()
         console.print(h("[dim]  Running uv tool install...[/dim]"))
         if console.file:
             console.file.flush()
@@ -2247,6 +2249,11 @@ def _init_without_terminal(
     raise _Handled(0)
 
 
+# Set by _creates_project while init runs: the uv tool install ends the
+# process, so it finishes the project first.
+_finish_before_tool_install: Optional[Callable[[], None]] = None
+
+
 def _creates_project(func):
     """Run ``func`` (``init_impl``); when it ends normally, project the folder.
 
@@ -2280,6 +2287,8 @@ def _creates_project(func):
                     kwargs.get("folder"), kwargs.get("project_name"), env_before
                 )
 
+        global _finish_before_tool_install
+        _finish_before_tool_install = finish
         try:
             result = func(*args, **kwargs)
         except typer.Exit as exc:
@@ -2290,6 +2299,7 @@ def _creates_project(func):
             finish()
             return result
         finally:
+            _finish_before_tool_install = None
             if pinned is not None:
                 _undo_empty_init(pinned, made)
 
