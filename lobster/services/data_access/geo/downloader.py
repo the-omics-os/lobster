@@ -557,7 +557,13 @@ class GEODownloadManager:
             logger.warning(f"Failed to download {url}: {e}")
             return False
 
-    def _download_http(self, url: str, local_path: Path, description: str) -> bool:
+    def _download_http(
+        self,
+        url: str,
+        local_path: Path,
+        description: str,
+        _refetch_if_corrupt: bool = True,
+    ) -> bool:
         """
         Download a file over HTTP/HTTPS into ``<file>.part``, resuming after a dropped
         connection with a Range request (guarded by If-Range, so a file that changed on the
@@ -572,7 +578,7 @@ class GEODownloadManager:
         part.unlink(
             missing_ok=True
         )  # a leftover from another run has no known validator
-        idle, validator, failed = _idle_timeout_s(), None, 0
+        idle, validator, failed, resumed = _idle_timeout_s(), None, 0, False
         while failed < _MAX_ATTEMPTS_WITHOUT_PROGRESS:
             have = part.stat().st_size if part.exists() else 0
             headers = {"Range": f"bytes={have}-", "If-Range": validator} if have else {}
@@ -593,6 +599,7 @@ class GEODownloadManager:
                 total = int(response.headers.get("content-length", 0)) + have
                 if validator is None and have:
                     have = 0  # no way to tell the file is unchanged
+                resumed = resumed or have > 0
                 started, logged = time.monotonic(), time.monotonic()
                 with open(part, "ab" if have else "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
@@ -635,6 +642,8 @@ class GEODownloadManager:
                 f"Gzip validation failed, removing corrupted file: {local_path}"
             )
             local_path.unlink()
+            if resumed and _refetch_if_corrupt:  # a splice may be the cause
+                return self._download_http(url, local_path, description, False)
             return False
         return True
 
