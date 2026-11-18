@@ -278,6 +278,10 @@ class _FakeFTP:
         if rest and step.get("no_rest"):
             raise ftplib.error_perm("502 REST not implemented")
         data, cut = BODY[rest or 0 :], step.get("cut")
+        if (
+            "cut_at" in step
+        ):  # the server drops whenever the transfer reaches this offset
+            cut = max(step["cut_at"] - (rest or 0), 0)
         end = len(data) if cut is None else cut
         for i in range(0, end, blocksize):
             callback(data[i : min(i + blocksize, end)])
@@ -313,6 +317,25 @@ def test_a_server_without_rest_gets_the_file_again_from_zero(ftp, manager, tmp_p
     assert manager.download_file(FTP_URL, target) is True
     assert target.read_bytes() == BODY  # not 40 KB + a whole second copy
     assert ftp.retrs[-1] is None
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        [{"cut_at": 40_000}],  # drops at the same offset every time
+        [{"cut": 40_000, "no_rest": True}],  # refuses REST and drops mid-transfer
+    ],
+    ids=["same_offset", "no_rest_and_drops"],
+)
+def test_an_ftp_transfer_that_never_gets_further_gives_up(
+    ftp, manager, tmp_path, script
+):
+    ftp.script = script
+    target = tmp_path / "f.gz"
+    assert _download_bounded(manager, FTP_URL, target) is False
+    assert not target.exists()
+    assert not list(tmp_path.glob("*.part"))
+    assert len(ftp.retrs) <= 3 + 2  # max_retries plus the attempts that did gain bytes
 
 
 def test_a_cancel_ends_an_ftp_transfer_without_retries(ftp, manager, tmp_path):
