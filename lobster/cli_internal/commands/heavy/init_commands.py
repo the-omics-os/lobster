@@ -1199,6 +1199,8 @@ def _uv_tool_env_handoff(
             markup=False,
             soft_wrap=True,
         )
+        if _in_other_folder():
+            console.print("  " + _next_chat_text(), markup=False, soft_wrap=True)
 
 
 def _ensure_provider_installed(provider_name: str) -> bool:
@@ -2289,15 +2291,22 @@ _finish_before_tool_install: Optional[Callable[[], None]] = None
 _init_folder: Optional[Path] = None
 
 
+def _in_other_folder() -> bool:
+    """Whether init configures a folder other than the one it runs in."""
+    return _init_folder is not None and Path.cwd().resolve() != _init_folder.resolve()
+
+
 def _next_chat_text() -> str:
     """The next step; from another folder it changes into the project first."""
     import shlex
 
     from lobster.i18n import t
 
-    if _init_folder is None or Path.cwd().resolve() == _init_folder.resolve():
+    if not _in_other_folder():
         return t("cli.init.next_chat")
-    command = shlex.join(["cd", str(_init_folder)]) + " && lobster chat"
+    # Windows PowerShell 5.1 rejects && between statements.
+    separator = "; " if sys.platform == "win32" else " && "
+    command = shlex.join(["cd", str(_init_folder)]) + separator + "lobster chat"
     return t("cli.init.next_chat_in", command=command)
 
 
@@ -4325,9 +4334,11 @@ def init_impl(
             success_message += "\n".join(
                 f"[yellow]{_markup_escape(line)}[/yellow]" for line in failed_installs
             )
-        elif _init_folder and Path.cwd().resolve() != _init_folder.resolve():
+        elif _in_uv_tool and not skip_extras:
+            pass  # the install says the next step
+        elif _in_other_folder():
             success_message += _bold_command(_next_chat_text())
-        elif not (_in_uv_tool and not skip_extras):  # else the install says it
+        else:
             success_message += h(
                 "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
             ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
