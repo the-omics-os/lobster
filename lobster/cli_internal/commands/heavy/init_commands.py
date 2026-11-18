@@ -1339,7 +1339,9 @@ def _postprocess_tui_init_result(
     if provider_name == "omics-os":
         console.print(OMICS_OS_KEY_NOT_VERIFIED)
     _print_lamin_notes(
-        normalized_result.get("lamin_enabled"), global_config=global_config
+        normalized_result.get("lamin_enabled"),
+        global_config=global_config,
+        install=not skip_extras,
     )
 
     if is_uv_tool_env():
@@ -1646,9 +1648,29 @@ def _save_lamin_choice(
     apply_init_choice(choice, workspace_path, previous=previous)
 
 
-def _print_lamin_notes(choice: Optional[bool], *, global_config: bool) -> None:
-    from lobster.cli_internal.commands.light.lamin_commands import init_notes
+def _print_lamin_notes(
+    choice: Optional[bool], *, global_config: bool, install: bool = False
+) -> None:
+    from lobster.cli_internal.commands.light.lamin_commands import (
+        _engine_installed,
+        init_notes,
+    )
+    from lobster.core.uv_tool_env import is_uv_tool_env
 
+    # Under uv tool the handoff adds the extra to the tool instead.
+    if install and choice and not is_uv_tool_env() and not _engine_installed():
+        import importlib
+
+        from rich.markup import escape
+
+        from lobster.cli_internal.commands.light.agent_commands import (
+            _uv_pip_install,
+        )
+
+        package = "lobster-ai[lamin]"
+        console.print(h("  [dim]Installing {pkg}...[/dim]").format(pkg=escape(package)))
+        if _uv_pip_install(package)[0]:
+            importlib.invalidate_caches()
     for line in init_notes(choice, global_config=global_config):
         console.print(line, markup=False)
 
@@ -3401,7 +3423,7 @@ def init_impl(
                 summary_extras.append(t("cli.init.done_backup", path=str(backup_path)))
             _print_init_summary(config_dict, workspace_path, summary_extras)
 
-        _print_lamin_notes(lamin, global_config=global_config)
+        _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
         if cloud_selected:
             from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
 
@@ -4237,7 +4259,7 @@ def init_impl(
                 border_style="yellow" if failed_installs else "green",
             )
         )
-        _print_lamin_notes(lamin, global_config=global_config)
+        _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
         console.print()
 
         # In uv tool env, offer to run `uv tool install` for new packages
