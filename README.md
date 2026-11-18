@@ -41,7 +41,6 @@ curl -fsSL https://install.lobsterbio.com -o install.sh && bash install.sh
 *(Download first, then run: the installer asks interactive questions that a piped `curl | bash` cannot read. Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
 
 Prefer to install it yourself? With `uv` (or `pip`):
-<!-- VERIFY: plain lobster-ai includes the default provider, and lobster init installs the chosen analysis packages under uv tool. Remove this comment before publication. -->
 ```bash
 uv tool install --python 3.12 lobster-ai    # or in a virtual environment: uv venv --python 3.12, then uv pip install lobster-ai
 ```
@@ -245,7 +244,6 @@ A notebook that fails to run exits 5. Plot cells run, but figures are not compar
 # Optional: LaminDB catalog
 
 Lobster can record its work in a [LaminDB](https://lamin.ai) catalog inside your workspace: sessions, the datasets you save (with versions and content hashes), exported notebooks and a step log. It is **off by default**; with it off, Lobster does not import LaminDB. It needs the optional `[lamin]` extra, which `lobster init` installs at its LaminDB step:
-<!-- VERIFY: lobster init --lamin installs the [lamin] extra through uv tool install --with. Remove this comment before publication. -->
 ```bash
 lobster init ~/my-study --lamin         # installs the extra and switches the catalog on for that project
 cd ~/my-study                           # the lamin commands below act on the project you are in
@@ -377,7 +375,6 @@ Re-running `uv tool install` rebuilds the tool environment: extras and `--with` 
 reset to whatever the new command includes — list them again when upgrading.
 
 **Virtual environment** (uv or pip):
-<!-- VERIFY: plain lobster-ai includes the default provider, and lobster init installs the chosen analysis packages under uv tool. Remove this comment before publication. -->
 ```bash
 uv venv --python 3.12 .venv && source .venv/bin/activate
 uv pip install lobster-ai    # a uv venv has no pip; without uv: python3.12 -m venv .venv, activate, pip install lobster-ai
