@@ -5,6 +5,7 @@ running init got a configured workspace without its analysis packages.
 """
 
 import importlib.util
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -111,7 +112,9 @@ def test_a_failed_uv_tool_install_exits_non_zero_with_the_command(tool_env):
     result = _init()
 
     assert result.exit_code == 2
+    # uv already removed the tool; the printed line must rebuild all of it.
     assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in result.output
+    assert f"--with 'lobster-transcriptomics>=1.3.0' --python {PYTHON}" in result.output
 
 
 def test_agents_install_under_uv_tool_adds_to_the_tool(tool_env, tmp_path):
@@ -165,3 +168,31 @@ def test_lamin_in_a_venv_installs_the_extra(tool_env, monkeypatch, skip_extras):
 
     assert result.exit_code == 0, result.output
     assert ("lobster-ai[lamin]" in installed) is not skip_extras
+
+
+def test_the_project_is_made_before_the_tool_install(tool_env, tmp_path):
+    # The install ends the process, so the project must exist before it runs.
+    result = _init()
+
+    assert result.exit_code == 0, result.output
+    assert len(tool_env.installs) == 1
+    assert (tmp_path / ".lobster_workspace" / "project.json").exists()
+
+
+def test_printed_install_hints_are_quoted_and_keep_the_tool(tool_env, tmp_path):
+    from lobster.core.component_registry import get_install_command
+
+    (tmp_path / "tool-prefix" / "uv-receipt.toml").write_text(
+        "[tool]\nrequirements = [\n"
+        '  { name = "lobster-ai", extras = ["anthropic"] },\n'
+        '  { name = "lobster-research" },\n]\n'
+    )
+    hints = [
+        get_install_command("lamin", is_extra=True),
+        get_install_command("lobster-transcriptomics"),
+    ]
+
+    for hint in hints:
+        # zsh: an unquoted "[" is a glob ("no matches found").
+        assert not re.search(r"(?:^|\s)[^'\s]*\[", hint), hint
+        assert "anthropic" in hint and "--with lobster-research" in hint, hint
