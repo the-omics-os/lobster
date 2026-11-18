@@ -1110,8 +1110,12 @@ def _uv_tool_env_handoff(
     skip_extras: bool,
     include_vector_search: bool = False,
     include_lamin: bool = False,
+    confirm: bool = True,
 ) -> None:
     """In a uv tool env, build and optionally run the install command.
+
+    ``confirm=False`` (non-interactive init) runs it without asking: the flags
+    already chose the packages.
 
     Called at the end of ``lobster init`` when we detect we're inside a uv tool
     environment.  Instead of calling ``_uv_pip_install()`` (which would be
@@ -1137,6 +1141,7 @@ def _uv_tool_env_handoff(
     from rich.prompt import Confirm
 
     from lobster.core.uv_tool_env import detect_uv_tool_env
+    from lobster.i18n import t
 
     info = detect_uv_tool_env()
     if not info:
@@ -1165,7 +1170,7 @@ def _uv_tool_env_handoff(
     )
     console.print(f"  {cmd_str}\n", markup=False)
 
-    if Confirm.ask(h("  Run this now?"), default=True):
+    if not confirm or Confirm.ask(h("  Run this now?"), default=True):
         console.print(h("[dim]  Running uv tool install...[/dim]"))
         # ── CRITICAL: venv-safe subprocess execution ──────────────────
         # After `uv tool install` completes, the venv on disk is replaced
@@ -1198,7 +1203,7 @@ def _uv_tool_env_handoff(
                 )
             else:
                 print(h("  ✓ Packages installed successfully."))
-            print(h("  Restart lobster to use the new packages."))
+            print("  " + t("cli.init.next_chat"))
             sys.stdout.flush()
             _os._exit(0)
         else:
@@ -3442,7 +3447,14 @@ def init_impl(
                 summary_extras.append(t("cli.init.done_backup", path=str(backup_path)))
             _print_init_summary(config_dict, workspace_path, summary_extras)
 
-        # In uv tool env (non-interactive), print the command for the caller
+        _print_lamin_notes(lamin, global_config=global_config)
+        if cloud_selected:
+            from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
+
+            console.print(OMICS_OS_KEY_NOT_VERIFIED)
+
+        # In a uv tool env, run the install now. It ends the process when it
+        # runs: the tool's environment is replaced on disk.
         if _in_uv_tool_ni and not skip_extras:
             provider_name_ni = None
             if has_anthropic:
@@ -3463,20 +3475,14 @@ def init_impl(
                 provider_name_ni = "ollama-cloud"
             elif has_azure:
                 provider_name_ni = "azure"
-            cmd = _build_uv_tool_init_command(
+            _uv_tool_env_handoff(
                 provider_name_ni,
                 locals().get("installed_agents"),
+                skip_extras,
                 include_vector_search=install_vector_search,
+                include_lamin=bool(lamin),
+                confirm=False,
             )
-            console.print(
-                h("\n[bold]uv tool command:[/bold] {join}").format(join=" ".join(cmd))
-            )
-
-        _print_lamin_notes(lamin, global_config=global_config)
-        if cloud_selected:
-            from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
-
-            console.print(OMICS_OS_KEY_NOT_VERIFIED)
         raise typer.Exit(0)
 
     # Interactive mode: run wizard
