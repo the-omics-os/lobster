@@ -569,8 +569,11 @@ def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str,
         if all(values.get(name) for name in names):
             found_in = where
             break
-    if found_in is None and provider == "omics-os" and _saved_login():
-        found_in = "omics-os login"
+    login = None
+    if found_in is None and provider == "omics-os":
+        login = _saved_login()
+        if login == "usable":
+            found_in = "omics-os login"
     presence: Dict[str, Any] = {
         "names": names,
         "present": found_in is not None,
@@ -581,6 +584,13 @@ def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str,
         presence["unreadable"] = unreadable
     if found_in is None:
         presence["fix"] = key_fix(names)
+    if login in ("expired", "unusable"):
+        presence["login"] = login
+        presence["fix"] = (
+            "The saved login has expired or cannot be used: ask the "
+            f"user to run {lobster_command('cloud', 'login')} in a terminal, "
+            "or: " + presence["fix"]
+        )
     return presence
 
 
@@ -608,17 +618,25 @@ def provider_fix() -> str:
     )
 
 
-def _saved_login() -> bool:
-    """A key or token that ``lobster cloud login`` saved, as the omics-os
-    provider reads it when OMICS_OS_API_KEY is unset."""
-    from lobster.config.credentials import load_active_profile
+def _saved_login() -> Optional[str]:
+    """None without a key or token that ``lobster cloud login`` saved; else
+    "usable" when the omics-os provider gets a token from it the way a run
+    does (``get_api_key``, which first refreshes an expired login, over the
+    network); else the run would fail: "expired", or "unusable" (a token
+    without its OAuth mode, which the provider does not read)."""
+    from lobster.config import credentials
 
-    # shortcut: presence only, never refreshed here; an expired login counts
     try:
-        saved = load_active_profile() or {}
+        saved = credentials.load_active_profile() or {}
+        if not any(
+            str(saved.get(k) or "").strip() for k in ("api_key", "access_token")
+        ):
+            return None
+        if credentials.get_api_key():
+            return "usable"
+        return "expired" if credentials.is_token_expired() else "unusable"
     except Exception:  # unreadable: the provider would not read it either
-        return False
-    return any(str(saved.get(k) or "").strip() for k in ("api_key", "access_token"))
+        return None
 
 
 def key_names(provider: str) -> List[str]:

@@ -170,20 +170,82 @@ def test_next_leads_with_a_missing_key(project, monkeypatch):
     assert overview(project.root)["next"].startswith("Ask lobster_run")
 
 
-@pytest.mark.parametrize("field", ["api_key", "access_token"])
-def test_a_saved_omics_os_login_counts_as_the_key(project, monkeypatch, field):
+LIVE = {
+    "auth_mode": "oauth",
+    "access_token": "omk_planted_000",
+    "token_expiry": "2999-01-01T00:00:00+00:00",
+}
+
+
+@pytest.mark.parametrize("saved", [{"api_key": "omk_planted_000"}, LIVE])
+def test_a_saved_omics_os_login_counts_as_the_key(project, monkeypatch, saved):
     monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
     WorkspaceProviderConfig(global_provider="omics-os").save(project.workspace)
     seen = overview(project.root)
     assert seen["key"]["present"] is False
     assert seen["next"].startswith("No OMICS_OS_API_KEY was found for omics-os")
     credentials.CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    credentials.CREDENTIALS_FILE.write_text(json.dumps({field: "omk_planted_000"}))
+    credentials.CREDENTIALS_FILE.write_text(json.dumps(saved))
+    assert credentials.get_api_key() == "omk_planted_000"  # what the run gets
     seen = overview(project.root)
     assert seen["key"]["present"] is True
     assert seen["key"]["found_in"] == "omics-os login"
     assert seen["next"].startswith("Ask lobster_run")
     assert "omk_planted_000" not in json.dumps(seen)
+
+
+EXPIRED = {
+    "auth_mode": "oauth",
+    "access_token": "omc_expired_000",
+    "token_expiry": "2026-01-01T00:00:00+00:00",
+}
+
+
+@pytest.mark.parametrize("refresh", [None, "omr_dead_000"])
+def test_an_expired_omics_os_login_is_not_the_key(project, monkeypatch, refresh):
+    # The run reads a saved login through credentials.get_api_key: an expired
+    # token that cannot be refreshed is no key, and the run fails at startup
+    # with missing_credentials. The overview must say the same.
+    monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
+    monkeypatch.setattr(credentials, "refresh_token", lambda: None)
+    WorkspaceProviderConfig(global_provider="omics-os").save(project.workspace)
+    saved = {**EXPIRED, **({"refresh_token": refresh} if refresh else {})}
+    credentials.CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    credentials.CREDENTIALS_FILE.write_text(json.dumps(saved))
+    assert credentials.get_api_key() is None  # what the run gets
+    seen = overview(project.root)
+    assert seen["key"]["present"] is False
+    assert seen["key"]["found_in"] is None
+    assert seen["key"]["login"] == "expired"
+    assert "cloud login" in seen["key"]["fix"]
+    assert seen["next"].startswith("No OMICS_OS_API_KEY was found for omics-os")
+    assert "omc_expired_000" not in json.dumps(seen)
+
+
+def test_a_token_without_its_oauth_mode_is_not_the_key(project, monkeypatch):
+    # The provider reads access_token only in OAuth mode (get_api_key).
+    monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
+    WorkspaceProviderConfig(global_provider="omics-os").save(project.workspace)
+    credentials.CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    credentials.CREDENTIALS_FILE.write_text(json.dumps({"access_token": "omk_0"}))
+    assert credentials.get_api_key() is None
+    seen = overview(project.root)
+    assert (seen["key"]["present"], seen["key"]["login"]) == (False, "unusable")
+
+
+def test_an_expired_login_the_run_can_refresh_counts_as_the_key(project, monkeypatch):
+    monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
+    monkeypatch.setattr(credentials, "refresh_token", lambda: "omc_fresh_000")
+    WorkspaceProviderConfig(global_provider="omics-os").save(project.workspace)
+    credentials.CREDENTIALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    credentials.CREDENTIALS_FILE.write_text(
+        json.dumps({**EXPIRED, "refresh_token": "omr_live_000"})
+    )
+    seen = overview(project.root)
+    assert seen["key"]["present"] is True
+    assert seen["key"]["found_in"] == "omics-os login"
+    assert "login" not in seen["key"]
+    assert "omc_fresh_000" not in json.dumps(seen)
 
 
 def test_the_first_env_file_that_exists_is_the_only_one_read(project):
