@@ -156,7 +156,8 @@ def test_a_drop_at_the_same_point_without_a_validator_gives_up(
     target = tmp_path / "f.bin"
     assert _download_bounded(manager, server.url, target) is False
     assert not target.exists()
-    assert len(server.requests) <= 8  # bounded, not a retry storm
+    assert not list(tmp_path.glob("*.part"))  # a give-up leaves no partial file behind
+    assert len(server.requests) <= dl._MAX_ATTEMPTS_WITHOUT_PROGRESS + 1
 
 
 def test_a_file_that_changed_between_requests_is_not_glued_together(
