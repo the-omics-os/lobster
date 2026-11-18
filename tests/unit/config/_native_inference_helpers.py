@@ -77,7 +77,10 @@ def require_agents(*names):
         try:
             distribution(package)
         except PackageNotFoundError:
-            pytest.skip(f"{package} is absent; required official package for {name}")
+            pytest.skip(
+                f"{package} is absent; required official package for {name}",
+                allow_module_level=True,
+            )
         # Factory/config imports happen in the test and are deliberately not
         # caught: an installed but broken plugin must not disappear as a skip.
 
