@@ -535,3 +535,11 @@ def test_a_missing_key_says_where_to_put_it(project):
 def test_a_present_key_needs_no_fix(monkeypatch, project):
     monkeypatch.setenv(KEY, SECRET)
     assert "fix" not in overview(project.root)["key"]
+
+
+def test_key_limit_names_only_sign_ins_lobster_reads():
+    from lobster.cli_internal.mcp_overview import KEY_LIMIT
+
+    # Bedrock reads only AWS_BEDROCK_* keys; an AWS profile does not sign it in.
+    assert "AWS profile" not in KEY_LIMIT
+    assert "lobster cloud login" in KEY_LIMIT
