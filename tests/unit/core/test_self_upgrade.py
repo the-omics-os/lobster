@@ -76,6 +76,7 @@ class TestDetectUpgradePlan:
 
     def test_venv_with_uv_targets_running_interpreter(self, monkeypatch, tmp_path):
         monkeypatch.setattr("lobster.core.uv_tool_env.detect_uv_tool_env", lambda: None)
+        monkeypatch.setattr(self_upgrade, "installed_agent_packages", lambda: {})
         monkeypatch.setattr(
             self_upgrade.shutil, "which", lambda name: "/usr/local/bin/uv"
         )
@@ -97,6 +98,7 @@ class TestDetectUpgradePlan:
 
     def test_venv_without_uv_falls_back_to_pip(self, monkeypatch, tmp_path):
         monkeypatch.setattr("lobster.core.uv_tool_env.detect_uv_tool_env", lambda: None)
+        monkeypatch.setattr(self_upgrade, "installed_agent_packages", lambda: {})
         monkeypatch.setattr(self_upgrade.shutil, "which", lambda name: None)
         (tmp_path / "pyvenv.cfg").write_text("home = /usr/bin\n")
         monkeypatch.setattr(self_upgrade.sys, "prefix", str(tmp_path))

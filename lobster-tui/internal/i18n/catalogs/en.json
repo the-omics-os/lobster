@@ -24,6 +24,7 @@
   "cli.status.no_config": "No Lobster configuration found in {path}",
   "cli.status.not_initialized": "Lobster is not initialized yet",
   "cli.status.init_hint": "Run `lobster init` to configure your LLM provider, including Omics-OS Cloud. For machine setup use `lobster init --non-interactive --use-omics-os --skip-extras --skip-ssl-test` with OMICS_OS_API_KEY.",
+  "cli.status.package_skew": "Agent packages from another Lobster version: {packages} (Lobster is {minor}). Fix: lobster upgrade",
   "cli.status.license_expires": "License expires in {days} days",
   "cli.status.available_agents": "Available Agents ({n})",
   "cli.status.more_agents": "... and {n} more available agents",

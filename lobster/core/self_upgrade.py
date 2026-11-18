@@ -97,6 +97,21 @@ _EDITABLE_NOTE = h(
 )
 
 
+def installed_agent_packages() -> dict[str, str]:
+    """The official lobster-* agent packages installed here, with versions."""
+    from importlib import metadata
+
+    from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
+
+    found = {}
+    for name, *_ in AVAILABLE_AGENT_PACKAGES:
+        try:
+            found[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            pass
+    return found
+
+
 def detect_upgrade_plan() -> UpgradePlan:
     """Detect the install method and build the matching upgrade command."""
     from lobster.core.uv_tool_env import detect_uv_tool_env
@@ -126,6 +141,8 @@ def detect_upgrade_plan() -> UpgradePlan:
         )
 
     if _is_virtualenv():
+        # One resolver call: an agent package left behind keeps the old minor.
+        packages = ["lobster-ai", *sorted(installed_agent_packages())]
         if uv_path is not None:
             cmd = [
                 uv_path,
@@ -134,10 +151,10 @@ def detect_upgrade_plan() -> UpgradePlan:
                 "--python",
                 sys.executable,
                 "--upgrade",
-                "lobster-ai",
+                *packages,
             ]
             return UpgradePlan(method="uv-pip", command=cmd, display=" ".join(cmd))
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "lobster-ai"]
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", *packages]
         return UpgradePlan(method="pip", command=cmd, display=" ".join(cmd))
 
     return _manual_plan(

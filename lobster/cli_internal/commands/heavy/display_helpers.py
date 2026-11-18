@@ -231,6 +231,24 @@ def build_status_blocks(
     from lobster.core.plugin_loader import get_installed_packages
 
     packages = get_installed_packages()
+    from lobster.core.self_upgrade import installed_agent_packages
+    from lobster.core.uv_tool_env import lobster_release
+
+    agent_packages = installed_agent_packages()
+    packages.update(agent_packages)
+    minor = ".".join(map(str, lobster_release()[:2]))
+    skewed = [
+        f"{name} {version}"
+        for name, version in agent_packages.items()
+        if not version.startswith(f"{minor}.")
+    ]
+    if skewed:
+        blocks.append(
+            alert_block(
+                t("cli.status.package_skew", packages=", ".join(skewed), minor=minor),
+                level="warning",
+            )
+        )
 
     # Get available agents
     from lobster.config.agent_registry import get_worker_agents
