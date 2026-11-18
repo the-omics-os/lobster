@@ -165,7 +165,14 @@ class RunProgress:
             fields = probe()
         except Exception:  # unknown stays absent, never invented
             pass
-        return {"phase": "running", **fields}
+        from lobster.utils import download_activity  # heavy package: not at start
+
+        download = download_activity.snapshot()
+        return {
+            "phase": "running",
+            **fields,
+            **({"download": download} if download else {}),
+        }
 
     def answers_given(self) -> Tuple[List[Dict[str, Any]], int]:
         """``(entries, total)`` of the answers accepted so far."""
@@ -2312,7 +2319,7 @@ def _still(
     short = {"run_id": run_id}
     short.update(
         (k, status[k])
-        for k in ("status", "step", "steps_done", "elapsed_s")
+        for k in ("status", "step", "steps_done", "download", "elapsed_s")
         if k in status
     )
     short["superseded" if superseded else "timed_out"] = True

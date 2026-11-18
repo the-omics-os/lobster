@@ -28,6 +28,7 @@ from rich.progress import (
 )
 
 from lobster.core.archive_utils import ArchiveExtractor
+from lobster.utils import download_activity
 from lobster.utils.logger import get_logger
 from lobster.utils.safe_paths import safe_download_path
 
@@ -556,6 +557,8 @@ class GEODownloadManager:
         except Exception as e:
             logger.warning(f"Failed to download {url}: {e}")
             return False
+        finally:
+            download_activity.clear()
 
     def _download_http(
         self,
@@ -600,19 +603,24 @@ class GEODownloadManager:
                 if validator is None and have:
                     have = 0  # no way to tell the file is unchanged
                 resumed = resumed or have > 0
-                started, logged = time.monotonic(), time.monotonic()
+                started, logged, shown = time.monotonic(), time.monotonic(), 0.0
                 with open(part, "ab" if have else "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                         now = time.monotonic()
+                        done = f.tell()
+                        rate = (done - have) / max(now - started, 1e-6)
+                        if now - shown >= 1:
+                            shown = now
+                            download_activity.report(local_path.name, done, total, rate)
                         if now - logged >= _PROGRESS_LOG_INTERVAL_S:
-                            logged, done = now, f.tell()
+                            logged = now
                             logger.info(
                                 "GEO download %s: %.1f of %.1f MB at %.0f KB/s",
                                 local_path.name,
                                 done / 1e6,
                                 total / 1e6,
-                                (done - have) / 1e3 / max(now - started, 1e-6),
+                                rate / 1e3,
                             )
                 if total and part.stat().st_size < total:
                     raise requests.exceptions.ChunkedEncodingError("short body")

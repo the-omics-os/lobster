@@ -1075,7 +1075,7 @@ def test_running_status_shows_the_file_download_in_progress(engine, tmp_path, da
     run_id = call(server, "lobster_run", run_args(data, tmp_path / "out"))["run_id"]
     assert hold.entered.wait(10)
     assert "download" not in call(server, "lobster_status", {"run_id": run_id})
-    download_activity.report("GSE1_matrix.mtx.gz", 12_300_000, 58_700_000, 8.0)
+    download_activity.report("GSE1_matrix.mtx.gz", 12_300_000, 58_700_000, 8000.0)
     try:
         live = call(server, "lobster_status", {"run_id": run_id})
         assert live["download"] == {
