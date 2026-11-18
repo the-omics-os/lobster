@@ -103,9 +103,6 @@ class MassIVEQueuePreparer(IQueuePreparer):
                 "ftp_base": url_data.ftp_base,
             },
             execution_params={
-                "timeout": 3600,
-                "max_retries": 3,
                 "verify_checksum": True,
-                "resume_enabled": False,
             },
         )

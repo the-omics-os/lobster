@@ -112,18 +112,6 @@ def _create_recommended_strategy(
         concatenation_strategy = "auto"
         use_intersecting_genes_only = None
 
-    # Execution parameters scaled by file count
-    file_count = url_data.file_count
-    if file_count > 100:
-        timeout = 7200
-        max_retries = 5
-    elif file_count > 20:
-        timeout = 3600
-        max_retries = 3
-    else:
-        timeout = 1800
-        max_retries = 3
-
     return StrategyConfig(
         strategy_name=strategy_name,
         concatenation_strategy=concatenation_strategy,
@@ -131,10 +119,7 @@ def _create_recommended_strategy(
         rationale=rationale,
         strategy_params={"use_intersecting_genes_only": use_intersecting_genes_only},
         execution_params={
-            "timeout": timeout,
-            "max_retries": max_retries,
             "verify_checksum": True,
-            "resume_enabled": False,
         },
     )
 
@@ -208,10 +193,7 @@ def _create_fallback_strategy(
         rationale=rationale,
         strategy_params={"use_intersecting_genes_only": None},
         execution_params={
-            "timeout": 3600,
-            "max_retries": 3,
             "verify_checksum": True,
-            "resume_enabled": False,
         },
     )
 

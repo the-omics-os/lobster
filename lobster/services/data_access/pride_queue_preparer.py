@@ -123,18 +123,6 @@ class PRIDEQueuePreparer(IQueuePreparer):
             confidence = 0.40
             rationale = "No downloadable files found, using auto-detection"
 
-        # Estimate timeout based on file count and size
-        total_files = url_data.file_count
-        if total_files > 50:
-            timeout = 7200
-            max_retries = 5
-        elif total_files > 10:
-            timeout = 3600
-            max_retries = 3
-        else:
-            timeout = 1800
-            max_retries = 3
-
         return StrategyConfig(
             strategy_name=strategy_name,
             concatenation_strategy="auto",
@@ -144,9 +132,6 @@ class PRIDEQueuePreparer(IQueuePreparer):
                 "file_type_priority": strategy_name.replace("_FIRST", "").lower(),
             },
             execution_params={
-                "timeout": timeout,
-                "max_retries": max_retries,
                 "verify_checksum": True,
-                "resume_enabled": False,
             },
         )

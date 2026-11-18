@@ -376,18 +376,6 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
                 "MAF_FIRST strategy for retry."
             )
 
-        # Estimate timeout based on total file count and size
-        total_files = url_data.file_count
-        if total_files > 100:
-            timeout = 7200  # 2 hours
-            max_retries = 5
-        elif total_files > 20:
-            timeout = 3600  # 1 hour
-            max_retries = 3
-        else:
-            timeout = 1800  # 30 minutes
-            max_retries = 3
-
         return StrategyConfig(
             strategy_name=strategy_name,
             concatenation_strategy="auto",
@@ -398,10 +386,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
                 "include_metadata": True,
             },
             execution_params={
-                "timeout": timeout,
-                "max_retries": max_retries,
                 "verify_checksum": False,  # MetaboLights does not always provide checksums
-                "resume_enabled": False,
             },
         )
 

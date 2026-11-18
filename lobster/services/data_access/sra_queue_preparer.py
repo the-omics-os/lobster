@@ -100,17 +100,6 @@ class SRAQueuePreparer(IQueuePreparer):
                 f"(layout={layout}, platform={platform})"
             )
 
-        # Scale timeout by run count
-        if run_count > 50:
-            timeout = 7200
-            max_retries = 5
-        elif run_count > 10:
-            timeout = 3600
-            max_retries = 3
-        else:
-            timeout = 1800
-            max_retries = 3
-
         return StrategyConfig(
             strategy_name="FASTQ_FIRST",
             concatenation_strategy="auto",
@@ -123,9 +112,6 @@ class SRAQueuePreparer(IQueuePreparer):
                 "mirror": url_data.mirror or "ena",
             },
             execution_params={
-                "timeout": timeout,
-                "max_retries": max_retries,
                 "verify_checksum": True,
-                "resume_enabled": False,
             },
         )
