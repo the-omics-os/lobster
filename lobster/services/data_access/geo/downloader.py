@@ -649,6 +649,7 @@ class GEODownloadManager:
                 logger.warning(f"Download of {url} interrupted ({e}); resuming")
         else:
             logger.warning(f"Failed to download HTTP {url}: no progress")
+            part.unlink(missing_ok=True)
             return False
 
         part.replace(local_path)
