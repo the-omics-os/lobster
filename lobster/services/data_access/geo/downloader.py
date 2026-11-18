@@ -718,20 +718,37 @@ class GEODownloadManager:
             # Download with progress tracking
             with Progress(*progress_columns, console=self.console) as progress:
                 task_id = progress.add_task(description, total=file_size)
+                have = local_path.stat().st_size if local_path.exists() else 0
+                started, shown = time.monotonic(), 0.0
 
-                with open(local_path, "wb") as f:
-                    downloaded = 0
+                with open(local_path, "ab" if have else "wb") as f:
+                    downloaded = have
 
                     def callback(data):
-                        nonlocal downloaded
+                        nonlocal downloaded, shown
+                        if download_activity.stopped():
+                            raise GEODownloadError("cancelled")
                         f.write(data)
                         downloaded += len(data)
                         progress.update(task_id, completed=downloaded)
+                        now = time.monotonic()
+                        if now - shown >= 1:
+                            shown = now
+                            rate = (downloaded - have) / max(now - started, 1e-6)
+                            download_activity.report(
+                                local_path.name.removesuffix(".part"),
+                                downloaded,
+                                file_size,
+                                rate,
+                            )
 
                     # Set binary mode and download with specified chunk size
                     ftp.voidcmd("TYPE I")  # Set binary mode
                     ftp.retrbinary(
-                        f"RETR {remote_path}", callback, blocksize=chunk_size
+                        f"RETR {remote_path}",
+                        callback,
+                        blocksize=chunk_size,
+                        rest=have or None,  # continue a partial file
                     )
 
             return True
@@ -769,8 +786,17 @@ class GEODownloadManager:
         username = parsed_url.username or "anonymous"
         password = parsed_url.password or "anonymous@"
         filepath = parsed_url.path
+        # Attempts that gained bytes do not count: a slow line that drops the connection
+        # is resumed from the partial file; a server that refuses REST starts again.
+        part = local_path.with_name(local_path.name + ".part")
+        part.unlink(missing_ok=True)
+        attempt = 0
 
-        for attempt in range(1, max_retries + 1):
+        while attempt < max_retries:
+            attempt += 1
+            if download_activity.stopped():
+                return False
+            have = part.stat().st_size if part.exists() else 0
             try:
                 # Exponential backoff with jitter: 2^attempt ± 20% seconds
                 # Jitter prevents synchronized retry storms (thundering herd problem)
@@ -801,7 +827,7 @@ class GEODownloadManager:
                     success = self._chunked_ftp_download(
                         ftp,
                         filepath,
-                        local_path,
+                        part,
                         file_size,
                         description,
                         chunk_size=8192,
@@ -811,9 +837,12 @@ class GEODownloadManager:
                         logger.warning(
                             f"Chunked download failed on attempt {attempt}/{max_retries}"
                         )
-                        if local_path.exists():
-                            local_path.unlink()
+                        if part.exists() and part.stat().st_size > have:
+                            attempt = 0
+                        else:
+                            part.unlink(missing_ok=True)
                         continue
+                    part.replace(local_path)
 
                     # Verify file size matches expected size
                     # CRITICAL: Detects truncated files from FTP throttling
