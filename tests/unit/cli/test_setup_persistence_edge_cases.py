@@ -297,10 +297,13 @@ def test_uv_tool_deferred_command_preserves_existing_extras_and_with_packages(
     init_commands._print_deferred_agent_install(["data_expert_agent"])
     command = printed(capsys).split("Install later: ", 1)[1].strip()
     argv = shlex.split(command)
-    assert "lobster-ai[anthropic,full]" in argv
+    release = uv_tool_env.lobster_release()
+    major, minor = release[:2]
+    assert f"lobster-ai[anthropic,full]>={'.'.join(map(str, release))}" in argv
     assert "--reinstall" in argv
     assert "lobster-ml" in argv
-    assert "lobster-research" in argv
+    # Floored at Lobster's own minor, as init's own install line is.
+    assert f"lobster-research>={major}.{minor}.0" in argv
 
 
 @pytest.mark.parametrize("override", [None, "omics-os"])
