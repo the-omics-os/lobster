@@ -1,9 +1,9 @@
 """``lobster lamin``: the optional LaminDB catalog of a workspace.
 
 Registration is light: LaminDB is imported only inside a command, and only when
-that command has to open the workspace catalog. A named instance is never
-opened from here, because connecting to one registered on lamin.ai contacts
-Lamin's servers.
+that command has to open a catalog. A named instance is opened only when the
+workspace is set to use one (`lamin use`), the same way recording opens it, so
+the same Lamin server contact applies; remote storage is refused before connecting.
 """
 
 from __future__ import annotations
@@ -215,6 +215,13 @@ def _size(count: int) -> str:
     return _format_size(count)
 
 
+def _instance(workspace: Path) -> Optional[str]:
+    """The named instance this workspace records to, if it is set to use one."""
+    from lobster.core.catalog.factory import resolve_catalog_config
+
+    return resolve_catalog_config(workspace).instance
+
+
 def overview(workspace: Path) -> Dict[str, Any]:
     """What ``lobster lamin status`` reports, as plain data."""
     from lobster.core.catalog.factory import resolve_catalog_config
@@ -239,12 +246,12 @@ def overview(workspace: Path) -> Dict[str, Any]:
         "contents": None,
         "problem": None,
     }
-    if info["slug"]:
+    if info["slug"] and not config.instance:
         info["versions"] = None  # not known until counted
-    if info["slug"] and info["engine_installed"]:
+    if (info["slug"] or config.instance) and info["engine_installed"]:
         engine = None
         try:
-            engine = _open(workspace)
+            engine = _open(workspace, instance=config.instance)
             info["contents"] = engine.overview()
             info["location"] = str(engine.status().location)
         except Exception as exc:  # status never fails on a damaged catalog
@@ -322,15 +329,10 @@ def status_cmd(
         typer.echo(
             h("LaminDB is not installed. Install the 'lamin' extra of lobster-ai.")
         )
-    if info["slug"] is None:
-        if info["mode"] != "instance":
-            typer.echo(h("This workspace has no catalog yet."))
+    if info["slug"] is None and info["mode"] != "instance":
+        typer.echo(h("This workspace has no catalog yet."))
         return
-    if info["mode"] == "instance":
-        typer.echo(
-            h("Workspace catalog (not in use): {slug}").format(slug=info["slug"])
-        )
-    else:
+    if info["mode"] != "instance":
         typer.echo(h("Instance: {slug}").format(slug=info["slug"]))
     if info["versions"] is None:
         typer.echo(h("Earlier versions: size unknown."))
@@ -388,7 +390,7 @@ def ls_cmd(
         typer.echo(h("Choose --runs or --artifacts, not both."), err=True)
         raise typer.Exit(2)
     ws = _workspace(workspace)
-    if _slug(ws) is None:
+    if _slug(ws) is None and _instance(ws) is None:
         typer.echo(h("This workspace has no catalog yet."), err=True)
         raise typer.Exit(1)
     if not _engine_installed():
@@ -398,7 +400,7 @@ def ls_cmd(
         )
         raise typer.Exit(1)
     try:
-        engine = _open(ws)
+        engine = _open(ws, instance=_instance(ws))
         rows = engine.list_runs(limit) if runs else engine.list_artifacts(limit)
     except Exception as exc:
         typer.echo(
@@ -460,7 +462,7 @@ def prune_cmd(
 ):
     """Remove the kept copies of earlier versions; the records stay."""
     ws = _workspace(workspace)
-    if _slug(ws) is None:
+    if _slug(ws) is None and _instance(ws) is None:
         typer.echo(h("This workspace has no catalog yet."), err=True)
         raise typer.Exit(1)
     if not _engine_installed():
@@ -475,7 +477,7 @@ def prune_cmd(
         raise typer.Exit(1)
 
     try:
-        engine = _open(ws)
+        engine = _open(ws, instance=_instance(ws))
         with contextlib.redirect_stdout(sys.stderr):
             versions = engine.kept_versions()
     except Exception as exc:

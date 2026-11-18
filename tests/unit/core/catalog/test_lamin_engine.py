@@ -3339,6 +3339,16 @@ def test_ls_and_status_follow_lamin_use_and_clear(tmp_path):
         emit(runs=[r["name"] for r in json.loads(run("ls", "--runs", "--json"))],
              status=json.loads(run("status", "--json")), text=run("status"))
     """
+    pruned = _run(
+        "from typer.testing import CliRunner\n"
+        "from lobster.cli_internal.commands.light.lamin_commands import lamin_app\n"
+        "r = CliRunner().invoke(lamin_app, ['prune', '--dry-run', '--json', '-w', "
+        "os.environ['WS']])\nemit(code=r.exit_code, out=r.stdout)",
+        tmp_path,
+        env_extra=env,
+        drop_enable=True,
+    )
+    assert pruned["code"] == 0 and '"files": 0' in pruned["out"]
     used = _run(look, tmp_path, env_extra=env, drop_enable=True)
     assert used["runs"] == ["session_instance"]
     assert used["status"]["contents"]["last_run"]["name"] == "session_instance"
@@ -3355,3 +3365,27 @@ def test_ls_and_status_follow_lamin_use_and_clear(tmp_path):
     )
     cleared = _run(look, tmp_path, env_extra=env, drop_enable=True)
     assert cleared["runs"] == ["session_workspace"]
+
+
+def test_an_instance_not_set_up_here_is_refused_by_ls_status_and_prune(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    code = """
+        from typer.testing import CliRunner
+        from lobster.cli_internal.commands.light.lamin_commands import lamin_app
+        cli = CliRunner()
+        out = {}
+        for name in ("ls", "status", "prune"):
+            result = cli.invoke(lamin_app, [name, "-w", os.environ["WS"]])
+            out[name] = [result.exit_code, result.output + (result.stderr or "")]
+        emit(out=out)
+    """
+    r = _run(
+        code,
+        tmp_path,
+        env_extra={"WS": str(ws), "LOBSTER_LAMIN_INSTANCE": "nobody/ghost"},
+        drop_enable=True,
+    )
+    for name, (exit_code, text) in r["out"].items():
+        assert exit_code == 1, (name, text)
+        assert "not set up on this machine" in text, (name, text)

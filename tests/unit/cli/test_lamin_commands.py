@@ -221,7 +221,9 @@ def _engine_with_runs(ws, monkeypatch, rows):
         def list_runs(self, limit):
             return rows[:limit]
 
-    monkeypatch.setattr(lamin_commands, "_open", lambda workspace: Engine())
+    monkeypatch.setattr(
+        lamin_commands, "_open", lambda workspace, instance=None: Engine()
+    )
 
 
 RUN_ROWS = [
@@ -359,7 +361,9 @@ def _prune_engine(ws, monkeypatch, **kwargs):
     (ws / ".lamindb" / "lobster.json").write_text('{"slug": "anonymous/lobster-ws-1"}')
     monkeypatch.setattr(lamin_commands, "_engine_installed", lambda: True)
     engine = PruneEngine(**kwargs)
-    monkeypatch.setattr(lamin_commands, "_open", lambda workspace: engine)
+    monkeypatch.setattr(
+        lamin_commands, "_open", lambda workspace, instance=None: engine
+    )
     return engine
 
 
@@ -562,14 +566,15 @@ def test_a_damaged_catalog_fails_status_in_text_and_json(ws, monkeypatch):
     assert "settings missing" in json.loads(as_json.output)["problem"]
 
 
-def test_status_in_instance_mode_labels_the_workspace_catalog(ws, monkeypatch):
+def test_status_in_instance_mode_does_not_report_the_workspace_catalog(ws, monkeypatch):
     (ws / ".lamindb").mkdir()
     (ws / ".lamindb" / "lobster.json").write_text('{"slug": "anonymous/lobster-ws-1"}')
     monkeypatch.setattr(lamin_commands, "_engine_installed", lambda: False)
     _invoke("use", "lab/shared", "-w", str(ws))
     result = _invoke("status", "-w", str(ws))
     assert "Records go to the LaminDB instance lab/shared." in result.output
-    assert "Workspace catalog (not in use): anonymous/lobster-ws-1" in result.output
+    assert "Workspace catalog" not in result.output
+    assert "anonymous/lobster-ws-1" not in result.output
 
 
 def test_lamin_is_a_top_level_command():
