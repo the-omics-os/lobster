@@ -54,8 +54,13 @@ class _Server:
                     )
                 self.end_headers()
                 cut = step.get("cut")
-                self.wfile.write(send if cut is None else send[:cut])
-                self.wfile.flush()
+                data = send if cut is None else send[:cut]
+                pace = step.get("pace")  # a trickle: 1 KB, a pause, 1 KB ...
+                for i in range(0, len(data), 1024 if pace else max(len(data), 1)):
+                    self.wfile.write(data[i : i + (1024 if pace else len(data))])
+                    self.wfile.flush()
+                    if pace:
+                        time.sleep(pace)
                 if step.get("stall"):
                     time.sleep(step["stall"])
                 if cut is not None or step.get("stall"):
@@ -275,3 +280,31 @@ def test_a_cancel_ends_an_ftp_transfer_without_retries(ftp, manager, tmp_path):
         assert len(ftp.retrs) == 1  # no second attempt
     finally:
         download_activity.set_stop(None)
+
+
+def test_the_slow_dropping_stalling_changing_ncbi_pattern_ends_with_the_whole_file(
+    serve, manager, tmp_path
+):
+    # What a slow NCBI line did to a real run: a trickle that drops mid-body again and
+    # again, one stall, and the file replaced on the server part-way through.
+    newer = gzip.compress(random.Random(2).randbytes(300_000))
+    v2 = {"pace": 0.005, "etag": '"v2"', "body": newer}
+    server = serve(
+        [
+            {"pace": 0.005, "cut": 30_000},
+            {"pace": 0.005, "cut": 20_000, "stall": 3},
+            {**v2, "cut": 15_000},
+            {**v2, "cut": 25_000},
+            v2,
+        ]
+    )
+    target, seen = tmp_path / "f.gz", []
+    worker = threading.Thread(target=manager.download_file, args=(server.url, target))
+    worker.start()
+    while worker.is_alive():
+        seen.append(download_activity.snapshot())
+        time.sleep(0.05)
+    assert target.read_bytes() == newer  # the file as it is now, never a splice
+    assert not list(tmp_path.glob("*.part"))
+    assert any(s and s["file"] == "f.gz" for s in seen)  # a host could see it run
+    assert len(server.requests) >= 5
