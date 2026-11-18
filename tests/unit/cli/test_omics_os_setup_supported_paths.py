@@ -7,6 +7,7 @@ access, installed-wheel compatibility, or an interactive terminal acceptance run
 import inspect
 import json
 import re
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -673,7 +674,11 @@ def test_skip_extras_records_selected_agents_without_install_and_shows_command(
         in (tmp_path / ".lobster_workspace" / "config.toml").read_text()
     )
     output = capsys.readouterr().out
-    assert "Install later: uv pip install lobster-research" in output
+    # One unwrapped line, aimed at the running Python.
+    assert (
+        f"Install later: uv pip install --python {sys.executable} lobster-research\n"
+        in output
+    )
 
 
 @pytest.mark.parametrize("configuration", ["global", "env"])
@@ -728,4 +733,7 @@ def test_classic_skip_extras_keeps_agent_selection_and_prints_later_command(
     )
     assert agents == selected
     assert preset is None
-    assert "Install later: uv pip install lobster-research" in capsys.readouterr().out
+    assert (
+        f"Install later: uv pip install --python {sys.executable} lobster-research\n"
+        in capsys.readouterr().out
+    )

@@ -5,6 +5,9 @@ pay for the init wizard. Descriptions are plain English; the places that show th
 translate them with ``h()``.
 """
 
+# What every init UI ticks by default; the Go wizard marks the same two.
+DEFAULT_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
+
 # (package_name, description, agents_provided, published_on_pypi, experimental)
 AVAILABLE_AGENT_PACKAGES = [
     (

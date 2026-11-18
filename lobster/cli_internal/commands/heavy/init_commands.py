@@ -21,6 +21,7 @@ from rich.prompt import Confirm, Prompt
 from lobster.cli_internal.agent_packages import (
     AVAILABLE_AGENT_PACKAGES as _CATALOG,
 )
+from lobster.cli_internal.agent_packages import DEFAULT_AGENT_PACKAGES
 from lobster.config import provider_setup
 from lobster.i18n import h
 from lobster.ui import LobsterTheme
@@ -82,8 +83,6 @@ AVAILABLE_AGENT_PACKAGES = [
     (name, h(description), agents, published, experimental)
     for name, description, agents, published, experimental in _CATALOG
 ]
-
-_DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
 
 
 def _get_init_package_agents_map() -> dict[str, list[str]]:
@@ -225,7 +224,12 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     console.print(h("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]"))
     console.print(h("[dim]Already installed packages will be skipped[/dim]"))
 
-    selection = Prompt.ask(h("[bold white]Selection[/bold white]"), default="all")
+    default = ",".join(
+        str(i)
+        for i, (name, *_) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
+        if name in DEFAULT_AGENT_PACKAGES
+    )
+    selection = Prompt.ask(h("[bold white]Selection[/bold white]"), default=default)
 
     # Parse selection
     selected_indices = set()
@@ -714,7 +718,10 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
     console.print(
         h("Selected agents recorded; --skip-extras prevented package installation.")
     )
-    console.print(h("Install later: ") + shlex.join(command), markup=False)
+    # soft_wrap: a wrapped command breaks when pasted.
+    console.print(
+        h("Install later: ") + shlex.join(command), markup=False, soft_wrap=True
+    )
 
 
 def _perform_agent_selection_interactive(
@@ -1163,9 +1170,11 @@ def _uv_tool_env_handoff(
     )
     console.print(f"  {cmd_str}\n", markup=False)
 
+    # The project first: the install ends the process, and Ctrl-C at the
+    # prompt must not leave a configured folder without one.
+    if _finish_before_tool_install is not None:
+        _finish_before_tool_install()
     if not confirm or Confirm.ask(h("  Run this now?"), default=True):
-        if _finish_before_tool_install is not None:
-            _finish_before_tool_install()
         console.print(h("[dim]  Running uv tool install...[/dim]"))
         if console.file:
             console.file.flush()
@@ -2281,8 +2290,12 @@ def _creates_project(func):
             except OSError:
                 pass
 
+        finished = []
+
         def finish():
-            if not kwargs.get("global_config"):
+            # Runs once: before a uv tool install, or when init ends.
+            if not kwargs.get("global_config") and not finished:
+                finished.append(True)
                 _ensure_project(
                     kwargs.get("folder"), kwargs.get("project_name"), env_before
                 )
@@ -2941,12 +2954,16 @@ def init_impl(
             )
 
             # Check and install missing packages without prompting.
-            installed_agents = _check_and_prompt_install_packages(
-                selected_agents,
-                workspace_path,
-                prompt_for_install=False,
-                auto_install_missing=(not skip_extras and not _in_uv_tool_ni),
-            )
+            if skip_extras:
+                _print_deferred_agent_install(selected_agents)
+                installed_agents = selected_agents
+            else:
+                installed_agents = _check_and_prompt_install_packages(
+                    selected_agents,
+                    workspace_path,
+                    prompt_for_install=False,
+                    auto_install_missing=not _in_uv_tool_ni,
+                )
 
             if preset_name and set(installed_agents) != set(selected_agents):
                 preset_name = None

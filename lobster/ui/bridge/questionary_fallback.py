@@ -24,6 +24,7 @@ import logging
 import os
 from typing import Optional
 
+from lobster.cli_internal.agent_packages import DEFAULT_AGENT_PACKAGES
 from lobster.i18n import h
 from lobster.ui.wizard.manifest import WizardManifest
 
@@ -278,7 +279,7 @@ def run_questionary_init(
                 f"({len(pkg.agents)} agent{'s' if len(pkg.agents) != 1 else ''})"
             )
             label = f"{pkg.package_name}{exp_tag:<26} {pkg.description} {agents_str}"
-            checked = pkg.published and not pkg.experimental
+            checked = pkg.package_name in DEFAULT_AGENT_PACKAGES
             agent_choices.append(
                 questionary.Choice(label, value=pkg.package_name, checked=checked)
             )
