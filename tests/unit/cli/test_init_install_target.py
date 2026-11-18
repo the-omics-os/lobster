@@ -31,11 +31,11 @@ def test_install_targets_the_running_interpreter(monkeypatch):
 
     monkeypatch.setattr(agent_commands.subprocess, "run", _run)
 
-    ok, _ = agent_commands._uv_pip_install("lobster-research")
+    ok, _ = agent_commands._uv_pip_install("chromadb>=1.0.0")
 
     assert ok
     assert calls == [
-        ["/bin/uv", "pip", "install", "--python", sys.executable, "lobster-research"]
+        ["/bin/uv", "pip", "install", "--python", sys.executable, "chromadb>=1.0.0"]
     ]
 
 

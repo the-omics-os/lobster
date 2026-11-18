@@ -157,6 +157,22 @@ def _find_local_package(package: str) -> str | None:
     return None
 
 
+def _pinned_to_lobster(package: str) -> str:
+    """Pin an official agent package to this Lobster's minor version (1.3.x).
+
+    Unpinned, a release candidate picked the previous minor from PyPI.
+    """
+    from packaging.version import Version
+
+    import lobster.version
+    from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
+
+    if package not in {entry[0] for entry in AVAILABLE_AGENT_PACKAGES}:
+        return package
+    release = Version(lobster.version.__version__).release
+    return f"{package}~={release[0]}.{release[1]}.0"
+
+
 def _uv_pip_install(package: str) -> tuple[bool, str]:
     """
     Install a package via uv pip install (or pip as fallback).
@@ -194,7 +210,7 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
     if local_path:
         install_args = ["-e", local_path]
     else:
-        install_args = [package]
+        install_args = [_pinned_to_lobster(package)]
 
     # Try uv first (as CLI tool), then fall back to pip. Both install into the
     # Python running Lobster, so no activated venv is needed.
