@@ -116,6 +116,49 @@ def test_a_server_that_ignores_range_restarts_the_file(serve, manager, tmp_path)
     assert target.read_bytes() == BODY  # not 1000 bytes + a whole second copy
 
 
+def _download_bounded(manager, url, target, seconds=10):
+    """Run the download; a loop that never ends is stopped and reported, not hung on."""
+    stop, result = threading.Event(), []
+    download_activity.set_stop(stop)
+    worker = threading.Thread(
+        target=lambda: result.append(manager.download_file(url, target)), daemon=True
+    )
+    worker.start()
+    worker.join(seconds)
+    looping = worker.is_alive()
+    stop.set()
+    worker.join(5)
+    download_activity.set_stop(None)
+    assert not looping, "the download never ended"
+    return result[0]
+
+
+def test_a_server_without_a_validator_is_refetched_whole_not_spliced(
+    serve, manager, tmp_path
+):
+    """No ETag and no Last-Modified: nothing proves the file is unchanged, so after a
+    drop the whole file is asked for again (no Range), never a tail written as the start.
+    """
+    body = random.Random(2).randbytes(200_000)
+    server = serve([{"cut": 40_000}, {}, {"cut": 0}], body=body, etag=None)
+    target = tmp_path / "f.bin"
+    assert _download_bounded(manager, server.url, target) is True
+    assert target.read_bytes() == body
+    assert [r[0] for r in server.requests] == [None, None]
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_a_drop_at_the_same_point_without_a_validator_gives_up(
+    serve, manager, tmp_path
+):
+    body = random.Random(3).randbytes(200_000)
+    server = serve([{"cut": 40_000}], body=body, etag=None)
+    target = tmp_path / "f.bin"
+    assert _download_bounded(manager, server.url, target) is False
+    assert not target.exists()
+    assert len(server.requests) <= 8  # bounded, not a retry storm
+
+
 def test_a_file_that_changed_between_requests_is_not_glued_together(
     serve, manager, tmp_path
 ):
