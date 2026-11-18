@@ -248,6 +248,7 @@ Lobster can record its work in a [LaminDB](https://lamin.ai) catalog inside your
 <!-- VERIFY: lobster init --lamin installs the [lamin] extra through uv tool install --with. Remove this comment before publication. -->
 ```bash
 lobster init ~/my-study --lamin         # installs the extra and switches the catalog on for that project
+cd ~/my-study                           # the lamin commands below act on the project you are in
 lobster lamin init                      # or switch it on later in an existing workspace
 lobster lamin status                    # where the catalog is and what it holds
 lobster lamin ls --runs                 # recorded sessions (add --json for data)
@@ -361,6 +362,7 @@ irm https://install.lobsterbio.com/windows | iex
 ```bash
 uv tool install --python 3.12 lobster-ai
 lobster init ~/my-study              # asks which analysis packages and providers to install
+cd ~/my-study                        # run Lobster from inside the project
 ```
 
 **Everything at once** (a larger install): `uv tool install --python 3.12 'lobster-ai[full]'` installs all bundled
@@ -380,6 +382,7 @@ reset to whatever the new command includes — list them again when upgrading.
 uv venv --python 3.12 .venv && source .venv/bin/activate
 uv pip install lobster-ai    # a uv venv has no pip; without uv: python3.12 -m venv .venv, activate, pip install lobster-ai
 lobster init ~/my-study      # a project folder, not your home folder
+cd ~/my-study                # run Lobster from inside the project
 ```
 Optional extra for the workspace catalog: `lobster-ai[lamin]` (see above).
 
