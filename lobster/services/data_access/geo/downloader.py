@@ -521,6 +521,8 @@ class GEODownloadManager:
             bool: True if download succeeded, False otherwise
         """
         try:
+            if download_activity.stopped():  # the run was cancelled: start nothing
+                return False
             logger.debug(f"Downloading from: {url}")
 
             # Parse the URL to determine protocol
@@ -542,6 +544,8 @@ class GEODownloadManager:
                 if success:
                     return True
 
+                if download_activity.stopped():
+                    return False
                 # HTTPS failed - fall back to FTP
                 logger.info(f"HTTPS download failed, falling back to FTP: {url}")
                 return self._download_ftp(url, local_path, description)
@@ -583,6 +587,8 @@ class GEODownloadManager:
         )  # a leftover from another run has no known validator
         idle, validator, failed, resumed = _idle_timeout_s(), None, 0, False
         while failed < _MAX_ATTEMPTS_WITHOUT_PROGRESS:
+            if download_activity.stopped():
+                return False  # the partial file stays for a retry in this session
             have = part.stat().st_size if part.exists() else 0
             headers = {"Range": f"bytes={have}-", "If-Range": validator} if have else {}
             try:
@@ -606,6 +612,8 @@ class GEODownloadManager:
                 started, logged, shown = time.monotonic(), time.monotonic(), 0.0
                 with open(part, "ab" if have else "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
+                        if download_activity.stopped():
+                            return False
                         f.write(chunk)
                         now = time.monotonic()
                         done = f.tell()

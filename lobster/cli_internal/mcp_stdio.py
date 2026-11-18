@@ -1027,11 +1027,15 @@ def _stop_on_cancel(client: Any, cancel_event: threading.Event) -> Iterator[_Sto
         on_chat_model_start = _check
         on_llm_start = _check
 
+    from lobster.utils import download_activity  # heavy package: not at start
+
     handler = StopOnCancel()
     callbacks.append(handler)
+    download_activity.set_stop(cancel_event)  # a file download ends at once
     try:
         yield stop
     finally:
+        download_activity.set_stop(None)
         callbacks.remove(handler)
 
 

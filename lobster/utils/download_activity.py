@@ -1,7 +1,9 @@
-"""The file download in progress, for a host that polls ``lobster_status``.
+"""The file download in progress, for a host that polls ``lobster_status``, and the
+stop signal of the run that started it.
 
-One run is active at a time, so one slot is enough. The downloader reports into it;
-the MCP status reads it.
+One run is active at a time, so one slot of each is enough. The downloader reports
+progress into it and checks ``stopped()``; the MCP server reads the progress and sets
+the stop.
 """
 
 import threading
@@ -9,6 +11,7 @@ from typing import Any, Dict, Optional
 
 _lock = threading.Lock()
 _current: Optional[Dict[str, Any]] = None
+_stop: Optional[threading.Event] = None
 
 
 def report(file: str, done: float, total: float, bytes_per_s: float) -> None:
@@ -35,3 +38,13 @@ def clear() -> None:
 def snapshot() -> Optional[Dict[str, Any]]:
     with _lock:
         return dict(_current) if _current else None
+
+
+def set_stop(event: Optional[threading.Event]) -> None:
+    global _stop
+    _stop = event
+
+
+def stopped() -> bool:
+    """True once the run that is downloading was cancelled."""
+    return _stop is not None and _stop.is_set()
