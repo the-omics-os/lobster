@@ -1148,8 +1148,11 @@ def _uv_tool_env_handoff(
 
     from lobster.core.uv_tool_env import detect_uv_tool_env, run_tool_install
 
+    from lobster.i18n import t
+
     info = detect_uv_tool_env()
     if not info:
+        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
         return  # Not in a tool env — nothing to do
 
     cmd = _build_uv_tool_init_command(
@@ -1165,6 +1168,7 @@ def _uv_tool_env_handoff(
     existing_cmd = _build_uv_tool_init_command(None, None)
     existing_cmd.insert(3, "--reinstall")
     if cmd == existing_cmd:
+        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
         return
 
     console.print()
@@ -1186,8 +1190,9 @@ def _uv_tool_env_handoff(
         run_tool_install(cmd)
     else:
         console.print(
-            h("  Run manually when ready:\n  {cmd_str}\n").format(cmd_str=cmd_str),
+            "  " + t("cli.init.next_install", command=cmd_str),
             markup=False,
+            soft_wrap=True,
         )
 
 
@@ -1722,11 +1727,13 @@ def _print_init_summary(
     result: Dict[str, Any],
     workspace_path: Path,
     extra_lines: Optional[List[str]] = None,
+    next_step: bool = True,
 ) -> None:
     """Print the localized final summary of a TUI/questionary init run.
 
     ``extra_lines`` are already-localized plain-text lines printed after the
-    workspace line and before the closing "next step" line.
+    workspace line and before the closing "next step" line. ``next_step=False``
+    leaves that line to the uv tool install that follows.
     """
     from lobster.i18n import t
 
@@ -1743,8 +1750,15 @@ def _print_init_summary(
         console.print(f"  {esc(line)}")
     for line in failed:
         console.print(f"  [yellow]{esc(line)}[/yellow]")
-    if not failed:
+    if not failed and next_step:
         console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+
+
+def _tool_install_follows(skip_extras: bool) -> bool:
+    """True when init ends with the uv tool install, which owns the next step."""
+    from lobster.core.uv_tool_env import is_uv_tool_env
+
+    return is_uv_tool_env() and not skip_extras
 
 
 def _failed_install_lines() -> List[str]:
@@ -3453,7 +3467,12 @@ def init_impl(
             summary_extras = [t("cli.init.done_env", path=str(env_path))]
             if backup_path:
                 summary_extras.append(t("cli.init.done_backup", path=str(backup_path)))
-            _print_init_summary(config_dict, workspace_path, summary_extras)
+            _print_init_summary(
+                config_dict,
+                workspace_path,
+                summary_extras,
+                next_step=not _tool_install_follows(skip_extras),
+            )
 
         _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
         if cloud_selected:
@@ -3554,16 +3573,18 @@ def init_impl(
                             skip_extras=skip_extras,
                         )
 
-                        _print_init_summary(_tui_result, _ws_path)
+                        _print_init_summary(
+                            _tui_result,
+                            _ws_path,
+                            next_step=not _tool_install_follows(skip_extras),
+                        )
                         if lamin_skipped:
                             console.print(
                                 h(
                                     "[dim]This lobster-tui did not ask about the LaminDB catalog; its setting is unchanged. Set it with `lobster init --lamin` or `--no-lamin`.[/dim]"
                                 )
                             )
-                        from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
-
-                        if _is_uv() and not skip_extras:
+                        if _tool_install_follows(skip_extras):
                             _uv_tool_env_handoff(
                                 provider_name=(_tui_result.get("provider") or "")
                                 .strip()
@@ -3641,10 +3662,12 @@ def init_impl(
                     skip_extras=skip_extras,
                 )
 
-                _print_init_summary(_q_result, _ws_path)
-                from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
-
-                if _is_uv() and not skip_extras:
+                _print_init_summary(
+                    _q_result,
+                    _ws_path,
+                    next_step=not _tool_install_follows(skip_extras),
+                )
+                if _tool_install_follows(skip_extras):
                     _uv_tool_env_handoff(
                         provider_name=(_q_result.get("provider") or "").strip().lower()
                         or None,
@@ -4281,7 +4304,7 @@ def init_impl(
             success_message += "\n".join(
                 f"[yellow]{_markup_escape(line)}[/yellow]" for line in failed_installs
             )
-        else:
+        elif not (_in_uv_tool and not skip_extras):  # else the install says it
             success_message += h(
                 "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
             ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
