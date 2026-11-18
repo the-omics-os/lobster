@@ -639,11 +639,8 @@ def _build_uv_tool_init_command(
     import importlib.util
 
     from lobster.core.component_registry import AGENT_TO_PACKAGE
-    from lobster.core.uv_tool_env import (
-        build_tool_install_command,
-        detect_uv_tool_env,
-        lobster_release,
-    )
+    from lobster.cli_internal.commands.light.agent_commands import _pinned_to_lobster
+    from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
 
     info = detect_uv_tool_env()
 
@@ -678,8 +675,6 @@ def _build_uv_tool_init_command(
             pkg.lower().replace("-", "_") for pkg in info.installed_packages
         }
 
-    # A floor, not ~=: the receipt keeps it, and ~= would stop `uv tool upgrade`.
-    major, minor = lobster_release()[:2]
     with_packages: list[str] = []
     for agent in _normalize_selected_agents(selected_agents or []):
         package_name = AGENT_TO_PACKAGE.get(agent)
@@ -687,7 +682,7 @@ def _build_uv_tool_init_command(
             continue
         if package_name.lower().replace("-", "_") in installed_packages:
             continue
-        requirement = f"{package_name}>={major}.{minor}.0"
+        requirement = _pinned_to_lobster(package_name, ">=")
         if requirement not in with_packages:
             with_packages.append(requirement)
 
@@ -715,7 +710,7 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
         command = build_tool_install_command(with_packages=packages)
         command.insert(3, "--reinstall")
     else:
-        command = ["uv", "pip", "install", *packages]
+        command = ["uv", "pip", "install", "--python", sys.executable, *packages]
     console.print(
         h("Selected agents recorded; --skip-extras prevented package installation.")
     )
@@ -1136,12 +1131,10 @@ def _uv_tool_env_handoff(
         return  # No prompt, command construction, or package handoff under --skip-extras.
 
     import shlex
-    import subprocess as _sp  # nosec B404 # used only to re-run the installer with an argv list
 
     from rich.prompt import Confirm
 
-    from lobster.core.uv_tool_env import detect_uv_tool_env
-    from lobster.i18n import t
+    from lobster.core.uv_tool_env import detect_uv_tool_env, run_tool_install
 
     info = detect_uv_tool_env()
     if not info:
@@ -1172,48 +1165,9 @@ def _uv_tool_env_handoff(
 
     if not confirm or Confirm.ask(h("  Run this now?"), default=True):
         console.print(h("[dim]  Running uv tool install...[/dim]"))
-        # ── CRITICAL: venv-safe subprocess execution ──────────────────
-        # After `uv tool install` completes, the venv on disk is replaced
-        # while this process still has OLD modules loaded in memory.
-        # Rich lazy-loads _unicode_data modules on demand — any
-        # console.print() after the swap crashes with ModuleNotFoundError.
-        #
-        # Rules after subprocess.run():
-        #   1. NO Rich (console.print, Panel, Prompt, etc.)
-        #   2. Plain print() only, respecting NO_COLOR
-        #   3. os._exit() to skip Python teardown (atexit, __del__, etc.)
-        #      Safe here: no DB/network connections, config already saved.
-        # ──────────────────────────────────────────────────────────────
-        import os as _os
-
         if console.file:
             console.file.flush()
-
-        # Stream output so the user sees resolver/download progress
-        # instead of staring at a frozen terminal.
-        result = _sp.run(cmd)  # nosec B603 # argv shown and confirmed above; no shell
-
-        # === DANGER ZONE: venv on disk has been replaced ===
-        _use_color = _os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
-
-        if result.returncode == 0:
-            if _use_color:
-                print(
-                    "  \033[32m" + h("✓ Packages installed successfully.") + "\033[0m"
-                )
-            else:
-                print(h("  ✓ Packages installed successfully."))
-            print("  " + t("cli.init.next_chat"))
-            sys.stdout.flush()
-            _os._exit(0)
-        else:
-            if _use_color:
-                print("  \033[31m" + h("✗ Installation failed.") + "\033[0m")
-            else:
-                print(h("  ✗ Installation failed."))
-            print(h("  Run manually: {cmd_str}").format(cmd_str=cmd_str))
-            sys.stdout.flush()
-            _os._exit(result.returncode)
+        run_tool_install(cmd)
     else:
         console.print(
             h("  Run manually when ready:\n  {cmd_str}\n").format(cmd_str=cmd_str),

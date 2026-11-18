@@ -25,7 +25,7 @@ import logging
 import subprocess  # nosec B404 # runs the package installer with an argv list; no shell
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn, Optional
 
 import typer
 from rich import box
@@ -157,20 +157,48 @@ def _find_local_package(package: str) -> str | None:
     return None
 
 
-def _pinned_to_lobster(package: str) -> str:
+def _pinned_to_lobster(package: str, op: str = "~=") -> str:
     """Pin an official agent package to this Lobster's minor version (1.3.x).
 
-    Unpinned, a release candidate picked the previous minor from PyPI.
+    Unpinned, a release candidate picked the previous minor from PyPI. Under
+    uv tool use op=">=": the receipt keeps the pin, and ~= would stop
+    `uv tool upgrade`.
     """
-    from packaging.version import Version
-
-    import lobster.version
     from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
+    from lobster.core.uv_tool_env import lobster_release
 
     if package not in {entry[0] for entry in AVAILABLE_AGENT_PACKAGES}:
         return package
-    release = Version(lobster.version.__version__).release
-    return f"{package}~={release[0]}.{release[1]}.0"
+    major, minor = lobster_release()[:2]
+    return f"{package}{op}{major}.{minor}.0"
+
+
+def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
+    """Add a package to this uv tool's receipt, enable its agents, and exit.
+
+    The install replaces the tool's venv, so the agents are enabled first
+    (from the package catalog) and the process ends after the install.
+    """
+    import shlex
+
+    from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.core.uv_tool_env import build_tool_install_command, run_tool_install
+
+    agents = {
+        a for entry in AVAILABLE_AGENT_PACKAGES if entry[0] == package for a in entry[2]
+    }
+    if agents:
+        config = WorkspaceAgentConfig.load(workspace_path)
+        config.enabled_agents = sorted(set(config.enabled_agents) | agents)
+        config.save(workspace_path)
+
+    cmd = build_tool_install_command(with_packages=[_pinned_to_lobster(package, ">=")])
+    cmd.insert(3, "--reinstall")
+    console.print(f"  {shlex.join(cmd)}", markup=False)
+    if console.file:
+        console.file.flush()
+    run_tool_install(cmd)
 
 
 def _uv_pip_install(package: str) -> tuple[bool, str]:
@@ -252,7 +280,7 @@ def _uv_pip_uninstall(package: str) -> tuple[bool, str]:
     # Try uv first (as CLI tool), then fall back to pip
     uv_path = shutil.which("uv")
     if uv_path:
-        cmd = [uv_path, "pip", "uninstall", package, "-y"]
+        cmd = [uv_path, "pip", "uninstall", "--python", sys.executable, package, "-y"]
     else:
         # Fall back to pip
         cmd = [sys.executable, "-m", "pip", "uninstall", package, "-y"]
@@ -462,6 +490,11 @@ def agents_install(
     console.print(
         h("[cyan]Installing {package}...[/cyan]").format(package=package_name)
     )
+
+    from lobster.core.uv_tool_env import is_uv_tool_env
+
+    if is_uv_tool_env():
+        _install_into_uv_tool(package_name, workspace_path)
 
     # Get agents before install for comparison
     component_registry.reset()  # Force reload after install

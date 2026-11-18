@@ -13,6 +13,7 @@ Test coverage:
 4. Utility methods (get_info, reset)
 """
 
+import sys
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
@@ -675,4 +676,6 @@ class TestInstallCommandHints:
             "lobster-research",
             "--with",
             "lobster-transcriptomics",
+            "--python",
+            f"{sys.version_info[0]}.{sys.version_info[1]}",
         ]

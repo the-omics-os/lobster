@@ -9,6 +9,7 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
 
 @dataclass
@@ -183,4 +184,48 @@ def build_tool_install_command(
     for pkg in sorted(existing_with):
         cmd.extend(["--with", pkg])
 
+    # Stay on this Python: unpinned, uv picks its newest one, which Lobster may
+    # not support. A version, not sys.executable: --reinstall deletes this venv.
+    cmd.extend(["--python", f"{sys.version_info[0]}.{sys.version_info[1]}"])
     return cmd
+
+
+def run_tool_install(cmd: list[str]) -> NoReturn:
+    """Run a ``uv tool install`` that replaces this tool's venv, then exit.
+
+    After ``uv tool install`` completes, the venv on disk is replaced while
+    this process still has OLD modules loaded in memory. Rich lazy-loads
+    _unicode_data modules on demand, so any console.print() after the swap
+    crashes with ModuleNotFoundError. Rules after subprocess.run():
+
+    1. NO Rich (console.print, Panel, Prompt, etc.)
+    2. Plain print() only, respecting NO_COLOR
+    3. os._exit() to skip Python teardown (atexit, __del__, etc.)
+       Callers save their config before calling this.
+    """
+    import os
+    import shlex
+    import subprocess  # nosec B404 # re-runs the installer with an argv list
+
+    from lobster.i18n import h, t
+
+    # Translate everything before the swap.
+    ok = h("✓ Packages installed successfully.")
+    next_step = "  " + t("cli.init.next_chat")
+    failed = h("✗ Installation failed.")
+    manual = h("  Run manually: {cmd_str}").format(cmd_str=shlex.join(cmd))
+
+    # Stream output so the user sees resolver/download progress
+    # instead of staring at a frozen terminal.
+    result = subprocess.run(cmd)  # nosec B603 # argv shown before; no shell
+
+    # === DANGER ZONE: venv on disk has been replaced ===
+    color = os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
+    if result.returncode == 0:
+        print(f"  \033[32m{ok}\033[0m" if color else f"  {ok}")
+        print(next_step)
+    else:
+        print(f"  \033[31m{failed}\033[0m" if color else f"  {failed}")
+        print(manual)
+    sys.stdout.flush()
+    os._exit(result.returncode)

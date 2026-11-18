@@ -13,6 +13,7 @@ import pytest
 from lobster.cli_internal.commands.heavy import init_commands
 from lobster.core.uv_tool_env import build_tool_install_command
 
+PYTHON = ["--python", f"{sys.version_info[0]}.{sys.version_info[1]}"]
 WHEEL = "/opt/wheels/lobster_ai-1.3.0+c09f12bb5-py3-none-any.whl"
 
 
@@ -46,6 +47,7 @@ def test_a_wheel_install_stays_that_wheel_and_keeps_its_with_set(receipt):
         f"lobster-ai[bedrock,lamin] @ {Path(WHEEL).as_uri()}",
         "--with",
         "lobster-research>=1.3.0",
+        *PYTHON,
     ]
 
 
@@ -73,6 +75,7 @@ def test_new_agent_packages_get_a_floor_at_lobsters_minor(receipt, monkeypatch):
         "lobster-ai>=1.3.0",
         "--with",
         "lobster-transcriptomics>=1.3.0",
+        *PYTHON,
     ]
 
 
