@@ -19,6 +19,17 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# A plain lobster-ai install has no expert to hand work to.
+_NO_ANALYSIS_PACKAGES = (
+    "<No Analysis Packages>\n"
+    "No analysis packages are installed, so no analysis can run. If the user "
+    "asks for one, say so plainly and tell them to run `lobster init` to choose "
+    "packages, or `lobster agents install <package>` (for example "
+    "lobster-transcriptomics).\n"
+    "</No Analysis Packages>"
+)
+
+
 def create_supervisor_prompt(
     data_manager: DataManagerV2,
     config: Optional[SupervisorConfig] = None,
@@ -54,6 +65,8 @@ def create_supervisor_prompt(
         _build_response_behavior(config, interactive=interactive),
         _build_agent_result_memory(),
     ]
+    if not active_agents:
+        sections.insert(2, _NO_ANALYSIS_PACKAGES)
     # Drop any empty section (e.g. no supervisor-accessible agents installed).
     sections = [s for s in sections if s]
 
