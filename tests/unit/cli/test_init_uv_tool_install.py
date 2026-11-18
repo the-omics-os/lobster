@@ -260,7 +260,7 @@ def _init_kwargs(**overrides):
     return options
 
 
-def _run_interactive(monkeypatch, capsys, ui_mode):
+def _run_interactive(monkeypatch, capsys, ui_mode, **overrides):
     import typer
 
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
@@ -290,7 +290,7 @@ def _run_interactive(monkeypatch, capsys, ui_mode):
             lambda *a, **k: dict(RESULT),
         )
     try:
-        init_commands.init_impl(**_init_kwargs(ui_mode=ui_mode))
+        init_commands.init_impl(**_init_kwargs(ui_mode=ui_mode, **overrides))
     except typer.Exit as exc:
         assert not exc.exit_code
     except SystemExit as exc:  # the faked os._exit after a tool install
@@ -454,3 +454,58 @@ def test_from_another_folder_the_next_step_goes_there_first(
     assert result.exit_code == 0, result.output
     assert f"cd '{study}' && lobster chat" in result.output
     assert "Next: run lobster chat" not in result.output
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto", "classic"])
+def test_declining_from_another_folder_names_the_folder_after_the_install(
+    tool_env, monkeypatch, capsys, tmp_path, ui_mode
+):
+    study = tmp_path / "study"
+    out = _run_interactive(monkeypatch, capsys, ui_mode, folder=study)
+
+    assert tool_env.installs == []
+    before, after = out.split("Package installation needed")
+    assert "Next" not in before, before  # the next step belongs to the install
+    assert after.index("Next: install them") < after.index(
+        f"cd {study} && lobster chat"
+    )
+
+
+def test_the_classic_panel_from_another_folder_names_the_folder(
+    monkeypatch, capsys, tmp_path
+):
+    import typer
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(init_commands, "console", Console(width=2000))
+    monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
+    answers = iter(["1", "1", "omk_synthetic"])
+    monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
+    monkeypatch.setattr(
+        init_commands,
+        "_perform_agent_selection_interactive",
+        lambda *a, **k: ([], None),
+    )
+    study = tmp_path / "study"
+
+    try:
+        init_commands.init_impl(**_init_kwargs(ui_mode="classic", folder=study))
+    except typer.Exit as exc:
+        assert not exc.exit_code
+
+    out = capsys.readouterr().out
+    assert f"cd {study} && lobster chat" in out
+    assert "Next step:" not in out
+
+
+def test_on_windows_the_next_step_runs_in_powershell(monkeypatch, tmp_path):
+    # Windows PowerShell 5.1 rejects && as a statement separator.
+    monkeypatch.setattr(init_commands, "_init_folder", tmp_path / "study")
+    monkeypatch.setattr(init_commands.sys, "platform", "win32")
+
+    text = init_commands._next_chat_text()
+
+    assert f"cd {tmp_path / 'study'}; lobster chat" in text
+    assert "&&" not in text
