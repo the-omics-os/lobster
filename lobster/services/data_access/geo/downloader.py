@@ -796,7 +796,7 @@ class GEODownloadManager:
         # is resumed from the partial file; a server that refuses REST starts again.
         part = local_path.with_name(local_path.name + ".part")
         part.unlink(missing_ok=True)
-        attempt = 0
+        attempt, peak = 0, 0  # peak: the largest partial file so far
 
         while attempt < max_retries:
             attempt += 1
@@ -843,10 +843,14 @@ class GEODownloadManager:
                         logger.warning(
                             f"Chunked download failed on attempt {attempt}/{max_retries}"
                         )
-                        if part.exists() and part.stat().st_size > have:
+                        size = part.stat().st_size if part.exists() else 0
+                        if (
+                            size > peak
+                        ):  # only a partial file that beats the best counts
                             attempt = 0
-                        else:
+                        if size <= have:
                             part.unlink(missing_ok=True)
+                        peak = max(peak, size)
                         continue
                     part.replace(local_path)
 
@@ -902,8 +906,10 @@ class GEODownloadManager:
                     logger.error(
                         f"All {max_retries} download attempts failed for {url}"
                     )
+                    part.unlink(missing_ok=True)
                     return False
 
+        part.unlink(missing_ok=True)
         return False
 
     def _download_ftp(self, url: str, local_path: Path, description: str) -> bool:
