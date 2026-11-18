@@ -16,6 +16,7 @@ import pytest
 
 from lobster.services.data_access.geo import downloader as dl
 from lobster.services.data_access.geo.downloader import GEODownloadManager
+from lobster.utils import download_activity
 
 BODY = gzip.compress(random.Random(1).randbytes(300_000))  # a real gzip file, ~300 KB
 
@@ -159,3 +160,22 @@ def test_a_resumed_file_that_fails_the_gzip_check_is_fetched_once_more_whole(
     assert manager.download_file(server.url, target) is True
     assert target.read_bytes() == BODY
     assert len(server.requests) == 3 and server.requests[2][0] is None
+
+
+def test_the_download_in_progress_is_visible_to_a_host_that_polls(
+    serve, manager, tmp_path
+):
+    server = serve([{"cut": 40_000, "stall": 2}, {}])
+    target = tmp_path / "f.gz"
+    done = threading.Thread(target=manager.download_file, args=(server.url, target))
+    done.start()
+    seen = None
+    deadline = time.monotonic() + 5
+    while seen is None and time.monotonic() < deadline:
+        seen = download_activity.snapshot()
+        time.sleep(0.05)
+    done.join(10)
+    assert seen is not None and seen["file"] == "f.gz"
+    assert seen["mb_total"] == round(len(BODY) / 1e6, 1) and seen["mb_done"] >= 0
+    assert "kb_per_s" in seen
+    assert download_activity.snapshot() is None  # nothing once the file is done

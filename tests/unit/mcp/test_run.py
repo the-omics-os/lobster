@@ -36,6 +36,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
 )
 from lobster.core.runs import CANCEL_REASONS, new_run_id
+from lobster.utils import download_activity
 from tests.unit.mcp.replay_input import loading
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -1064,3 +1065,29 @@ def test_a_run_without_credentials_says_where_to_put_the_key(engine, tmp_path, d
     assert status["error"]["message"] == (
         "Missing credentials for provider 'ollama-cloud'. " + mcp_overview.key_fix()
     )
+
+
+def test_running_status_shows_the_file_download_in_progress(engine, tmp_path, data):
+    _opened, script = engine
+    hold = Hold()
+    script["events"] = [hold, COMPLETE]
+    server = McpServer(ThreadRunner())
+    run_id = call(server, "lobster_run", run_args(data, tmp_path / "out"))["run_id"]
+    assert hold.entered.wait(10)
+    assert "download" not in call(server, "lobster_status", {"run_id": run_id})
+    download_activity.report("GSE1_matrix.mtx.gz", 12_300_000, 58_700_000, 8.0)
+    try:
+        live = call(server, "lobster_status", {"run_id": run_id})
+        assert live["download"] == {
+            "file": "GSE1_matrix.mtx.gz",
+            "mb_done": 12.3,
+            "mb_total": 58.7,
+            "kb_per_s": 8,
+            "eta_min": 97,
+        }
+        short = call(server, "lobster_wait", {"run_id": run_id, "timeout_s": 1})
+        assert short["download"] == live["download"]
+    finally:
+        download_activity.clear()
+    hold.release.set()
+    wait_terminal(server, run_id)
