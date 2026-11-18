@@ -232,3 +232,10 @@ def test_a_non_project_workspace_still_reads_the_cwd_env_and_the_upward_env(
     ws = make(clean, "legacy", project=False)
     settings.reload_credentials(ws)
     assert os.environ[KEY] == "sk-cwd" and os.environ["LINKUP_API_KEY"] == "from-upward"
+
+
+def test_a_lamin_only_workspace_env_does_not_hide_the_project_key(clean):
+    # `lobster init --lamin` / `lobster lamin init` write LOBSTER_LAMIN there.
+    ws = make(clean, "p", root_env=f"{KEY}=sk-root\n", ws_env="LOBSTER_LAMIN=1\n")
+    settings.reload_credentials(ws)
+    assert os.environ[KEY] == "sk-root"
