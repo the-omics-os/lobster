@@ -43,8 +43,8 @@ DATA_SUFFIXES = (
 KEY_LIMIT = (
     "Presence only. The server process also holds what was set when it "
     "started (shell exports, a .env its start loaded); that is shared by every "
-    "project it serves. A provider that signs in another way (an AWS profile, "
-    "lobster cloud login) can show no key and still work."
+    "project it serves. A provider that signs in another way (lobster cloud "
+    "login) can show no key and still work."
 )
 
 
