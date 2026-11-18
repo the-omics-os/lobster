@@ -748,7 +748,7 @@ class GEODownloadManager:
                         f"RETR {remote_path}",
                         callback,
                         blocksize=chunk_size,
-                        rest=have or None,  # continue a partial file
+                        **({"rest": have} if have else {}),  # continue a partial file
                     )
 
             return True

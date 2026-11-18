@@ -429,6 +429,7 @@ class TestDownloadWithRetry:
 
         mock_ftp.size.return_value = 1000
         mock_ftp.retrbinary.side_effect = mock_retrbinary
+        temp_file.unlink()  # the download starts with nothing at the target
 
         success = geo_manager._download_with_retry(
             "ftp://ftp.example.com/test.gz",
@@ -440,6 +441,7 @@ class TestDownloadWithRetry:
         assert success is False
         # Partial file should be cleaned up
         assert not temp_file.exists()
+        assert not temp_file.with_name(temp_file.name + ".part").exists()
 
     @patch("time.sleep")
     @patch("ftplib.FTP")
