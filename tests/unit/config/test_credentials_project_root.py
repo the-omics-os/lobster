@@ -239,3 +239,37 @@ def test_a_lamin_only_workspace_env_does_not_hide_the_project_key(clean):
     ws = make(clean, "p", root_env=f"{KEY}=sk-root\n", ws_env="LOBSTER_LAMIN=1\n")
     settings.reload_credentials(ws)
     assert os.environ[KEY] == "sk-root"
+
+
+def test_a_project_reads_both_files_and_the_workspace_wins_a_conflict(clean):
+    ws = make(
+        clean,
+        "p",
+        root_env=f"{KEY}=sk-root\nOPENAI_API_KEY=sk-openai-root\n",
+        ws_env="OPENAI_API_KEY=sk-openai-ws\n",
+    )
+    settings.reload_credentials(ws)
+    assert os.environ[KEY] == "sk-root"  # the project fills the rest
+    assert os.environ["OPENAI_API_KEY"] == "sk-openai-ws"
+
+
+def test_the_next_project_does_not_inherit_a_key_read_beside_lamin(clean):
+    a = make(clean, "a", root_env=f"{KEY}=sk-a\n", ws_env="LOBSTER_LAMIN=1\n")
+    b = make(clean, "b")
+    settings.reload_credentials(a)
+    assert os.environ[KEY] == "sk-a"
+    settings.reload_credentials(b)
+    assert KEY not in os.environ
+
+
+def test_the_key_resolves_after_lamin_use_and_clear(clean):
+    from lobster.cli_internal.commands.light.lamin_commands import _set_env
+    from lobster.core.catalog.factory import ENV_INSTANCE
+
+    ws = make(clean, "p", root_env=f"{KEY}=sk-root\n")
+    _set_env(ws, ENV_INSTANCE, "someone/catalog")  # lobster lamin use
+    settings.reload_credentials(ws)
+    assert os.environ[KEY] == "sk-root"
+    _set_env(ws, ENV_INSTANCE, None)  # lobster lamin use --clear
+    settings.reload_credentials(ws)
+    assert os.environ[KEY] == "sk-root"

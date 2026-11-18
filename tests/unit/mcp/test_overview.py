@@ -543,3 +543,21 @@ def test_key_limit_names_only_sign_ins_lobster_reads():
     # Bedrock reads only AWS_BEDROCK_* keys; an AWS profile does not sign it in.
     assert "AWS profile" not in KEY_LIMIT
     assert "lobster cloud login" in KEY_LIMIT
+
+
+def test_key_presence_reads_the_project_env_beside_a_lamin_workspace_env(
+    tmp_path, monkeypatch
+):
+    from lobster.cli_internal.mcp_overview import key_presence
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("lobster.config.global_config.CONFIG_DIR", tmp_path / "g")
+    ws = tmp_path / "p" / ".lobster_workspace"
+    ws.mkdir(parents=True)
+    (ws / ".env").write_text("LOBSTER_LAMIN=1\n")  # lobster init --lamin
+    (tmp_path / "p" / ".env").write_text("ANTHROPIC_API_KEY=sk-x\n")
+
+    key = key_presence("anthropic", ws)
+
+    assert key["present"] is True
+    assert key["found_in"] == str(tmp_path / "p" / ".env")
