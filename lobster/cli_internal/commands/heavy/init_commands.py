@@ -750,10 +750,16 @@ _SMART_STD_AGENT_DISPLAY = {
 
 
 def _vector_search_install_command() -> str:
-    """Return an environment-aware install command for vector dependencies."""
+    """Return an environment-aware install command for vector dependencies.
+
+    Escaped for Rich markup: every caller prints it inside a markup string, and
+    unescaped Rich drops "[vector-search]" from the command.
+    """
+    from rich.markup import escape
+
     from lobster.core.component_registry import get_install_command
 
-    return get_install_command("vector-search", is_extra=True)
+    return escape(get_install_command("vector-search", is_extra=True))
 
 
 def _is_vector_search_backend_available() -> bool:
