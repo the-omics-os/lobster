@@ -317,20 +317,32 @@ class TestSRAQueuePreparer:
         assert strategy.strategy_name == "FASTQ_FIRST"
         assert strategy.confidence == 0.60
 
-    def test_timeout_scales_by_run_count(self, mock_data_manager):
+    def test_the_queue_entry_promises_no_time_limit_or_retry_count(
+        self, mock_data_manager
+    ):
+        # Nothing reads such numbers; a host repeated them to the user as a limit.
         from lobster.services.data_access.sra_queue_preparer import SRAQueuePreparer
 
         preparer = SRAQueuePreparer(mock_data_manager)
-
-        # Large run count should get larger timeout
         url_data = _make_url_result("SRP123456", "sra", run_count=100)
         strategy = preparer.recommend_strategy({}, url_data, "SRP123456")
-        assert strategy.execution_params["timeout"] == 7200
+        assert not {"timeout", "max_retries", "resume_enabled"} & set(
+            strategy.execution_params
+        )
 
-        # Small run count
-        url_data_small = _make_url_result("SRP123456", "sra", run_count=3)
-        strategy_small = preparer.recommend_strategy({}, url_data_small, "SRP123456")
-        assert strategy_small.execution_params["timeout"] == 1800
+
+@pytest.mark.parametrize(
+    "module", ["geo", "sra", "pride", "massive", "metabolights"], ids=str
+)
+def test_no_queue_preparer_writes_a_time_limit_or_retry_count(module):
+    import importlib
+    import inspect
+
+    source = inspect.getsource(
+        importlib.import_module(f"lobster.services.data_access.{module}_queue_preparer")
+    )
+    for key in ("timeout", "max_retries", "resume_enabled"):
+        assert f'"{key}"' not in source, f"{module}: {key}"
 
 
 # ===========================================================================
