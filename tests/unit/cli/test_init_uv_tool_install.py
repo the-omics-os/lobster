@@ -104,6 +104,10 @@ def test_skip_extras_installs_nothing(tool_env):
 
     assert result.exit_code == 0, result.output
     assert tool_env.installs == []
+    # It says what was skipped and how to add it, never "will be added".
+    assert "--skip-extras prevented package installation" in result.output
+    assert "uv tool install --reinstall" in result.output
+    assert "will be added" not in result.output
 
 
 def test_a_failed_uv_tool_install_exits_non_zero_with_the_command(tool_env):
@@ -196,3 +200,28 @@ def test_printed_install_hints_are_quoted_and_keep_the_tool(tool_env, tmp_path):
         # zsh: an unquoted "[" is a glob ("no matches found").
         assert not re.search(r"(?:^|\s)[^'\s]*\[", hint), hint
         assert "anthropic" in hint and "--with lobster-research" in hint, hint
+
+
+def test_ctrl_c_at_the_install_prompt_still_leaves_a_project(
+    tool_env, monkeypatch, tmp_path
+):
+    workspace = tmp_path / ".lobster_workspace"
+    workspace.mkdir()
+    (workspace / "provider_config.json").write_text("{}")
+
+    def _interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("rich.prompt.Confirm.ask", _interrupt)
+
+    @init_commands._creates_project
+    def _wizard(folder=None, project_name=None, global_config=False):
+        init_commands._uv_tool_env_handoff(
+            "anthropic", ["transcriptomics_expert"], skip_extras=False
+        )
+
+    with pytest.raises(KeyboardInterrupt):
+        _wizard()
+
+    assert (workspace / "project.json").exists()
+    assert tool_env.installs == []
