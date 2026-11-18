@@ -97,6 +97,11 @@ def test_non_interactive_init_runs_the_uv_tool_install(tool_env):
     assert command[command.index("--with") + 1] == "lobster-transcriptomics>=1.3.0"
     assert "lobster chat" in result.output
     assert "Restart lobster" not in result.output
+    # One next step, and only after the install.
+    assert result.output.count("Next: run lobster chat") == 1
+    assert result.output.index("Packages installed") < result.output.index(
+        "Next: run lobster chat"
+    )
 
 
 def test_skip_extras_installs_nothing(tool_env):
@@ -288,6 +293,8 @@ def _run_interactive(monkeypatch, capsys, ui_mode):
         init_commands.init_impl(**_init_kwargs(ui_mode=ui_mode))
     except typer.Exit as exc:
         assert not exc.exit_code
+    except SystemExit as exc:  # the faked os._exit after a tool install
+        assert not exc.code
     return capsys.readouterr().out
 
 
@@ -406,6 +413,8 @@ def test_windows_prints_the_tool_install_instead_of_running_it(
     # Windows locks the running lobster.exe and its venv: a reinstall from
     # inside it can fail halfway and leave no lobster at all.
     monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    spaced = r"C:\Users\First Last\.local\bin\uv.exe"
+    monkeypatch.setattr(uv_tool_env.shutil, "which", lambda _name: spaced)
 
     result = _init()
 
@@ -416,3 +425,19 @@ def test_windows_prints_the_tool_install_instead_of_running_it(
     assert '"lobster-ai[lamin]>=1.3.0"' in result.output
     assert f'"lobster-transcriptomics>=1.3.0" --python {PYTHON}' in result.output
     assert "Close Lobster" in result.output
+    # PowerShell reads a leading quoted path as an expression: print plain uv.
+    assert "Then run: uv tool install --reinstall" in result.output
+    assert "First Last" not in result.output
+
+
+def test_windows_interactive_init_prints_the_command_once_and_asks_nothing(
+    tool_env, monkeypatch, capsys
+):
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    # The prompt is answered "no": a Windows run must not reach it.
+    out = _run_interactive(monkeypatch, capsys, "auto")  # questionary on Windows
+
+    assert tool_env.installs == []
+    assert out.count("Close Lobster") == 1
+    assert "Running uv tool install" not in out
+    assert "Next: install them" not in out
