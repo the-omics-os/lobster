@@ -152,6 +152,28 @@ def test_missing_key_in_a_project_names_its_provider_and_its_env_file(
     assert "LOBSTER_WORKSPACE" not in fix
 
 
+def test_missing_key_names_the_project_env_beside_a_lamin_workspace_env(
+    monkeypatch, tmp_path
+):
+    from lobster.core.projects import init_project
+
+    project = tmp_path / "p"
+    workspace = project / ".lobster_workspace"
+    workspace.mkdir(parents=True)
+    init_project(project)
+    (workspace / ".env").write_text("LOBSTER_LAMIN=1\n")  # lobster init --lamin
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    diagnostic = classify_startup_exception(
+        ValueError("No Anthropic credentials found."),
+        workspace=workspace,
+        provider_override="anthropic",
+    )
+
+    assert f"   {project / '.env'}" in diagnostic.fix_lines
+
+
 def test_format_and_rich_render_share_same_startup_diagnostic_copy():
     diagnostic = StartupDiagnostic(
         code="missing_provider_package",
