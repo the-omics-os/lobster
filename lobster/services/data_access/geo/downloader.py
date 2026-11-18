@@ -7,6 +7,7 @@ database, providing structured access to gene expression datasets.
 
 import ftplib  # nosec B402 # GEO serves files from the NCBI FTP site
 import hashlib
+import os
 import random
 import re
 import tarfile
@@ -31,6 +32,19 @@ from lobster.utils.logger import get_logger
 from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
+
+# A slow line that drops the connection is resumed, not restarted. A download gives up only
+# after this many attempts in a row that gained no bytes.
+_MAX_ATTEMPTS_WITHOUT_PROGRESS = 5
+_PROGRESS_LOG_INTERVAL_S = 30
+
+
+def _idle_timeout_s() -> float:
+    """Seconds without a byte before a download counts as dropped (default 60)."""
+    try:
+        return max(float(os.environ.get("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", 60)), 1.0)
+    except ValueError:
+        return 60.0
 
 
 class GEODownloadError(Exception):
@@ -545,66 +559,84 @@ class GEODownloadManager:
 
     def _download_http(self, url: str, local_path: Path, description: str) -> bool:
         """
-        Download file from HTTP/HTTPS URL with progress tracking.
-
-        Args:
-            url: HTTP/HTTPS URL to download from
-            local_path: Path to save file to
-            description: Description for the progress bar
+        Download a file over HTTP/HTTPS into ``<file>.part``, resuming after a dropped
+        connection with a Range request (guarded by If-Range, so a file that changed on the
+        server is fetched whole, never spliced). A stall longer than the idle bound
+        (``LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S``, default 60 s) counts as a dropped connection.
+        Gives up after several attempts in a row that gained no bytes.
 
         Returns:
             bool: True if download succeeded, False otherwise
         """
-        try:
-            # Get file size for progress tracking
-            head_response = self.session.head(url, timeout=30)
-            file_size = int(head_response.headers.get("content-length", 0))
-
-            # Start the actual download with progress tracking
-            response = self.session.get(url, stream=True, timeout=60)
-            response.raise_for_status()
-
-            # Create progress columns for a rich display
-            progress_columns = [
-                BarColumn(),
-                DownloadColumn(),
-                TransferSpeedColumn(),
-                "•",
-                TimeElapsedColumn(),
-                "•",
-                TimeRemainingColumn(),
-            ]
-
-            # Download with progress tracking
-            with Progress(*progress_columns, console=self.console) as progress:
-                # Create the download task
-                task_id = progress.add_task(description, total=file_size)
-
-                with open(local_path, "wb") as f:
-                    downloaded = 0
-                    # Use a slightly larger chunk size for better performance
-                    for chunk in response.iter_content(chunk_size=32768):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            progress.update(task_id, completed=downloaded)
-
-            logger.info(f"Downloaded to: {local_path}")
-
-            # Validate gzip files before considering download successful
-            if local_path.name.endswith(".gz"):
-                if not self._validate_gzip_integrity(local_path):
-                    logger.error(
-                        f"Gzip validation failed, removing corrupted file: {local_path}"
-                    )
-                    local_path.unlink()
+        part = local_path.with_name(local_path.name + ".part")
+        part.unlink(
+            missing_ok=True
+        )  # a leftover from another run has no known validator
+        idle, validator, failed = _idle_timeout_s(), None, 0
+        while failed < _MAX_ATTEMPTS_WITHOUT_PROGRESS:
+            have = part.stat().st_size if part.exists() else 0
+            headers = {"Range": f"bytes={have}-", "If-Range": validator} if have else {}
+            try:
+                response = self.session.get(
+                    url, stream=True, timeout=(30, idle), headers=headers
+                )
+                if response.status_code == 416:  # our partial is not part of this file
+                    part.unlink(missing_ok=True)
+                    failed += 1
+                    continue
+                response.raise_for_status()
+                if have and response.status_code != 206:
+                    have = 0  # the server sent the whole file
+                validator = response.headers.get("ETag") or response.headers.get(
+                    "Last-Modified"
+                )
+                total = int(response.headers.get("content-length", 0)) + have
+                if validator is None and have:
+                    have = 0  # no way to tell the file is unchanged
+                started, logged = time.monotonic(), time.monotonic()
+                with open(part, "ab" if have else "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        now = time.monotonic()
+                        if now - logged >= _PROGRESS_LOG_INTERVAL_S:
+                            logged, done = now, f.tell()
+                            logger.info(
+                                "GEO download %s: %.1f of %.1f MB at %.0f KB/s",
+                                local_path.name,
+                                done / 1e6,
+                                total / 1e6,
+                                (done - have) / 1e3 / max(now - started, 1e-6),
+                            )
+                if total and part.stat().st_size < total:
+                    raise requests.exceptions.ChunkedEncodingError("short body")
+                break
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else 0
+                if status < 500 and status not in (408, 429):
+                    logger.warning(f"Failed to download HTTP {url}: {e}")
+                    part.unlink(missing_ok=True)
                     return False
-
-            return True
-
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Failed to download HTTP {url}: {e}")
+                failed += 1
+            except requests.exceptions.RequestException as e:
+                grown = part.exists() and part.stat().st_size > have
+                failed = 0 if grown else failed + 1
+                logger.warning(f"Download of {url} interrupted ({e}); resuming")
+        else:
+            logger.warning(f"Failed to download HTTP {url}: no progress")
             return False
+
+        part.replace(local_path)
+        logger.info(f"Downloaded to: {local_path}")
+        # Validate gzip files before considering download successful
+        if local_path.name.endswith(".gz") and not self._validate_gzip_integrity(
+            local_path
+        ):
+            logger.error(
+                f"Gzip validation failed, removing corrupted file: {local_path}"
+            )
+            local_path.unlink()
+            return False
+        return True
 
     def _calculate_md5(self, file_path: Path) -> str:
         """
