@@ -6,6 +6,7 @@ can render the same diagnostic content with different presentation systems.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, Sequence
@@ -49,14 +50,18 @@ def _format_missing_credentials_fix_lines(
     *,
     workspace: Optional[Path],
     error_message: str,
+    provider_name: Optional[str] = None,
 ) -> tuple[str, ...]:
     lines = []
     workspace_path = Path(workspace) if workspace else None
     if workspace_path is not None:
+        env_file = workspace_path / ".env"
+        if not env_file.exists() and (workspace_path / "project.json").is_file():
+            env_file = workspace_path.parent / ".env"  # where lobster init writes it
         lines.extend(
             [
                 "1. Add the key to the workspace .env file:",
-                f"   {workspace_path / '.env'}",
+                f"   {env_file}",
             ]
         )
     lines.extend(
@@ -71,6 +76,12 @@ def _format_missing_credentials_fix_lines(
         if "Set it with: " in error_message
         else "export <KEY>=<value>"
     )
+    from lobster.ui.bridge.init_adapter import _PROVIDER_ENV_KEYS
+
+    if provider_name in _PROVIDER_ENV_KEYS and "<KEY>" in export_hint:
+        export_hint = " ".join(
+            f"export {key}=<value>" for key in _PROVIDER_ENV_KEYS[provider_name]
+        )
     lines.append(f"   {export_hint}")
 
     try:
@@ -80,6 +91,9 @@ def _format_missing_credentials_fix_lines(
     except Exception:
         found_configs = []
 
+    if workspace_path is not None:
+        current = Path(os.path.abspath(workspace_path))
+        found_configs = [c for c in found_configs if Path(c) != current]
     if found_configs:
         closest = found_configs[0]
         project_root = closest.parent
@@ -149,7 +163,15 @@ def _build_missing_credentials_diagnostic(
     workspace: Optional[Path],
     provider_override: Optional[str],
 ) -> StartupDiagnostic:
-    provider_name = (provider_override or "configured provider").strip()
+    provider_name = provider_override
+    if not provider_name:
+        try:
+            from lobster.core.config_resolver import ConfigResolver
+
+            provider_name = ConfigResolver(workspace).resolve_provider()[0]
+        except Exception:
+            provider_name = None
+    provider_name = (provider_name or "configured provider").strip()
     return StartupDiagnostic(
         code="missing_credentials",
         title=f"Missing credentials for provider '{provider_name}'",
@@ -157,6 +179,7 @@ def _build_missing_credentials_diagnostic(
         fix_lines=_format_missing_credentials_fix_lines(
             workspace=workspace,
             error_message=message,
+            provider_name=provider_name,
         ),
     )
 
