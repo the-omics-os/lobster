@@ -124,6 +124,34 @@ def test_classify_missing_credentials_includes_workspace_and_export_hint(
     )
 
 
+def test_missing_key_in_a_project_names_its_provider_and_its_env_file(
+    monkeypatch, tmp_path
+):
+    # What `lobster init <folder>` leaves: a project, its key file beside the
+    # workspace, and the provider in provider_config.json.
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.projects import init_project
+
+    project = tmp_path / "my-study"
+    workspace = project / ".lobster_workspace"
+    WorkspaceProviderConfig(global_provider="anthropic").save(workspace)
+    init_project(project)
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+
+    diagnostic = classify_startup_exception(
+        ValueError("No Anthropic credentials found."), workspace=workspace
+    )
+
+    assert diagnostic.title == "Missing credentials for provider 'anthropic'"
+    fix = "\n".join(diagnostic.fix_lines)
+    assert f"   {project / '.env'}\n" in fix
+    assert "export ANTHROPIC_API_KEY=" in fix
+    # The workspace it suggests is the one already in use.
+    assert "LOBSTER_WORKSPACE" not in fix
+
+
 def test_format_and_rich_render_share_same_startup_diagnostic_copy():
     diagnostic = StartupDiagnostic(
         code="missing_provider_package",
