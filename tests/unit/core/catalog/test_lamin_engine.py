@@ -3282,3 +3282,76 @@ def test_remote_storage_roots_are_recognised_before_connect(root, remote):
     from lobster.core.catalog.lamin import _is_remote_root
 
     assert _is_remote_root(root) is remote
+
+
+def test_ls_and_status_follow_lamin_use_and_clear(tmp_path):
+    """After ``lamin use`` the listing and the counts are the instance's."""
+    store = tmp_path / "store"
+    store.mkdir()
+    created = _run(
+        """
+        import lamindb_setup as lns
+        lns.init(storage=os.environ["STORE"], name="shared")
+        emit(slug=lns.settings.instance.slug)
+        """,
+        tmp_path,
+        env_extra={"STORE": str(store)},
+    )
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    env = {"WS": str(ws), "SLUG": created["slug"], "STORE": str(store)}
+    record = """
+        from pathlib import Path
+        from lobster.core.catalog import factory
+        from lobster.core.runtime.data_manager import DataManagerV2
+        ws = Path(os.environ["WS"])
+        dm = DataManagerV2(workspace_path=ws)
+        catalog = factory.begin_session_run(dm, ws, os.environ["SESSION"])
+        catalog.close("completed")
+        emit(type=type(catalog).__name__)
+    """
+    _run(  # a session in the workspace's own catalog
+        "from typer.testing import CliRunner\n"
+        "from lobster.cli_internal.commands.light.lamin_commands import lamin_app\n"
+        "assert CliRunner().invoke(lamin_app, ['init', '-w', os.environ['WS']])"
+        ".exit_code == 0\n" + textwrap.dedent(record),
+        tmp_path,
+        env_extra={**env, "SESSION": "session_workspace"},
+        drop_enable=True,
+    )
+    _run(  # a session in the instance, after `lamin use`
+        "from typer.testing import CliRunner\n"
+        "from lobster.cli_internal.commands.light.lamin_commands import lamin_app\n"
+        "assert CliRunner().invoke(lamin_app, ['use', os.environ['SLUG'], '-w', "
+        "os.environ['WS']]).exit_code == 0\n" + textwrap.dedent(record),
+        tmp_path,
+        env_extra={**env, "SESSION": "session_instance"},
+        drop_enable=True,
+    )
+    look = """
+        from typer.testing import CliRunner
+        from lobster.cli_internal.commands.light.lamin_commands import lamin_app
+        cli = CliRunner()
+        def run(*args):
+            result = cli.invoke(lamin_app, [*args, "-w", os.environ["WS"]])
+            assert result.exit_code == 0, result.output
+            return result.stdout
+        emit(runs=[r["name"] for r in json.loads(run("ls", "--runs", "--json"))],
+             status=json.loads(run("status", "--json")), text=run("status"))
+    """
+    used = _run(look, tmp_path, env_extra=env, drop_enable=True)
+    assert used["runs"] == ["session_instance"]
+    assert used["status"]["contents"]["last_run"]["name"] == "session_instance"
+    assert "Workspace catalog (not in use)" not in used["text"]
+    assert "session_workspace" not in used["text"]
+    _run(
+        "from typer.testing import CliRunner\n"
+        "from lobster.cli_internal.commands.light.lamin_commands import lamin_app\n"
+        "assert CliRunner().invoke(lamin_app, ['use', '--clear', '-w', "
+        "os.environ['WS']]).exit_code == 0\nemit(done=True)",
+        tmp_path,
+        env_extra=env,
+        drop_enable=True,
+    )
+    cleared = _run(look, tmp_path, env_extra=env, drop_enable=True)
+    assert cleared["runs"] == ["session_workspace"]
