@@ -168,7 +168,7 @@ def test_a_drop_at_the_same_point_without_a_validator_gives_up(
     "answer",
     [
         {"etag": '"v2"', "ignore_if_range": True},  # a changed file, If-Range ignored
-        {"start_at": 0},  # a 206 that starts somewhere else than we asked
+        {"start_at": 1000},  # a 206 that starts somewhere else than we asked
     ],
     ids=["changed_file_if_range_ignored", "tail_starts_elsewhere"],
 )

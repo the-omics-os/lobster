@@ -62,6 +62,13 @@ class _Progress:
         return not self.exhausted
 
 
+def _continues(response, have: int, sent: str, answered: Optional[str]) -> bool:
+    """True if a 206 carries the bytes after the first ``have`` of the file we hold: it
+    starts there and is the same version (a server may ignore If-Range)."""
+    start = re.match(r"bytes (\d+)-", response.headers.get("Content-Range", ""))
+    return bool(start) and int(start[1]) == have and answered in (None, sent)
+
+
 def _size(path: Path) -> int:
     return path.stat().st_size if path.exists() else 0
 
@@ -632,9 +639,15 @@ class GEODownloadManager:
                 response.raise_for_status()
                 if have and response.status_code != 206:
                     have = 0  # the server sent the whole file
+                sent_validator = validator
                 validator = response.headers.get("ETag") or response.headers.get(
                     "Last-Modified"
                 )
+                if have and not _continues(response, have, sent_validator, validator):
+                    response.close()  # a tail of some other file: start the file again
+                    part.unlink(missing_ok=True)
+                    progress.after_failure(0)
+                    continue
                 total = int(response.headers.get("content-length", 0)) + have
                 resumed = resumed or have > 0
                 started, logged, shown = time.monotonic(), time.monotonic(), 0.0
