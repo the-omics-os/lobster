@@ -176,7 +176,7 @@ def test_a_file_that_changed_between_requests_is_not_glued_together(
 def test_it_gives_up_after_attempts_that_gain_nothing(serve, manager, tmp_path):
     server = serve([{"cut": 0}])
     target = tmp_path / "f.gz"
-    assert manager.download_file(server.url, target) is False
+    assert _download_bounded(manager, server.url, target) is False
     assert not target.exists()
     assert len(server.requests) <= 6  # bounded, not a retry storm
 
