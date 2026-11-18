@@ -16,6 +16,8 @@
   "cli.init.done_provider": "Provider: {provider}",
   "cli.init.done_workspace": "Workspace: {path}",
   "cli.init.next_chat": "Next: run lobster chat",
+  "cli.init.install_failed": "These installs failed: {packages}",
+  "cli.init.next_install": "Next: install them, then run lobster chat: {command}",
   "cli.init.done_env": "Credentials: {path}",
   "cli.init.done_backup": "Backup: {path}",
   "cli.init.cancelled": "Setup cancelled.",

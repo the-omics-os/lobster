@@ -38,6 +38,9 @@ from lobster.i18n import h, t
 
 logger = logging.getLogger(__name__)
 
+# Packages whose install failed in this process; `lobster init` reports them.
+FAILED_INSTALLS: list[str] = []
+
 # Create the agents subcommand group
 agents_app = typer.Typer(
     name="agents",
@@ -193,10 +196,11 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
     else:
         install_args = [package]
 
-    # Try uv first (as CLI tool), then fall back to pip
+    # Try uv first (as CLI tool), then fall back to pip. Both install into the
+    # Python running Lobster, so no activated venv is needed.
     uv_path = shutil.which("uv")
     if uv_path:
-        cmd = [uv_path, "pip", "install"] + install_args
+        cmd = [uv_path, "pip", "install", "--python", sys.executable] + install_args
     else:
         # Fall back to pip
         cmd = [sys.executable, "-m", "pip", "install", "--quiet"] + install_args
@@ -210,8 +214,10 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
         )
         return True, result.stdout
     except subprocess.CalledProcessError as e:
+        FAILED_INSTALLS.append(package)
         return False, e.stderr
     except FileNotFoundError:
+        FAILED_INSTALLS.append(package)
         return False, h("Neither uv nor pip found")
 
 

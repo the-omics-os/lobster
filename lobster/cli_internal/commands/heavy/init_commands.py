@@ -1724,12 +1724,38 @@ def _print_init_summary(
     model = (result.get("model_id") or result.get("ollama_model") or "").strip()
     provider_text = f"{provider} ({model})" if provider and model else provider
     esc = _markup_escape
-    console.print(f"[bold green]✓[/bold green] {esc(t('cli.init.done'))}")
+    failed = _failed_install_lines()
+    mark = "[bold yellow]⚠[/bold yellow]" if failed else "[bold green]✓[/bold green]"
+    console.print(f"{mark} {esc(t('cli.init.done'))}")
     console.print(f"  {esc(t('cli.init.done_provider', provider=provider_text))}")
     console.print(f"  {esc(t('cli.init.done_workspace', path=str(workspace_path)))}")
     for line in extra_lines or []:
         console.print(f"  {esc(line)}")
-    console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+    for line in failed:
+        console.print(f"  [yellow]{esc(line)}[/yellow]")
+    if not failed:
+        console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+
+
+def _failed_install_lines() -> List[str]:
+    """Localized lines naming the installs that failed in this run, and the fix."""
+    import shlex
+    import shutil
+
+    from lobster.cli_internal.commands.light.agent_commands import FAILED_INSTALLS
+    from lobster.i18n import t
+
+    failed = list(dict.fromkeys(FAILED_INSTALLS))
+    if not failed:
+        return []
+    if shutil.which("uv"):
+        command = ["uv", "pip", "install", "--python", sys.executable, *failed]
+    else:
+        command = [sys.executable, "-m", "pip", "install", *failed]
+    return [
+        t("cli.init.install_failed", packages=", ".join(failed)),
+        t("cli.init.next_install", command=shlex.join(command)),
+    ]
 
 
 def _bold_command(text: str) -> str:
@@ -4177,9 +4203,7 @@ def init_impl(
                     success_message += h("Backup: [cyan]{path}[/cyan]\n").format(
                         path=backup_path
                     )
-                success_message += h(
-                    "\n[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
-                ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
+                success_message += "\n"
             except Exception as e:
                 if config_dict.get("provider") == "omics-os":
                     from lobster.config.cloud_setup import fail_cloud_setup_write
@@ -4221,13 +4245,25 @@ def init_impl(
                 )
             else:
                 success_message += "\n"
-            success_message += h(
-                "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
-            ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
 
         if config_dict.get("provider") == "omics-os":
             console.print(OMICS_OS_KEY_NOT_VERIFIED)
-        console.print(Panel.fit(success_message, border_style="green"))
+        # A failed package install replaces the "run lobster chat" next step.
+        failed_installs = _failed_install_lines()
+        if failed_installs:
+            success_message += "\n".join(
+                f"[yellow]{_markup_escape(line)}[/yellow]" for line in failed_installs
+            )
+        else:
+            success_message += h(
+                "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
+            ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
+        console.print(
+            Panel.fit(
+                success_message,
+                border_style="yellow" if failed_installs else "green",
+            )
+        )
         _print_lamin_notes(lamin, global_config=global_config)
         console.print()
 
