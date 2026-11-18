@@ -293,8 +293,11 @@ class Settings:
         self._undo_credentials(_PROJECT_KEYS)
         if is_project:
             self._undo_credentials(_START_KEYS)
+        # A project reads both its files: the project .env first, then the workspace
+        # .env, which wins a conflict (it may hold only the catalog switch that
+        # `lobster lamin init` writes). Any other load takes the first that exists.
         candidates = (
-            (workspace_env, project_env) if is_project else (workspace_env, cwd_env)
+            (project_env, workspace_env) if is_project else (workspace_env, cwd_env)
         )
 
         # override=False keeps what is already set (a real export, or a .env loaded
@@ -323,7 +326,8 @@ class Settings:
                     env_file, _PROJECT_KEYS if workspace_path else _START_KEYS
                 )
                 logger.debug(f"Loaded workspace credentials from {env_file}")
-                break
+                if not is_project:
+                    break
 
     def _load_workspace_credentials(self, env_file: Path, store: str) -> None:
         """Load an overriding ``.env``; remember what each key replaced so a later load

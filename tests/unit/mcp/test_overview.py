@@ -248,11 +248,13 @@ def test_an_expired_login_the_run_can_refresh_counts_as_the_key(project, monkeyp
     assert "omc_fresh_000" not in json.dumps(seen)
 
 
-def test_the_first_env_file_that_exists_is_the_only_one_read(project):
+def test_both_env_files_of_a_project_are_read(project):
+    # As the run reads them: a workspace .env without the key does not hide it.
     (project.workspace / ".env").write_text("OTHER=1\n")
     (project.root / ".env").write_text(f"{KEY}={SECRET}\n")
     seen = overview(project.root)
-    assert seen["key"]["present"] is False and seen["key"]["found_in"] is None
+    assert seen["key"]["present"] is True
+    assert seen["key"]["found_in"] == str(project.root / ".env")
 
 
 def test_a_server_started_elsewhere_says_the_projects_key_is_not_used(

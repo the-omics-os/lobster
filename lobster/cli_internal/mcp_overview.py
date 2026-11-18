@@ -529,8 +529,8 @@ def _missing_key(key: Optional[Dict[str, Any]], provider: Optional[str]) -> str:
 
 def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str, Any]]:
     """Whether the provider's key variables are set, and where the value that
-    a run would use comes from: the project's ``.env`` (``<ws>/.env``, else
-    ``<ws>/../.env``, the first that exists), then the server's environment, then the global
+    a run would use comes from: the project's ``.env`` files (``<ws>/.env``,
+    then ``<ws>/../.env``), then the server's environment, then the global
     credentials file. Never any part of a value."""
     if provider is None:
         return None
@@ -551,12 +551,12 @@ def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str,
             unreadable.append(str(path))
             return None
 
+    # The run reads both (settings: the workspace .env wins a conflict).
     for env in (workspace / ".env", workspace.parent / ".env"):
         if env.is_file():
             values = read(env)
             if values is not None:
                 sources.append((str(env), values))
-            break
     # the server's environment: a shell export or a host config's env block
     sources.append(("environment", os.environ))
     path = global_config.get_global_credentials_path()
