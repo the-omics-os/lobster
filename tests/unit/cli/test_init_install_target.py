@@ -97,3 +97,17 @@ def test_the_vector_hint_keeps_the_extra_in_the_command(monkeypatch):
     init_commands._print_vector_backend_unavailable()
 
     assert "uv pip install 'lobster-ai[vector-search]'" in console.export_text()
+
+
+def test_uninstall_targets_the_running_interpreter(monkeypatch):
+    calls = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", _run)
+
+    agent_commands._uv_pip_uninstall("lobster-research")
+
+    assert calls[0][:5] == ["/bin/uv", "pip", "uninstall", "--python", sys.executable]

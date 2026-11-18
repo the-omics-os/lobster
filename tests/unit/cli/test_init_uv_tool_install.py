@@ -6,6 +6,7 @@ running init got a configured workspace without its analysis packages.
 
 import importlib.util
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +18,8 @@ from lobster.config import credentials, global_config
 from lobster.core import uv_tool_env
 
 pytestmark = pytest.mark.no_auto_config
+# The tool must stay on the Python it runs on; uv would pick the newest one.
+PYTHON = f"{sys.version_info[0]}.{sys.version_info[1]}"
 
 
 @pytest.fixture
@@ -109,3 +112,36 @@ def test_a_failed_uv_tool_install_exits_non_zero_with_the_command(tool_env):
 
     assert result.exit_code == 2
     assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in result.output
+
+
+def test_agents_install_under_uv_tool_adds_to_the_tool(tool_env, tmp_path):
+    from lobster.cli_internal.commands.light.agent_commands import agents_app
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+
+    workspace = tmp_path / ".lobster_workspace"
+    result = CliRunner().invoke(
+        agents_app, ["install", "lobster-research", "--workspace", str(workspace)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert tool_env.installs == [
+        [
+            "uv",
+            "tool",
+            "install",
+            "--reinstall",
+            "lobster-ai>=1.3.0",
+            "--with",
+            "lobster-research>=1.3.0",
+            "--python",
+            PYTHON,
+        ]
+    ]
+    enabled = WorkspaceAgentConfig.load(workspace).enabled_agents
+    assert {"research_agent", "data_expert_agent"} <= set(enabled)
+
+
+def test_every_uv_tool_install_keeps_the_running_python(tool_env):
+    _init()
+
+    assert tool_env.installs[0][-2:] == ["--python", PYTHON]
