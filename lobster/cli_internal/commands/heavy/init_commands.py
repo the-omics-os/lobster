@@ -1171,6 +1171,15 @@ def _uv_tool_env_handoff(
         console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
         return
 
+    # The project first: the install ends the process, and Ctrl-C at the
+    # prompt must not leave a configured folder without one.
+    if _finish_before_tool_install is not None:
+        _finish_before_tool_install()
+    from lobster.core.uv_tool_env import windows_locks_running_tool
+
+    if windows_locks_running_tool():
+        run_tool_install(cmd)  # prints the command for after Lobster exits
+
     console.print()
     console.print(
         h(
@@ -1179,18 +1188,7 @@ def _uv_tool_env_handoff(
     )
     console.print(f"  {cmd_str}\n", markup=False)
 
-    # The project first: the install ends the process, and Ctrl-C at the
-    # prompt must not leave a configured folder without one.
-    if _finish_before_tool_install is not None:
-        _finish_before_tool_install()
-    from lobster.core.uv_tool_env import windows_locks_running_tool
-
-    # On Windows run_tool_install only prints the command: nothing to ask.
-    if (
-        not confirm
-        or windows_locks_running_tool()
-        or Confirm.ask(h("  Run this now?"), default=True)
-    ):
+    if not confirm or Confirm.ask(h("  Run this now?"), default=True):
         console.print(h("[dim]  Running uv tool install...[/dim]"))
         if console.file:
             console.file.flush()

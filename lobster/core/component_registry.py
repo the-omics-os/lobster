@@ -164,10 +164,13 @@ def get_install_command(package: str, *, is_extra: bool = False) -> str:
         from lobster.core.uv_tool_env import build_tool_install_command
 
         # Keeps the receipt's extras and --with set; quoted, because the
-        # command can carry "[", ">=" and " @ file://".
+        # command can carry "[", ">=" and " @ file://". Plain "uv": a quoted
+        # path first is an expression in PowerShell.
         if is_extra:
-            return shlex.join(build_tool_install_command(extras=[package]))
-        return shlex.join(build_tool_install_command(with_packages=[package]))
+            cmd = build_tool_install_command(extras=[package])
+        else:
+            cmd = build_tool_install_command(with_packages=[package])
+        return shlex.join(["uv", *cmd[1:]])
     else:
         return f"uv pip install '{specifier}'"
 

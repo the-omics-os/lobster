@@ -217,8 +217,10 @@ def run_tool_install(cmd: list[str]) -> NoReturn:
     if windows_locks_running_tool():
         # A reinstall from inside could fail halfway and leave no lobster.
         # Double quotes work in PowerShell and cmd; ">=" and "[" bare do not.
+        # Plain "uv": PowerShell reads a leading quoted path as an expression.
         line = " ".join(
-            f'"{arg}"' if any(c in arg for c in " []<>=@&|^") else arg for arg in cmd
+            f'"{arg}"' if any(c in arg for c in " []<>=@&|^") else arg
+            for arg in ["uv", *cmd[1:]]
         )
         print("  " + t("cli.init.windows_tool_install", command=line))
         sys.stdout.flush()
