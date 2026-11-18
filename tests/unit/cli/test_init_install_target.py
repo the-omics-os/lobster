@@ -65,3 +65,25 @@ def test_a_clean_run_still_points_to_chat(monkeypatch, tmp_path):
 
     assert "Next: run lobster chat" in console.export_text()
     assert init_commands._failed_install_lines() == []
+
+
+@pytest.mark.parametrize(
+    ("version", "spec"), [("1.3.0", "~=1.3.0"), ("1.3.2+c09f12bb5", "~=1.3.0")]
+)
+def test_agent_packages_install_at_lobsters_own_minor_version(
+    monkeypatch, version, spec
+):
+    calls = []
+
+    def _run(cmd, **_kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(agent_commands.subprocess, "run", _run)
+    monkeypatch.setattr("lobster.version.__version__", version)
+
+    agent_commands._uv_pip_install("lobster-research")
+    agent_commands._uv_pip_install("chromadb>=1.0.0")
+
+    assert calls[0][-1] == f"lobster-research{spec}"
+    assert calls[1][-1] == "chromadb>=1.0.0"
