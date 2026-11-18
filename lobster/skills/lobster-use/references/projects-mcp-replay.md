@@ -14,7 +14,6 @@ lobster skills install [--harness claude-code|codex|cursor|os|pi] [--dry-run]
 ```
 
 `lobster skills install` never replaces a skill folder it did not create.
-<!-- VERIFY: lobster init installs the chosen analysis packages under uv tool -->
 Plain `lobster-ai` is small and includes the default provider, Omics-OS Cloud;
 `lobster init` installs the analysis packages and other providers the user picks.
 `'lobster-ai[full]'` installs everything at once (a larger install).
@@ -73,7 +72,7 @@ a completed run), `lobster_inspect` (structure of a saved `.h5ad`, no matrix loa
 With it off, Lobster never imports LaminDB and makes no `.lamindb` folder. It needs
 the `[lamin]` extra (not part of `[full]`): `lobster init` installs it at its LaminDB
 step (`lobster init --lamin`); `lobster lamin init` or `LOBSTER_LAMIN=1` turn it on later.
-<!-- VERIFY: lobster init --lamin installs the [lamin] extra through uv tool install --with --> It records sessions, saved datasets and
+It records sessions, saved datasets and
 exported notebooks in `<workspace>/.lamindb/` (local SQLite, no account).
 
 ```bash

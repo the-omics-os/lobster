@@ -26,7 +26,6 @@ reference require Python engine **1.2.2+**. Install plain `lobster-ai`, then let
 (scrna-basic, scrna-full, multiomics-full) or `--agents a,b`; without them a plain
 install can leave **no specialist agents**. Inspect installed/enabled task agents.
 `'lobster-ai[full]'` installs everything at once (a larger install).
-<!-- VERIFY: non-interactive lobster init installs the --preset/--agents packages (fresh-install gate rows) -->
 
 ```bash
 # Fresh approved POSIX project/environment; do not replace an existing .venv

@@ -37,7 +37,6 @@ in Bash; do not print it, source the file as code, or enable shell tracing.
 )
 ```
 
-<!-- VERIFY: non-interactive lobster init installs the --preset/--agents packages (fresh-install gate rows) -->
 This selects the **local** gateway provider without requiring an Anthropic,
 OpenAI or personal AWS key. No npm install/login is needed. `--use-omics-os`
 looks up the nonblank Python environment key, then the active saved Python
