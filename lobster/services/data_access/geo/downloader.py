@@ -586,10 +586,14 @@ class GEODownloadManager:
             missing_ok=True
         )  # a leftover from another run has no known validator
         idle, validator, failed, resumed = _idle_timeout_s(), None, 0, False
+        peak = 0  # the largest partial file so far: an attempt must beat it to count
         while failed < _MAX_ATTEMPTS_WITHOUT_PROGRESS:
             if download_activity.stopped():
                 return False  # the partial file stays for a retry in this session
             have = part.stat().st_size if part.exists() else 0
+            if have and validator is None:  # nothing proves the file is unchanged
+                part.unlink()
+                have = 0
             headers = {"Range": f"bytes={have}-", "If-Range": validator} if have else {}
             try:
                 response = self.session.get(
@@ -606,8 +610,6 @@ class GEODownloadManager:
                     "Last-Modified"
                 )
                 total = int(response.headers.get("content-length", 0)) + have
-                if validator is None and have:
-                    have = 0  # no way to tell the file is unchanged
                 resumed = resumed or have > 0
                 started, logged, shown = time.monotonic(), time.monotonic(), 0.0
                 with open(part, "ab" if have else "wb") as f:
@@ -641,8 +643,9 @@ class GEODownloadManager:
                     return False
                 failed += 1
             except requests.exceptions.RequestException as e:
-                grown = part.exists() and part.stat().st_size > have
-                failed = 0 if grown else failed + 1
+                size = part.stat().st_size if part.exists() else 0
+                failed = 0 if size > peak else failed + 1
+                peak = max(peak, size)
                 logger.warning(f"Download of {url} interrupted ({e}); resuming")
         else:
             logger.warning(f"Failed to download HTTP {url}: no progress")
