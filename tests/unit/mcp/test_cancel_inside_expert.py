@@ -422,3 +422,18 @@ def test_a_turn_that_ends_on_its_own_keeps_its_conversation(
     assert wait_terminal(server, run["run_id"])["status"] == "completed"
     client = opened[-1]["client"]
     assert client.graph.updates == [] and client.callbacks == []
+
+
+def test_the_cancel_event_of_the_turn_reaches_the_file_downloader():
+    from lobster.utils import download_activity
+
+    class Client:
+        callbacks: list = []
+        messages: list = []
+
+    cancel = threading.Event()
+    with mcp_stdio._stop_on_cancel(Client(), cancel):
+        assert download_activity.stopped() is False
+        cancel.set()
+        assert download_activity.stopped() is True
+    assert download_activity.stopped() is False  # a later turn is not stopped

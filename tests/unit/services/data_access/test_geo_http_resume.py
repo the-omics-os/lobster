@@ -179,3 +179,23 @@ def test_the_download_in_progress_is_visible_to_a_host_that_polls(
     assert seen["mb_total"] == round(len(BODY) / 1e6, 1) and seen["mb_done"] >= 0
     assert "kb_per_s" in seen
     assert download_activity.snapshot() is None  # nothing once the file is done
+
+
+def test_a_cancel_ends_a_download_in_progress_without_retries(serve, manager, tmp_path):
+    server = serve([{"cut": 40_000, "stall": 3}, {}])
+    target, result, stop = tmp_path / "f.gz", [], threading.Event()
+    download_activity.set_stop(stop)
+    try:
+        worker = threading.Thread(
+            target=lambda: result.append(manager.download_file(server.url, target))
+        )
+        worker.start()
+        time.sleep(0.3)
+        stop.set()
+        worker.join(5)  # the idle bound is 1 s here
+        assert not worker.is_alive() and result == [False]
+        assert len(server.requests) == 1  # no resume, no fallback
+        assert manager.download_file(server.url, target) is False
+        assert len(server.requests) == 1  # nothing is started after the cancel
+    finally:
+        download_activity.set_stop(None)
