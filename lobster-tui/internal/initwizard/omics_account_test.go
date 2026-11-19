@@ -261,3 +261,40 @@ func TestAccountScreensFitEightyColumns(t *testing.T) {
 		})
 	}
 }
+
+// A provider chosen earlier must not survive "No, request access": the contract returns
+// to the list with no provider selected.
+func TestAccountNoClearsAnEarlierProviderChoice(t *testing.T) {
+	fakeBrowser(t, nil)
+	m := keys(NewWizardModel("", ""), "down", "enter") // Anthropic, its key step
+	if m.step != stepAPIKey || m.result.Provider != "anthropic" {
+		t.Fatalf("setup: step %v provider %q", m.step, m.result.Provider)
+	}
+	m = keys(m, "esc") // back to the list
+	if m.step != stepProvider {
+		t.Fatalf("setup: Esc left step %v", m.step)
+	}
+	m = keys(m, "up", "enter", "down", "enter", "enter") // Omics-OS, No, Enter
+	if m.step != stepProvider || m.result.Provider != "" {
+		t.Fatalf("after No: step %v provider %q", m.step, m.result.Provider)
+	}
+}
+
+// Esc on the waiting screen is one step back: the question, and the page is not opened again.
+func TestEscOnTheWaitingScreenReturnsToTheQuestion(t *testing.T) {
+	urls := fakeBrowser(t, nil)
+	m := keys(NewWizardModel("", ""), "enter", "down", "enter")
+	if m.step != stepAccessRequest {
+		t.Fatalf("setup: step %v", m.step)
+	}
+	m = keys(m, "esc")
+	if m.step != stepOmicsAccount || !strings.Contains(render(m), accountQuestion) {
+		t.Fatalf("Esc: step %v\n%s", m.step, render(m))
+	}
+	if len(*urls) != 1 {
+		t.Fatalf("the page was opened %d times: %v", len(*urls), *urls)
+	}
+	if m.result.Provider != "" {
+		t.Fatalf("Esc selected a provider: %q", m.result.Provider)
+	}
+}
