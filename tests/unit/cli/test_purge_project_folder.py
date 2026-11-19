@@ -203,6 +203,18 @@ def test_a_folder_too_large_to_check_is_not_removed(tmp_path, home, monkeypatch)
     assert said(result, "holds too many folders to check for projects")
 
 
+def test_a_large_workspace_by_name_is_still_purged(tmp_path, home, monkeypatch):
+    monkeypatch.setattr(purge_commands, "_SCAN_LIMIT", 3)
+    workspace = tmp_path / "old" / ".lobster_workspace"
+    for i in range(5):
+        (workspace / f"d{i}").mkdir(parents=True)
+
+    result = purge("-w", str(workspace), "--force")
+
+    assert result.exit_code == 0, result.output
+    assert not workspace.exists()
+
+
 def test_a_project_whose_project_file_is_a_link_is_not_removed(tmp_path, home):
     root = tmp_path / "study"
     projects.init_project(root)
@@ -275,4 +287,6 @@ def test_an_error_naming_a_bracketed_path_is_printed_as_written(
 
     result = purge("-w", str(workspace), "--force")
 
-    assert "[bold]ws" in "".join(result.output.split()), result.output
+    text = "".join(result.output.split())  # long paths wrap across lines
+    assert f"Failedtoremove{workspace}:busy" in text, result.output
+    assert text.count("[bold]ws") == 2  # the listing and the error

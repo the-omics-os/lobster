@@ -174,6 +174,56 @@ def _verify_lobster_directory(
     return False, None
 
 
+# Folders checked for a project inside a folder to remove; more is refused unchecked.
+_SCAN_LIMIT = 5000
+
+
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
+
+
+def _reached_through_link(path: Path) -> bool:
+    """The folder, or the folder named to find its ``.lobster_workspace``, is a link.
+
+    Links above that (``/tmp`` on macOS, a linked home) are the system's, not a redirect.
+    """
+    named = [path.parent] if path.name == WORKSPACE_FOLDER_NAME else []
+    return any(_is_link(p) for p in [path, *named])
+
+
+def _project_inside(path: Path) -> Optional[str]:
+    """A project or workspace inside ``path``; ``""`` when there are too many folders to
+    check; None when there is none."""
+    from lobster.core.projects import _same, registered_projects
+
+    for entry in registered_projects():
+        if not entry.missing and any(
+            _same(path, parent) for parent in Path(entry.root).parents
+        ):
+            return entry.root
+    # Projects never registered: two levels down, without following links.
+    level, seen = [path], 0
+    for _ in range(2):
+        below = []
+        for folder in level:
+            try:
+                entries = list(os.scandir(folder))
+            except OSError:
+                continue
+            for entry in entries:
+                if not entry.is_dir(follow_symlinks=False):
+                    continue
+                seen += 1
+                if seen > _SCAN_LIMIT:
+                    return ""
+                inner = Path(entry.path)
+                if os.path.lexists(inner / WORKSPACE_FOLDER_NAME):
+                    return str(inner)
+                below.append(inner)
+        level = below
+    return None
+
+
 def _never_removed(path: Path) -> Optional[str]:
     """Why ``path`` must never be removed, whatever it holds; None if it may be."""
     from lobster.core.projects import is_home_or_above
@@ -182,10 +232,30 @@ def _never_removed(path: Path) -> Optional[str]:
         return h("Not removed: {path} is your home folder or contains it").format(
             path=path
         )
-    if _is_project_workspace(path / WORKSPACE_FOLDER_NAME):
+    if _reached_through_link(path):
+        return h(
+            "Not removed: {path} is reached through a link; name the real folder instead"
+        ).format(path=path)
+    nested = path / WORKSPACE_FOLDER_NAME
+    if _is_project_workspace(nested):
         return h(
             "Not removed: {path} is a project folder; its workspace is {workspace}"
-        ).format(path=path, workspace=path / WORKSPACE_FOLDER_NAME)
+        ).format(path=path, workspace=nested)
+    # A folder that holds a workspace is never itself the workspace, whatever that is.
+    if os.path.lexists(nested):
+        return h(
+            "Not removed: {path} holds a Lobster workspace; name {workspace} instead"
+        ).format(path=path, workspace=nested)
+    inner = _project_inside(path)
+    # A big workspace has many folders; its name already proves Lobster made it.
+    if inner == "" and path.name != WORKSPACE_FOLDER_NAME:
+        return h(
+            "Not removed: {path} holds too many folders to check for projects"
+        ).format(path=path)
+    if inner:
+        return h(
+            "Not removed: {path} contains a project or workspace ({inner})"
+        ).format(path=path, inner=inner)
     return None
 
 
@@ -356,7 +426,7 @@ def execute_purge(
 def _skipped_line(target: PurgeTarget, unmarked: str) -> str:
     if target.refusal:
         return f"  [yellow]{escape(target.refusal)}[/yellow]"
-    return unmarked.format(path=target.path)
+    return unmarked.format(path=escape(str(target.path)))
 
 
 def purge(
@@ -435,7 +505,7 @@ def purge(
     output.print(h("\n[bold green]✓ Verified Lobster AI directories:[/bold green]"))
     for target in verified_targets:
         size_str = _format_size(target.size_bytes)
-        output.print(f"\n  [cyan]{target.path}[/cyan]")
+        output.print(f"\n  [cyan]{escape(str(target.path))}[/cyan]")
         output.print(f"    {target.description}")
         output.print(
             h("    [dim]{size}, {count} files[/dim]").format(
@@ -487,7 +557,9 @@ def purge(
         output.print(h("\n[bold green]✓ Purge complete![/bold green]"))
         for target in result.targets_removed:
             output.print(
-                h("  [green]✓[/green] Removed {path}").format(path=target.path)
+                h("  [green]✓[/green] Removed {path}").format(
+                    path=escape(str(target.path))
+                )
             )
         output.print(
             h("\n[dim]Freed {size}[/dim]").format(
@@ -497,7 +569,7 @@ def purge(
     else:
         output.print(h("\n[bold yellow]⚠ Purge completed with errors:[/bold yellow]"))
         for error in result.errors:
-            output.print(f"  [red]✗[/red] {error}")
+            output.print(f"  [red]✗[/red] {escape(error)}")
 
     # Show uninstall instructions
     output.print("\n[dim]" + "─" * 60 + "[/dim]")
