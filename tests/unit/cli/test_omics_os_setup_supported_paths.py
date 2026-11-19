@@ -740,3 +740,151 @@ def test_classic_skip_extras_keeps_agent_selection_and_prints_later_command(
         f"Install later: uv pip install --python {sys.executable} 'lobster-research~={_MINOR}'\n"
         in capsys.readouterr().out
     )
+
+
+ACCESS_URL = "https://www.omics-os.com/early-access"
+ACCESS_LINES = (
+    "Opening the access request page in your browser:",
+    ACCESS_URL,
+    "If it does not open, copy the address into your browser.",
+    "Press Enter when you have sent the request.",
+)
+ACCESS_SENT = (
+    "Your access request is on its way. We'll email you when it's approved. "
+    "Until then, choose a different provider to continue."
+)
+
+
+def run_classic(monkeypatch, capsys, answers):
+    """Drive the classic wizard; an answer that is an exception is raised."""
+    asked = []
+    answers = iter(answers)
+
+    def ask(prompt, *args, **kwargs):
+        asked.append((str(prompt), kwargs))
+        answer = next(answers, kwargs.get("default", ""))
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(init_commands.Prompt, "ask", ask)
+    monkeypatch.setattr(init_commands.Confirm, "ask", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        init_commands,
+        "_perform_agent_selection_interactive",
+        lambda *args, **kwargs: ([], None),
+    )
+    options = init_kwargs()
+    options.update(ui_mode="classic", skip_extras=True, skip_ssl_test=True)
+    try:
+        init_commands.init_impl(**options)
+    except typer.Exit as error:
+        assert error.exit_code == 0
+    return asked, capsys.readouterr().out
+
+
+@pytest.fixture
+def opened(monkeypatch):
+    import webbrowser
+
+    urls = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: urls.append(url))
+    monkeypatch.setattr(sys, "platform", "darwin")
+    return urls
+
+
+def test_classic_cloud_label_is_the_account_not_free_models(monkeypatch, capsys):
+    from lobster.ui.wizard.manifest import _PROVIDER_DISPLAY
+
+    _, out = run_classic(monkeypatch, capsys, ["1", "1", "1", KEY])
+
+    assert "Omics-OS Cloud          — Omics-OS Cloud account" in out
+    assert "Free" not in out
+    assert _PROVIDER_DISPLAY["omics-os"] == ("Omics-OS Cloud", "Omics-OS Cloud account")
+
+
+def test_classic_yes_keeps_the_key_step(monkeypatch, capsys, tmp_path, opened):
+    asked, out = run_classic(monkeypatch, capsys, ["1", "1", "1", KEY])
+
+    assert "Do you have an Omics-OS account?" in out
+    assert "Yes, I have an account" in out and "No, request access" in out
+    assert opened == []
+    assert_cloud_config(tmp_path, KEY)
+
+
+def test_classic_no_opens_the_page_and_returns_to_the_providers(
+    monkeypatch, capsys, tmp_path, opened
+):
+    # language, Omics-OS, No, Enter, then Claude API with its key
+    asked, out = run_classic(
+        monkeypatch, capsys, ["1", "1", "2", "", "2", "sk-ant-synthetic"]
+    )
+
+    assert opened == [ACCESS_URL]
+    lines = [line.strip() for line in out.splitlines()]
+    for line in ACCESS_LINES[:3]:
+        assert line in lines
+    assert any(ACCESS_LINES[3] in prompt for prompt, _ in asked)
+    assert ACCESS_SENT in " ".join(out.split())
+    after = out[out.index(ACCESS_LINES[0]) :]
+    assert "Select your LLM provider:" in after  # the list again
+    choose = [kw for prompt, kw in asked if "Choose provider" in prompt]
+    assert choose[0].get("default") == "1"
+    assert "default" not in choose[1]  # Omics-OS is not picked by Enter
+    text = (tmp_path / ".env").read_text()
+    assert "LOBSTER_LLM_PROVIDER=anthropic" in text
+    assert "OMICS_OS" not in text
+
+
+def test_classic_cancel_on_the_question_returns_to_the_providers(
+    monkeypatch, capsys, tmp_path, opened
+):
+    asked, out = run_classic(
+        monkeypatch, capsys, ["1", "1", KeyboardInterrupt(), "2", "sk-ant-synthetic"]
+    )
+
+    assert opened == []
+    assert ACCESS_SENT not in " ".join(out.split())
+    assert len([p for p, _ in asked if "Choose provider" in p]) == 2
+    assert "LOBSTER_LLM_PROVIDER=anthropic" in (tmp_path / ".env").read_text()
+
+
+def test_access_request_prints_the_address_when_the_browser_fails(monkeypatch, capsys):
+    import webbrowser
+
+    from lobster.config.cloud_setup import ACCESS_REQUEST_URL, request_access
+
+    def broken(url, *args, **kwargs):
+        raise webbrowser.Error("no browser")
+
+    monkeypatch.setattr(webbrowser, "open", broken)
+    monkeypatch.setattr(sys, "platform", "win32")
+    said, waited = [], []
+
+    request_access(said.append, waited.append)
+
+    assert ACCESS_REQUEST_URL == ACCESS_URL
+    assert said == [*ACCESS_LINES[:3], ACCESS_SENT]
+    assert waited == [ACCESS_LINES[3]]
+
+
+@pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])
+def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display):
+    import webbrowser
+
+    from lobster.config.cloud_setup import request_access
+
+    urls = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: urls.append(url))
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    if display:
+        monkeypatch.setenv(display, ":0")
+    said = []
+
+    request_access(said.append, lambda prompt: None)
+
+    assert urls == ([ACCESS_URL] if display else [])
+    assert ACCESS_URL in said
