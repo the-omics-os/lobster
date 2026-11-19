@@ -2331,10 +2331,7 @@ def _has_omics_os_account() -> bool:
         lambda line: console.print(
             line, markup=False, highlight=False, soft_wrap=" " not in line
         ),
-        # A space, not Rich's default ": ", which would end the sentence in ".:".
-        lambda prompt: Prompt.ask(
-            prompt, default="", show_default=False, prompt_suffix=" "
-        ),
+        lambda prompt: Prompt.ask(prompt, default="", show_default=False),
     )
     return False
 
