@@ -376,7 +376,9 @@ def test_questionary_ticks_only_the_default_packages(monkeypatch):
         return SimpleNamespace(title=title, **kwargs)
 
     questionary.Choice = _choice
-    questionary.select = lambda *a, **k: SimpleNamespace(ask=lambda: "omics-os")
+    questionary.select = lambda prompt, **k: SimpleNamespace(
+        ask=lambda: "yes" if "account" in prompt else "omics-os"
+    )
     questionary.checkbox = lambda *a, **k: SimpleNamespace(ask=lambda: [])
     questionary.confirm = lambda *a, **k: SimpleNamespace(ask=lambda: False)
     questionary.password = lambda *a, **k: SimpleNamespace(ask=lambda: "omk_x")

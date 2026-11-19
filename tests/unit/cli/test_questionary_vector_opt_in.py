@@ -17,7 +17,9 @@ def test_questionary_vector_is_default_no_with_explicit_opt_in(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     questionary = ModuleType("questionary")
     questionary.Choice = lambda title, **kwargs: SimpleNamespace(title=title, **kwargs)
-    questionary.select = lambda *args, **kwargs: SimpleNamespace(ask=lambda: "omics-os")
+    questionary.select = lambda prompt, **kwargs: SimpleNamespace(
+        ask=lambda: "yes" if "account" in prompt else "omics-os"
+    )
     questionary.checkbox = lambda *args, **kwargs: SimpleNamespace(ask=lambda: agents)
     confirms = []
     passwords = []

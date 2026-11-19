@@ -394,7 +394,9 @@ def test_questionary_cloud_wizard_requests_key_without_browser(monkeypatch, caps
     monkeypatch.setattr(
         questionary,
         "select",
-        lambda *args, **kwargs: SimpleNamespace(ask=lambda: "omics-os"),
+        lambda prompt, **kwargs: SimpleNamespace(
+            ask=lambda: "yes" if "account" in prompt else "omics-os"
+        ),
         raising=False,
     )
     monkeypatch.setattr(questionary, "password", password, raising=False)
@@ -908,3 +910,91 @@ def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display)
     # Detached from the wizard's terminal, so no browser can read or draw on it.
     assert kw["stdin"] is kw["stdout"] is kw["stderr"] is subprocess.DEVNULL
     assert kw["start_new_session"] is True
+
+
+def run_questionary(monkeypatch, answers):
+    """Drive the questionary fallback; ``answers`` feeds its select prompts."""
+    from types import ModuleType
+
+    from lobster.ui.bridge.questionary_fallback import run_questionary_init
+    from lobster.ui.wizard.manifest import CredentialField, ProviderDef, WizardManifest
+
+    questionary = ModuleType("questionary")
+    questionary.Choice = lambda title, **kwargs: SimpleNamespace(title=title, **kwargs)
+    selects, waits = [], []
+    answers = iter(answers)
+
+    def select(prompt, **kwargs):
+        selects.append((prompt, kwargs))
+        return SimpleNamespace(ask=lambda: next(answers))
+
+    questionary.select = select
+    questionary.password = lambda prompt, **kwargs: SimpleNamespace(ask=lambda: KEY)
+    questionary.checkbox = lambda *args, **kwargs: SimpleNamespace(ask=lambda: [])
+    questionary.confirm = lambda *args, **kwargs: SimpleNamespace(ask=lambda: False)
+    monkeypatch.setitem(sys.modules, "questionary", questionary)
+    monkeypatch.setattr("builtins.input", lambda prompt="": waits.append(prompt))
+    manifest = WizardManifest(
+        providers=[
+            ProviderDef(
+                name="omics-os",
+                display_name="Omics-OS Cloud",
+                description="Omics-OS Cloud account",
+                model_selection="managed",
+            ),
+            ProviderDef(
+                name="openai",
+                display_name="OpenAI",
+                model_selection="managed",
+                credentials=[
+                    CredentialField(key="OPENAI_API_KEY", label="OpenAI API Key")
+                ],
+            ),
+        ]
+    )
+    return run_questionary_init(manifest), selects, waits
+
+
+def test_questionary_yes_keeps_the_key_step(monkeypatch, opened):
+    result, selects, waits = run_questionary(monkeypatch, ["omics-os", "yes"])
+
+    prompt, kwargs = selects[1]
+    assert prompt == "Do you have an Omics-OS account?"
+    assert [c.title for c in kwargs["choices"]] == [
+        "Yes, I have an account",
+        "No, request access",
+    ]
+    assert (result["provider"], result["api_key"]) == ("omics-os", KEY)
+    assert opened == [] and waits == []
+
+
+def test_questionary_no_opens_the_page_and_returns_to_the_providers(
+    monkeypatch, capsys, opened
+):
+    result, selects, waits = run_questionary(monkeypatch, ["omics-os", "no", "openai"])
+
+    out = capsys.readouterr().out
+    assert opened == [ACCESS_URL]
+    lines = [line.strip() for line in out.splitlines()]
+    for line in ACCESS_LINES[:3]:
+        assert line in lines
+    assert [w.strip() for w in waits] == [ACCESS_LINES[3]]
+    assert ACCESS_SENT in lines
+    assert [p for p, _ in selects] == [
+        "Select your LLM provider:",
+        "Do you have an Omics-OS account?",
+        "Select your LLM provider:",
+    ]
+    assert selects[0][1]["default"] == "omics-os"
+    assert selects[2][1].get("default") is None  # Omics-OS is not picked by Enter
+    assert (result["provider"], result["api_key"]) == ("openai", KEY)
+
+
+def test_questionary_cancel_on_the_question_returns_to_the_providers(
+    monkeypatch, capsys, opened
+):
+    result, selects, waits = run_questionary(monkeypatch, ["omics-os", None, "openai"])
+
+    assert opened == [] and waits == []
+    assert ACCESS_SENT not in capsys.readouterr().out
+    assert result["provider"] == "openai"
