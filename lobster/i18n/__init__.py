@@ -132,8 +132,8 @@ def _global_config_dir(environ: Optional[Mapping[str, str]] = None) -> Path:
     """User-wide config folder. Mirrors ``lobster.config.global_config.CONFIG_DIR``."""
     env = os.environ if environ is None else environ
     if os.name == "nt":
-        return Path(env.get("APPDATA", str(Path.home()))) / "lobster"
-    return Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "lobster"
+        return Path(env.get("APPDATA") or Path.home()) / "lobster"
+    return Path(env.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "lobster"
 
 
 def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[str]:

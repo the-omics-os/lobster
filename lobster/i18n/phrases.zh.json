@@ -1245,6 +1245,8 @@
   "Not removed: {path} holds a Lobster workspace; name {workspace} instead": "未删除：{path} 包含一个 Lobster 工作区；请改为指定 {workspace}",
   "Not removed: {path} holds too many folders to check for projects": "未删除：{path} 包含的文件夹太多，无法检查其中是否有项目",
   "Not removed: {path} contains a project or workspace ({inner})": "未删除：{path} 内含项目或工作区（{inner}）",
+  "    [yellow]kept: {entry}[/yellow]": "    [yellow]保留：{entry}[/yellow]",
+  "  [green]✓[/green] Removed Lobster's files from {path}": "  [green]✓[/green] 已删除 {path} 中 Lobster 的文件",
   "  [green]✓[/green] Removed {path}": "  [green]✓[/green] 已删除 {path}",
   "Permission denied: {path}": "权限不足：{path}",
   "Failed to remove {path}: {error}": "删除 {path} 失败：{error}",

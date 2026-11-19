@@ -56,10 +56,10 @@ class LobsterPaths:
     def get_global_config_dir() -> Path:
         """Get the global configuration directory."""
         if platform.system() == "Windows":
-            return Path(os.environ.get("APPDATA", Path.home())) / "lobster"
+            return Path(os.environ.get("APPDATA") or Path.home()) / "lobster"
         else:
             return (
-                Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+                Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
                 / "lobster"
             )
 
@@ -83,6 +83,14 @@ class LobsterPaths:
     GLOBAL_CONFIG_MARKERS = ["providers.json", "credentials.env"]
     HOME_DIR_MARKERS = ["license.json", "lobster_history", ".version_check_cache.json"]
     WORKSPACE_MARKERS = ["provider_config.json", ".session.json"]
+    # What Lobster writes in its global folders, taken from the writers; the rest is
+    # kept. ~/.lobster: the history (ui/console_manager.py), the version cache
+    # (config/version_check.py), lobster-vector's vector_store and ontology_cache, and
+    # license.json from older releases. The config folder: config/global_config.py
+    # and the project registry (core/projects.py).
+    HOME_DIR_ENTRIES = HOME_DIR_MARKERS + ["vector_store", "ontology_cache"]
+    GLOBAL_CONFIG_ENTRIES = GLOBAL_CONFIG_MARKERS + ["projects.json"]
+    OS_FILES = [".DS_Store", "Thumbs.db", "desktop.ini"]
     WORKSPACE_SUBDIRS = ["data", "cache", "plots", "exports", "metadata", ".lobster"]
 
 
@@ -97,6 +105,7 @@ class PurgeTarget:
     is_verified: bool = False  # True if contains Lobster AI marker files
     marker_found: Optional[str] = None
     refusal: Optional[str] = None  # why an unverified workspace is never removed
+    kept: List[Path] = field(default_factory=list)  # entries of a global folder kept
 
 
 @dataclass
@@ -276,15 +285,60 @@ def _workspace_refusal(path: Path) -> Optional[str]:
     ).format(path=path)
 
 
-def _is_global_directory(path: Path) -> bool:
+def _global_entries(path: Path) -> Optional[List[str]]:
+    """The names Lobster writes in ``path`` when it is a global folder; else None."""
     from lobster.core.projects import _same
 
-    return any(
-        _same(path, d)
-        for d in (
-            LobsterPaths.get_lobster_home_dir(),
-            LobsterPaths.get_global_config_dir(),
+    for folder, entries in (
+        (LobsterPaths.get_lobster_home_dir(), LobsterPaths.HOME_DIR_ENTRIES),
+        (LobsterPaths.get_global_config_dir(), LobsterPaths.GLOBAL_CONFIG_ENTRIES),
+    ):
+        if _same(path, folder):
+            return entries + LobsterPaths.OS_FILES
+    return None
+
+
+def _global_refusal(path: Path) -> Optional[str]:
+    """Why the global folder ``path`` is not touched; None if its files may go."""
+    from lobster.core.projects import is_home_or_above
+
+    if is_home_or_above(path):
+        return h("Not removed: {path} is your home folder or contains it").format(
+            path=path
         )
+    if _is_link(path):
+        return h(
+            "Not removed: {path} is reached through a link; name the real folder instead"
+        ).format(path=path)
+    return None
+
+
+def _split_entries(path: Path, known: List[str]) -> Tuple[List[Path], List[Path]]:
+    """The entries of ``path`` Lobster wrote, and the ones it did not."""
+    try:
+        entries = sorted(path.iterdir())
+    except OSError:  # not a folder, or unreadable: nothing is listed, nothing goes
+        return [], []
+    return (
+        [e for e in entries if e.name in known],
+        [e for e in entries if e.name not in known],
+    )
+
+
+def _global_target(path: Path, markers: List[str], description: str) -> PurgeTarget:
+    is_verified, marker = _verify_lobster_directory(path, markers)
+    refusal = _global_refusal(path)
+    removed, kept = _split_entries(path, _global_entries(path) or [])
+    sizes = [_get_dir_size(e) for e in removed] if is_verified and not refusal else []
+    return PurgeTarget(
+        path=path,
+        description=description,
+        size_bytes=sum(size for size, _ in sizes),
+        file_count=sum(count for _, count in sizes),
+        is_verified=is_verified and refusal is None,
+        marker_found=marker,
+        refusal=refusal,
+        kept=kept,
     )
 
 
@@ -326,36 +380,22 @@ def discover_purge_targets(
         # ~/.lobster/ (license, history, version cache)
         home_dir = LobsterPaths.get_lobster_home_dir()
         if home_dir.exists():
-            is_verified, marker = _verify_lobster_directory(
-                home_dir, LobsterPaths.HOME_DIR_MARKERS
-            )
-            size, count = _get_dir_size(home_dir)
             targets.append(
-                PurgeTarget(
-                    path=home_dir,
-                    description=h("License, history, and version cache"),
-                    size_bytes=size,
-                    file_count=count,
-                    is_verified=is_verified,
-                    marker_found=marker,
+                _global_target(
+                    home_dir,
+                    LobsterPaths.HOME_DIR_MARKERS,
+                    h("License, history, and version cache"),
                 )
             )
 
         # ~/.config/lobster/ (global config)
         config_dir = LobsterPaths.get_global_config_dir()
         if config_dir.exists():
-            is_verified, marker = _verify_lobster_directory(
-                config_dir, LobsterPaths.GLOBAL_CONFIG_MARKERS
-            )
-            size, count = _get_dir_size(config_dir)
             targets.append(
-                PurgeTarget(
-                    path=config_dir,
-                    description=h("Global configuration and credentials"),
-                    size_bytes=size,
-                    file_count=count,
-                    is_verified=is_verified,
-                    marker_found=marker,
+                _global_target(
+                    config_dir,
+                    LobsterPaths.GLOBAL_CONFIG_MARKERS,
+                    h("Global configuration and credentials"),
                 )
             )
 
@@ -403,10 +443,11 @@ def execute_purge(
             continue
 
         # Holds under --force too: --force skips only the prompt.
+        known = _global_entries(target.path)
         if refusal := (
-            _never_removed(target.path)
-            if _is_global_directory(target.path)
-            else _workspace_refusal(target.path)
+            _workspace_refusal(target.path)
+            if known is None
+            else _global_refusal(target.path)
         ):
             result.errors.append(refusal)
             result.success = False
@@ -418,7 +459,17 @@ def execute_purge(
             continue
 
         try:
-            if target.path.is_dir():
+            if known is not None:
+                # A global folder: only what Lobster wrote goes; the folder only if empty.
+                removed, target.kept = _split_entries(target.path, known)
+                for entry in removed:
+                    if entry.is_dir() and not _is_link(entry):
+                        shutil.rmtree(entry)
+                    else:
+                        entry.unlink()
+                if not target.kept:
+                    target.path.rmdir()
+            elif target.path.is_dir():
                 shutil.rmtree(target.path)
             else:
                 target.path.unlink()
@@ -534,6 +585,10 @@ def purge(
         output.print(
             h("    [dim]Verified by: {marker}[/dim]").format(marker=target.marker_found)
         )
+        for entry in target.kept:
+            output.print(
+                h("    [yellow]kept: {entry}[/yellow]").format(entry=escape(entry.name))
+            )
 
     # Show unverified targets (won't be removed)
     if unverified_targets:
@@ -575,11 +630,12 @@ def purge(
     if result.success:
         output.print(h("\n[bold green]✓ Purge complete![/bold green]"))
         for target in result.targets_removed:
-            output.print(
-                h("  [green]✓[/green] Removed {path}").format(
-                    path=escape(str(target.path))
-                )
+            removed = (
+                h("  [green]✓[/green] Removed Lobster's files from {path}")
+                if target.kept
+                else h("  [green]✓[/green] Removed {path}")
             )
+            output.print(removed.format(path=escape(str(target.path))))
         output.print(
             h("\n[dim]Freed {size}[/dim]").format(
                 size=_format_size(result.total_size_freed)

@@ -46,11 +46,11 @@ logger = logging.getLogger(__name__)
 # Unix (Linux/macOS): ~/.config/lobster/ (CLI convention - consistent across Unix)
 # Windows: %APPDATA%\lobster\ (Windows convention)
 if platform.system() == "Windows":
-    CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / "lobster"
+    CONFIG_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "lobster"
 else:
     # Unix: Use XDG_CONFIG_HOME or fallback to ~/.config (same for Linux and macOS)
     CONFIG_DIR = (
-        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "lobster"
+        Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "lobster"
     )
 
 CONFIG_FILE_NAME = "providers.json"
