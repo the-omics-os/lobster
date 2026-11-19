@@ -84,6 +84,12 @@ def find_project_root(start: Optional[Union[str, Path]] = None) -> Optional[Path
         return None
 
 
+def _named_workspace(folder: Path) -> Path:
+    """A project folder named as the workspace means the project's own workspace."""
+    nested = folder / WORKSPACE_FOLDER_NAME
+    return nested if _is_project_workspace(nested) else folder
+
+
 def resolve_workspace(
     explicit_path: Optional[Union[str, Path]] = None,
     create: bool = True,
@@ -99,8 +105,9 @@ def resolve_workspace(
         Path: Resolved workspace path (absolute)
 
     Resolution Order:
-        1. explicit_path (if provided); a project folder names its own workspace
+        1. explicit_path (if provided)
         2. LOBSTER_WORKSPACE environment variable
+           (for 1 and 2, a project folder names the project's own workspace)
         3. The workspace of the project that contains the current directory
         4. Path.cwd() / ".lobster_workspace" (default fallback)
 
@@ -118,13 +125,10 @@ def resolve_workspace(
     source: str
 
     if explicit_path is not None:
-        workspace = Path(explicit_path)
+        workspace = _named_workspace(Path(explicit_path))
         source = "explicit parameter"
-        if _is_project_workspace(workspace / WORKSPACE_FOLDER_NAME):
-            workspace = workspace / WORKSPACE_FOLDER_NAME  # -w <project folder>
-            source = "explicit project folder"
     elif env_workspace := os.environ.get(WORKSPACE_ENV_VAR):
-        workspace = Path(env_workspace)
+        workspace = _named_workspace(Path(env_workspace))
         source = f"${WORKSPACE_ENV_VAR} environment variable"
     elif project_root := find_project_root():
         workspace = project_root / WORKSPACE_FOLDER_NAME
