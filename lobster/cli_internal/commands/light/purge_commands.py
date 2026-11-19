@@ -203,9 +203,9 @@ def _project_inside(path: Path) -> Optional[str]:
             _same(path, parent) for parent in Path(entry.root).parents
         ):
             return entry.root
-    # Projects never registered: two levels down, without following links.
+    # Projects never registered (moved, copied): every level, without following links.
     level, seen = [path], 0
-    for _ in range(2):
+    while level:
         below = []
         for folder in level:
             try:
