@@ -1,5 +1,6 @@
 """``lobster purge --scope global`` removes Lobster's own files, never the user's."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -146,3 +147,29 @@ def test_the_language_lookup_ignores_an_empty_config_variable(home):
     folder = _global_config_dir({"XDG_CONFIG_HOME": "", "APPDATA": ""})
 
     assert folder.is_absolute()
+
+
+@pytest.mark.parametrize(
+    "folder, name",
+    [(".lobster", "vector_store"), (".config/lobster", "projects.json")],
+)
+def test_a_linked_lobster_entry_is_unlinked_and_its_target_kept(
+    home, tmp_path, folder, name
+):
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "results.csv").write_text("a,b\n")
+    parent = home / folder
+    parent.mkdir(parents=True)
+    marker = "lobster_history" if folder == ".lobster" else "providers.json"
+    (parent / marker).write_text("x")
+    try:
+        (parent / name).symlink_to(data, target_is_directory=True)
+    except OSError:
+        pytest.skip("this system cannot make links")
+
+    result = purge("--force")
+
+    assert result.exit_code == 0, result.output
+    assert not os.path.lexists(parent / name)
+    assert (data / "results.csv").read_text() == "a,b\n"
