@@ -190,6 +190,21 @@ def test_an_unregistered_project_inside_keeps_the_folder(tmp_path, home):
     assert said(result, "contains a project or workspace")
 
 
+@pytest.mark.parametrize("depth", [3, 5])
+def test_a_moved_project_deep_inside_keeps_the_folder(tmp_path, home, depth):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".session.json").write_text("{}")
+    inner = work.joinpath(*[f"l{i}" for i in range(depth - 1)], "proj")
+    projects.init_project(inner)
+    projects.forget_project(inner)  # moved or cloned: the registry does not know it
+
+    result = purge("-w", str(work), "--force")
+
+    assert (inner / ".lobster_workspace" / "project.json").exists(), result.output
+    assert said(result, "contains a project or workspace")
+
+
 def test_a_folder_too_large_to_check_is_not_removed(tmp_path, home, monkeypatch):
     monkeypatch.setattr(purge_commands, "_SCAN_LIMIT", 3)
     work = tmp_path / "work"
