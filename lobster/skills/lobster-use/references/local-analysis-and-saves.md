@@ -29,8 +29,10 @@ additional executed acceptance run. The checked 1.2.1 workflow used separate
 requests in one human chat, explicit `/save` and a restart check;
 that evidence is not query-to-query memory persistence or population-level DE.
 
-`-w` names the workspace root itself: do not append another `.lobster_workspace`
-when inspecting outputs. Without an override, the local workspace defaults to
+`-w` names the workspace folder; given a project folder, Lobster uses the
+project's `.lobster_workspace`. Do not append another `.lobster_workspace` to a
+workspace path when inspecting outputs. Without an override, the local
+workspace defaults to
 `./.lobster_workspace` (or `LOBSTER_WORKSPACE`).
 
 ### Local Session History Is Not a Data Save

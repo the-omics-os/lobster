@@ -157,7 +157,8 @@ lobster command plots -w ./analysis --session-id study --json
 lobster command "pipeline export" -w ./analysis --session-id study --json
 ```
 
-`-w` is the actual workspace root. Session provenance is under
+`-w` is the workspace folder (for a project folder, its `.lobster_workspace`).
+Session provenance is under
 `.lobster/sessions/<session_id>/`; default/relative analysis tables use `exports/`.
 Returned paths take precedence over assumed shell-current-directory output.
 Exporting a notebook does not mean it was run.

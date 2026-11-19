@@ -280,7 +280,7 @@ and [agent-drivable recipe](agent-patterns.md#count-safe-bulk-rna-workflow).
 | Flag | Meaning |
 |---|---|
 | `--session-id`, `-s` | Conversation/session continuity; not an implicit data save |
-| `--workspace`, `-w` | Actual workspace root, not parent of an added hidden directory |
+| `--workspace`, `-w` | Workspace folder, or a project folder (then the project's `.lobster_workspace`) |
 | `--json`, `-j` | Structured output on stdout |
 | `--output`, `-o` | Final answer file path, **not** output format |
 | `--provider`, `-p`; `--model`, `-m` | Inference overrides |
