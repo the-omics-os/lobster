@@ -305,6 +305,8 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         self, error: Union[Exception, KeyboardInterrupt], **kwargs
     ) -> None:
         """Called when an LLM errors - now with modular error handling."""
+        if isinstance(error, SystemExit):
+            return  # the process is exiting (a SIGTERM), not an agent error
         # Get error guidance from registry
         registry = get_error_registry()
         guidance = registry.handle_error(error)
