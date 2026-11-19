@@ -132,18 +132,27 @@ def build_serve_app(
 
     @api.post("/query")
     async def query_endpoint(request: QueryRequest):
+        from lobster.core.catalog.factory import note_run_status, recorded_run_status
+
         try:
             client = client_factory()
-            return client.query(request.question, stream=request.stream)
+            with recorded_run_status(client):
+                result = client.query(request.question, stream=request.stream)
+            if isinstance(result, dict) and result.get("success") is False:
+                note_run_status(client, "errored", reason="error")
+            return result
         except Exception:
             logger.exception("lobster serve: /query failed")
             raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL)
 
     @api.get("/status")
     async def status_endpoint():
+        from lobster.core.catalog.factory import recorded_run_status
+
         try:
             client = client_factory()
-            return client.get_status()
+            with recorded_run_status(client):
+                return client.get_status()
         except Exception:
             logger.exception("lobster serve: /status failed")
             raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL)

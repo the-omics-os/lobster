@@ -283,6 +283,7 @@ class ThreadedCatalog:
         # unfinished run is never recorded as completed).
         self._end_status: Optional[RunStatus] = None
         self._end_reason: Optional[str] = None
+        self._turn_open = False  # a session's turn started and has not ended
         self._engine: Optional[Catalog] = None
         # The lock held for a recorded save, from keep_path to its registration;
         # used on the worker only.
@@ -309,6 +310,7 @@ class ThreadedCatalog:
             previous = self._session if self._run_open else None
             previous_status, self._end_status = self._end_status, None
             previous_reason, self._end_reason = self._end_reason, None
+            self._turn_open = False
             self._session = session
             self._run_open = True
             # Both calls are queued while the lock is held (``wait=False`` returns
@@ -616,21 +618,34 @@ class ThreadedCatalog:
         reason: Optional[str] = None,
         *,
         if_unset: bool = False,
+        if_unfinished: bool = False,
     ) -> None:
         """How the open run ends when the process exits or the session switches.
 
         With ``session_id``, only that session's run: a server running sessions
         side by side must not end one with another's outcome. ``reason`` says why a
-        run did not complete (an exit code, an error class). ``if_unset`` keeps a
-        status already set (a chat ends as its last turn did). None: a turn is
-        running, so the run has no end status until it ends.
+        run did not complete (an exit code, an error class). None: a turn started,
+        so the run has no end status until the turn ends.
+
+        ``if_unset`` sets it only when nothing is set and no turn is running (a
+        chat that ends normally ends as its last turn did, never completed over
+        a turn cut short). ``if_unfinished`` sets it unless a finished turn's
+        outcome stands (SIGTERM aborts a running turn, not one already over).
         """
         with self._state_lock:
             current = None if self._session is None else self._session.session_id
             if not self._run_open or session_id not in (None, current):
                 return
-            if not (if_unset and self._end_status is not None):
-                self._end_status, self._end_reason = status, reason
+            if status is None:
+                self._end_status, self._end_reason = None, None
+                self._turn_open = True
+                return
+            if if_unset and (self._end_status is not None or self._turn_open):
+                return
+            if if_unfinished and self._end_status is not None:
+                return
+            self._end_status, self._end_reason = status, reason
+            self._turn_open = False
 
     def close(self, status: RunStatus = "completed") -> None:
         """End the open run and stop the worker (tests, explicit shutdown)."""

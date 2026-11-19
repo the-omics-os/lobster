@@ -60,6 +60,7 @@ class NullCatalog:
         reason: Optional[str] = None,
         *,
         if_unset: bool = False,
+        if_unfinished: bool = False,
     ) -> None:
         return None
 
