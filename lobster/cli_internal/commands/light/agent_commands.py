@@ -183,7 +183,11 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
 
     from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
-    from lobster.core.uv_tool_env import build_tool_install_command, run_tool_install
+    from lobster.core.uv_tool_env import (
+        build_tool_install_command,
+        run_tool_install,
+        windows_locks_running_tool,
+    )
 
     agents = {
         a for entry in AVAILABLE_AGENT_PACKAGES if entry[0] == package for a in entry[2]
@@ -195,9 +199,10 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
 
     cmd = build_tool_install_command(with_packages=[_pinned_to_lobster(package, ">=")])
     cmd.insert(3, "--reinstall")
-    console.print(f"  {shlex.join(cmd)}", markup=False)
-    if console.file:
-        console.file.flush()
+    if not windows_locks_running_tool():  # else run_tool_install prints the command
+        console.print(f"  {shlex.join(cmd)}", markup=False)
+        if console.file:
+            console.file.flush()
     run_tool_install(cmd)
 
 
