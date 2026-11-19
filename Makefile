@@ -6,7 +6,7 @@
 # Configuration
 VENV_NAME := .venv
 VENV_PATH := $(VENV_NAME)
-PYTHON_VERSION_MIN := 3.11
+PYTHON_VERSION_MIN := 3.12
 PROJECT_NAME := lobster-ai
 DEV_INSTALL_EXTRAS := dev,transcriptomics,genomics,proteomics,research,classic-tui,extended-data,hdf5
 DEV_INSTALL_SPEC := .[$(DEV_INSTALL_EXTRAS)]
@@ -18,15 +18,15 @@ CONDA_ACTIVE := $(shell echo $$CONDA_DEFAULT_ENV)
 PYENV_VERSION := $(shell pyenv version-name 2>/dev/null || echo "")
 
 # Allow PYTHON override via environment variable
-# If PYTHON is not set, find best available Python (3.11+)
-# Priority: 3.13 > 3.12 > 3.11 (prefer newer versions)
+# If PYTHON is not set, find best available Python (3.12+)
+# Priority: 3.13 > 3.12 (prefer newer versions)
 # Prioritize Homebrew installations to avoid broken system Python
 ifndef PYTHON
-	PYTHON_CANDIDATES := /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 python3.13 python3.12 python3.11 python3 python
-	# Only accept 3.11 ≤ version < 3.14
+	PYTHON_CANDIDATES := /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 python3.13 python3.12 python3 python
+	# Only accept 3.12 ≤ version < 3.14
 	PYTHON := $(shell for p in $(PYTHON_CANDIDATES); do \
 	if command -v $$p >/dev/null 2>&1; then \
-		if $$p -c "import sys; exit(0 if (3,11) <= sys.version_info < (3,14) else 1)" 2>/dev/null; then \
+		if $$p -c "import sys; exit(0 if (3,12) <= sys.version_info < (3,14) else 1)" 2>/dev/null; then \
 		echo $$p; \
 		break; \
 		fi; \
@@ -91,7 +91,7 @@ help:
 	@echo "🦞 Lobster - Available Commands"
 	@echo ""
 	@echo "Installation:"
-	@echo "  make install        Install Lobster AI in virtual environment (minimum: Python 3.11, prefers 3.13)"
+	@echo "  make install        Install Lobster AI in virtual environment (minimum: Python 3.12, prefers 3.13)"
 	@echo "  make dev-install    Install with development dependencies and local domain packages"
 	@echo "  make install-global Install lobster command globally (macOS/Linux)"
 	@echo "  make clean-install  Clean install (remove existing installation)"
@@ -99,7 +99,7 @@ help:
 	@echo "  make activate       Show activation command"
 	@echo ""
 	@echo "Python Version Override:"
-	@echo "  PYTHON=/path/to/python3.11 make install  # Use specific Python version"
+	@echo "  PYTHON=/path/to/python3.13 make install  # Use specific Python version"
 	@echo "  PYTHON=python3.12 make install           # Use Python 3.12"
 	@echo ""
 	@echo "Optional Components:"
@@ -154,7 +154,7 @@ check-python: check-env-conflicts
 	@echo "   Environment type: $(PYTHON_ENV_TYPE)"
 	@echo "   Python command: $(PYTHON)"
 	@if [ -z "$(PYTHON)" ] || ! command -v $(PYTHON) >/dev/null 2>&1; then \
-		echo "$(RED)❌ No suitable Python 3.11+ found$(NC)"; \
+		echo "$(RED)❌ No suitable Python 3.12+ found$(NC)"; \
 		echo ""; \
 		echo "$(YELLOW)📋 Installation instructions based on your system:$(NC)"; \
 		if [ -n "$(CONDA_ACTIVE)" ]; then \
@@ -203,8 +203,8 @@ check-python: check-env-conflicts
 		echo "$(RED)❌ Failed to execute Python. Please check your installation.$(NC)"; \
 		exit 1; \
 	}
-	@$(PYTHON) -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" || { \
-		echo "$(RED)❌ Python 3.11+ is required. Found: $$($(PYTHON) --version 2>&1)$(NC)"; \
+	@$(PYTHON) -c "import sys; exit(0 if sys.version_info >= (3,12) else 1)" || { \
+		echo "$(RED)❌ Python 3.12+ is required. Found: $$($(PYTHON) --version 2>&1)$(NC)"; \
 		echo ""; \
 		echo "$(YELLOW)📋 Upgrade instructions for your setup ($(PYTHON_ENV_TYPE)):$(NC)"; \
 		if [ "$(PYTHON_ENV_TYPE)" = "conda" ]; then \
