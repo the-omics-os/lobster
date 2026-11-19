@@ -109,12 +109,11 @@ def test_a_folder_with_only_standard_subfolders_is_not_removed(tmp_path, home):
 
     assert result.exit_code == 0, result.output
     assert (folder / "data" / "x.csv").exists()
-    assert "is not a Lobster workspace" in " ".join(result.output.split())
+    assert "is not a standard Lobster workspace" in " ".join(result.output.split())
 
 
-@pytest.mark.parametrize("name", [".lobster_workspace", "my-workspace"])
-def test_a_real_workspace_is_purged_as_before(tmp_path, home, name):
-    workspace = tmp_path / name
+def test_a_real_workspace_is_purged_as_before(tmp_path, home):
+    workspace = tmp_path / ".lobster_workspace"
     (workspace / "data").mkdir(parents=True)
     (workspace / ".session.json").write_text("{}")
 
@@ -203,6 +202,17 @@ def test_a_moved_project_deep_inside_keeps_the_folder(tmp_path, home, depth):
 
     assert (inner / ".lobster_workspace" / "project.json").exists(), result.output
     assert said(result, "contains a project or workspace")
+
+
+def test_an_old_custom_named_workspace_is_refused_with_the_reason(tmp_path, home):
+    workspace = tmp_path / "my-workspace"
+    (workspace / "data").mkdir(parents=True)
+    (workspace / ".session.json").write_text("{}")
+
+    result = purge("-w", str(workspace), "--force")
+
+    assert (workspace / ".session.json").exists(), result.output
+    assert said(result, "Check what it holds and delete it yourself")
 
 
 def test_a_folder_too_large_to_check_is_not_removed(tmp_path, home, monkeypatch):
@@ -320,4 +330,48 @@ def test_purge_never_goes_through_a_linked_workspace_above(tmp_path, home):
     result = purge("-w", str(study / ".lobster_workspace" / "old"), "--force")
 
     assert (old / ".session.json").exists(), result.output
+    assert said(result, "is reached through a link")
+
+
+def test_a_folder_with_a_session_file_and_the_users_files_is_kept(home):
+    docs = home / "docs"
+    (docs / "data").mkdir(parents=True)
+    (docs / ".session.json").write_text("{}")
+    (docs / "thesis.docx").write_text("x")
+    (docs / "data" / "thesis.csv").write_text("a,b\n")
+
+    result = purge("-w", str(docs), "--force")
+
+    assert result.exit_code == 0, result.output
+    assert (docs / "thesis.docx").exists() and (docs / "data" / "thesis.csv").exists()
+    assert said(result, "is not a standard Lobster workspace")
+    assert "rm -rf" not in result.output
+
+
+def test_a_default_workspace_is_still_purged(tmp_path, home, monkeypatch):
+    folder = tmp_path / "analysis"
+    workspace = folder / ".lobster_workspace"
+    (workspace / "data").mkdir(parents=True)
+    (workspace / "provider_config.json").write_text("{}")
+    (folder / "notes.txt").write_text("n")
+    monkeypatch.chdir(folder)
+
+    result = purge("--force")
+
+    assert result.exit_code == 0, result.output
+    assert not workspace.exists() and (folder / "notes.txt").exists()
+
+
+def test_a_linked_default_workspace_is_still_refused(tmp_path, home, monkeypatch):
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "data").mkdir(parents=True)
+    (elsewhere / "provider_config.json").write_text("{}")
+    folder = tmp_path / "analysis"
+    folder.mkdir()
+    link(folder / ".lobster_workspace", elsewhere)
+    monkeypatch.chdir(folder)
+
+    result = purge("--force")
+
+    assert (elsewhere / "provider_config.json").exists(), result.output
     assert said(result, "is reached through a link")
