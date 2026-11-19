@@ -382,6 +382,46 @@ def test_if_unset_keeps_a_status_already_set(make_catalog, engine, tmp_path, kee
     assert engine.end_reasons == ["exit code 1" if keep else "SIGTERM"]
 
 
+def test_a_quit_while_a_turn_runs_leaves_the_run_open(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("completed")  # an earlier turn
+    catalog.set_end_status(None)  # the next turn started, never settled
+    catalog.set_end_status("completed", if_unset=True)  # the chat ends normally
+    catalog._at_exit()
+    assert "end_run" not in engine.ops()
+
+
+@pytest.mark.parametrize(
+    "before, end",
+    [
+        ([], "aborted"),  # no turn yet
+        (["completed", None], "aborted"),  # a turn running
+        (["completed"], "completed"),  # between turns: the last outcome stands
+    ],
+)
+def test_if_unfinished_keeps_only_a_finished_outcome(
+    make_catalog, engine, tmp_path, before, end
+):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    for status in before:
+        catalog.set_end_status(status)
+    catalog.set_end_status("aborted", reason="SIGTERM", if_unfinished=True)
+    catalog._at_exit()
+    assert engine.calls[-1][1][0] == end
+
+
+def test_a_new_run_starts_with_no_running_turn(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path, "s1"))
+    catalog.set_end_status(None)
+    catalog.begin_run(_session(tmp_path, "s2"))
+    catalog.set_end_status("completed", if_unset=True)
+    catalog._at_exit()
+    assert [c[1][0] for c in engine.calls if c[0] == "end_run"] == ["completed"]
+
+
 def test_a_status_for_another_session_is_ignored(make_catalog, engine, tmp_path):
     catalog = make_catalog()
     catalog.begin_run(_session(tmp_path, "s1"))

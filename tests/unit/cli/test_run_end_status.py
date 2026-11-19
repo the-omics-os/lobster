@@ -6,7 +6,11 @@ open (see the ThreadedCatalog tests): it never reads as completed.
 """
 
 import signal
+import subprocess
+import sys
+import textwrap
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,11 +28,26 @@ class _Catalog:
 
     def __init__(self):
         self.status = self.reason = None
+        self.turn_open = False
 
-    def set_end_status(self, status, session_id=None, reason=None, *, if_unset=False):
-        if if_unset and self.status is not None:
+    def set_end_status(
+        self,
+        status,
+        session_id=None,
+        reason=None,
+        *,
+        if_unset=False,
+        if_unfinished=False,
+    ):
+        if status is None:  # a turn started
+            self.status = self.reason = None
+            self.turn_open = True
             return
-        self.status, self.reason = status, reason
+        if if_unset and (self.status is not None or self.turn_open):
+            return
+        if if_unfinished and self.status is not None:
+            return
+        self.status, self.reason, self.turn_open = status, reason, False
 
     @property
     def end(self):
@@ -65,6 +84,7 @@ def _client(session_id="s1"):
         (KeyboardInterrupt(), ("aborted", "Ctrl-C")),
         (SystemExit(143), ("aborted", "SIGTERM")),
         (typer.Exit(130), ("aborted", "Ctrl-C")),
+        (__import__("click").exceptions.Abort(), ("aborted", "Ctrl-C")),
     ],
 )
 def test_a_block_ends_the_run_as_it_left(raised, end):
@@ -113,22 +133,85 @@ def test_noting_never_raises():
     factory.note_run_status(object(), "completed")  # no catalog at all
 
 
-def test_sigterm_aborts_the_open_run_and_exits(monkeypatch):
+@pytest.fixture
+def exit_later(monkeypatch):
+    """The handler's hard-exit timer, recorded instead of armed (it would end pytest)."""
+    armed = []
+    monkeypatch.setattr(factory, "_exit_later", armed.append)
+    return armed
+
+
+def test_sigterm_aborts_the_open_run_and_exits(monkeypatch, exit_later):
     catalog = _Catalog()
     monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
     with pytest.raises(SystemExit) as stopped:
         factory._on_sigterm(signal.SIGTERM, None)
     assert stopped.value.code == 143
     assert catalog.end == ("aborted", "SIGTERM")
+    assert exit_later == [143]
 
 
-def test_sigterm_between_a_sessions_turns_keeps_the_last_outcome(monkeypatch):
+def test_sigterm_aborts_a_running_turn(monkeypatch, exit_later):
+    catalog = _Catalog()
+    catalog.set_end_status("completed")
+    catalog.set_end_status(None)  # the next turn is running
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
+    with pytest.raises(SystemExit):
+        factory._on_sigterm(signal.SIGTERM, None)
+    assert catalog.end == ("aborted", "SIGTERM")
+
+
+def test_sigterm_between_a_sessions_turns_keeps_the_last_outcome(
+    monkeypatch, exit_later
+):
     catalog = _Catalog()
     catalog.set_end_status("completed")
     monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
     with pytest.raises(SystemExit):
         factory._on_sigterm(signal.SIGTERM, None)
     assert catalog.end == ("completed", None)
+
+
+SIGTERM_CHILD = textwrap.dedent("""
+    import os, signal, sys, time
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+    from lobster.core.catalog import factory, thread
+    thread.AT_EXIT_TIMEOUT_S = 1.0
+    class Catalog:
+        def set_end_status(self, *args, **kwargs):
+            pass
+    if sys.argv[1] == "catalog":
+        factory._process_catalog = (Path("."), Catalog())
+    factory.abort_runs_on_sigterm()
+    pool = ThreadPoolExecutor(1)
+    pool.submit(time.sleep, 30)  # a tool still running: a non-daemon thread
+    print("ready", flush=True)
+    time.sleep(60)
+""")
+
+
+@pytest.mark.parametrize("bound", ["catalog", "none"])
+def test_sigterm_ends_the_process_within_the_exit_budget(tmp_path, bound):
+    """A tool still running must not hold the process for its whole length."""
+    child = subprocess.Popen(
+        [sys.executable, "-c", SIGTERM_CHILD, bound],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={"PATH": "", "PYTHONPATH": ":".join(sys.path), "HOME": str(tmp_path)},
+    )
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        sent = time.monotonic()
+        child.send_signal(signal.SIGTERM)
+        code = child.wait(timeout=20)
+        took = time.monotonic() - sent
+    finally:
+        child.kill()
+    if bound == "catalog":
+        assert code == 143 and took < 1.0 + 2.5
+    else:  # no catalog: SIGTERM does what it did before, at once
+        assert code == -signal.SIGTERM and took < 2.0
 
 
 def test_a_run_installs_the_sigterm_handler_only_where_none_is_set(monkeypatch):
@@ -451,6 +534,22 @@ def test_a_running_go_tui_turn_has_no_end_status():
     assert seen == [(None, None)]
 
 
+def test_quitting_a_go_tui_chat_while_a_turn_runs_leaves_the_run_open(monkeypatch):
+    """A turn that never settled is not a completed chat."""
+    from lobster.cli_internal import go_tui_launcher
+
+    def events(cancel):
+        yield {"type": "content_delta", "delta": "x"}
+        raise SystemExit(0)  # the process leaves mid-turn
+
+    client = _go_client(events)
+    client.catalog.set_end_status("completed")  # an earlier turn
+    session = _Session([{"type": "input", "payload": {"content": "q"}}])
+    with pytest.raises(SystemExit):
+        go_tui_launcher._go_tui_event_loop(session, client)
+    assert client.catalog.end == (None, None) and client.catalog.turn_open
+
+
 class _Session(_Bridge):
     def __init__(self, events):
         self.events = list(events)
@@ -577,3 +676,45 @@ def test_a_streamed_classic_turn_stopped_with_ctrl_c_is_aborted():
         client, {"success": False, "error": "Interrupted by user", "interrupted": True}
     )
     assert client.catalog.end == ("aborted", "Ctrl-C")
+
+
+# -- lobster serve ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer, end",
+    [
+        ({"success": True, "response": "hi"}, ("completed", None)),
+        ({"success": False, "error": "no"}, ("errored", "error")),
+        (RuntimeError("boom"), ("errored", "RuntimeError")),
+    ],
+)
+def test_a_served_query_ends_its_run_as_it_ended(answer, end):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from lobster.cli_internal.commands.heavy.serve_app import build_serve_app
+
+    client = _answering(answer)
+    api = TestClient(
+        build_serve_app("127.0.0.1", None, lambda: client),
+        base_url="http://localhost:8000",
+    )
+    api.post("/query", json={"question": "q"})
+    assert client.catalog.end == end
+
+
+def test_a_served_status_request_is_completed():
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from lobster.cli_internal.commands.heavy.serve_app import build_serve_app
+
+    client = _client()
+    client.get_status = lambda: {"ok": True}
+    api = TestClient(
+        build_serve_app("127.0.0.1", None, lambda: client),
+        base_url="http://localhost:8000",
+    )
+    api.get("/status")
+    assert client.catalog.end == ("completed", None)
