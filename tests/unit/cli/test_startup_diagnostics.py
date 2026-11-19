@@ -172,6 +172,23 @@ def test_missing_key_names_the_project_env_beside_a_lamin_workspace_env(
     )
 
     assert f"   {project / '.env'}" in diagnostic.fix_lines
+    assert "1. Add the key to the project's .env file:" in diagnostic.fix_lines
+
+
+def test_missing_key_outside_a_project_names_the_workspace_env(monkeypatch, tmp_path):
+    workspace = tmp_path / ".lobster_workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    diagnostic = classify_startup_exception(
+        ValueError("No Anthropic credentials found."),
+        workspace=workspace,
+        provider_override="anthropic",
+    )
+
+    assert "1. Add the key to the workspace .env file:" in diagnostic.fix_lines
+    assert f"   {workspace / '.env'}" in diagnostic.fix_lines
 
 
 def test_format_and_rich_render_share_same_startup_diagnostic_copy():
