@@ -944,6 +944,10 @@ def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display)
     request_access(said.append, lambda prompt: None)
 
     assert ACCESS_URL in said
+    # Without a display nothing starts, so the wizard does not say it is opening.
+    assert said[0] == (
+        ACCESS_LINES[0] if display else "Open this link to request access:"
+    )
     if not display:
         assert started == []
         return
