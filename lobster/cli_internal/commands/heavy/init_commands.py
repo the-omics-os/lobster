@@ -18,9 +18,7 @@ from rich.markup import escape as _markup_escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from lobster.cli_internal.agent_packages import (
-    AVAILABLE_AGENT_PACKAGES as _CATALOG,
-)
+from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES as _CATALOG
 from lobster.cli_internal.agent_packages import DEFAULT_AGENT_PACKAGES
 from lobster.config import provider_setup
 from lobster.i18n import h
@@ -642,8 +640,8 @@ def _build_uv_tool_init_command(
     import importlib
     import importlib.util
 
-    from lobster.core.component_registry import AGENT_TO_PACKAGE
     from lobster.cli_internal.commands.light.agent_commands import _pinned_to_lobster
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
     from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
 
     info = detect_uv_tool_env()
@@ -1147,7 +1145,6 @@ def _uv_tool_env_handoff(
     from rich.prompt import Confirm
 
     from lobster.core.uv_tool_env import detect_uv_tool_env, run_tool_install
-
     from lobster.i18n import t
 
     info = detect_uv_tool_env()
@@ -2308,6 +2305,32 @@ def _next_chat_text() -> str:
     separator = "; " if sys.platform == "win32" else " && "
     command = shlex.join(["cd", str(_init_folder)]) + separator + "lobster chat"
     return t("cli.init.next_chat_in", command=command)
+
+
+def _has_omics_os_account() -> bool:
+    """Ask the classic wizard's account question; "No" shows the access request.
+
+    Cancelling the question, like "No", returns to the provider list.
+    """
+    from lobster.config.cloud_setup import request_access
+
+    console.print(f"\n[bold white]{h('Do you have an Omics-OS account?')}[/bold white]")
+    console.print(f"  [cyan] 1[/cyan] - {h('Yes, I have an account')}")
+    console.print(f"  [cyan] 2[/cyan] - {h('No, request access')}")
+    try:
+        answer = Prompt.ask(
+            h("[bold white]Selection[/bold white]"), choices=["1", "2"], default="1"
+        )
+    except (KeyboardInterrupt, EOFError):
+        return False
+    if answer == "1":
+        return True
+    console.print()
+    request_access(
+        lambda line: console.print(line, markup=False, highlight=False, soft_wrap=True),
+        lambda prompt: Prompt.ask(prompt, default="", show_default=False),
+    )
+    return False
 
 
 def _creates_project(func):
@@ -3791,10 +3814,8 @@ def init_impl(
         # ================================================================== #
         # Step 1 — Provider selection (unified list)                          #
         # ================================================================== #
-        console.print(h("[bold white]Select your LLM provider:[/bold white]"))
-
         provider_menu = [
-            h("Omics-OS Cloud          — Free Omics-OS Cloud LLMs"),
+            h("Omics-OS Cloud          — Omics-OS Cloud account"),
             h("Claude API (Anthropic)  — direct access to Claude models"),
             h("AWS Bedrock             — production, enterprise"),
             h("Ollama (local)          — privacy, zero cost, offline"),
@@ -3805,14 +3826,6 @@ def init_impl(
             h("Nebius AI Studio        — open-weight models"),
             h("Ollama Cloud            — hosted models, requires API key"),
         ]
-        for _n, _label in enumerate(provider_menu, start=1):
-            console.print(f"  [cyan]{_n:>2}[/cyan] - {_label}")
-        provider = Prompt.ask(
-            h("[bold white]Choose provider[/bold white]"),
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            default="1",
-        )
-
         provider_map = {
             "1": "omics-os",
             "2": "anthropic",
@@ -3825,7 +3838,21 @@ def init_impl(
             "9": "nebius",
             "10": "ollama-cloud",
         }
-        provider_name = provider_map[provider]
+        default = {"default": "1"}
+        while True:
+            console.print(h("[bold white]Select your LLM provider:[/bold white]"))
+            for _n, _label in enumerate(provider_menu, start=1):
+                console.print(f"  [cyan]{_n:>2}[/cyan] - {_label}")
+            provider = Prompt.ask(
+                h("[bold white]Choose provider[/bold white]"),
+                choices=list(provider_map),
+                **default,
+            )
+            provider_name = provider_map[provider]
+            if provider_name != "omics-os" or _has_omics_os_account():
+                break
+            default = {}  # back to the list with Omics-OS not picked
+            console.print()
 
         # ================================================================== #
         # Step 2 — Credentials (provider-specific)                            #

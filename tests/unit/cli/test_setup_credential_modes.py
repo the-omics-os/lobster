@@ -265,7 +265,7 @@ def test_classic_workspace_writer_is_private(existing, monkeypatch, tmp_path):
         (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=synthetic-old-key\n")
         (tmp_path / ".env").chmod(0o644)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
-    answers = iter(["1", "1", KEY])  # language (English), provider, key
+    answers = iter(["1", "1", "1", KEY])  # language, provider, has account, key
     monkeypatch.setattr(init_commands.Prompt, "ask", lambda *a, **kw: next(answers))
     monkeypatch.setattr(init_commands.Confirm, "ask", lambda *a, **kw: False)
     monkeypatch.setattr(

@@ -265,7 +265,9 @@ def _run_interactive(monkeypatch, capsys, ui_mode, **overrides):
 
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
-    answers = iter(["1", "1", "omk_synthetic"])  # language, provider, key
+    answers = iter(
+        ["1", "1", "1", "omk_synthetic"]
+    )  # language, provider, has account, key
     monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
     monkeypatch.setattr(
         init_commands,
@@ -324,7 +326,7 @@ def test_classic_panel_shows_a_failed_install_instead_of_next_step(
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
-    answers = iter(["1", "1", "omk_synthetic"])
+    answers = iter(["1", "1", "1", "omk_synthetic"])
     monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
     monkeypatch.setattr(agent_commands, "FAILED_INSTALLS", ["lobster-research"])
     monkeypatch.setattr(
@@ -481,7 +483,7 @@ def test_the_classic_panel_from_another_folder_names_the_folder(
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
     monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
-    answers = iter(["1", "1", "omk_synthetic"])
+    answers = iter(["1", "1", "1", "omk_synthetic"])
     monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
     monkeypatch.setattr(
         init_commands,

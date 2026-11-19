@@ -168,7 +168,7 @@ _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
     "azure": ("Azure AI", "Models via Azure AI"),
     "openai": ("OpenAI", "GPT models"),
     "openrouter": ("OpenRouter", "Multi-provider model proxy"),
-    "omics-os": ("Omics-OS Cloud", "Free Omics-OS Cloud LLMs"),
+    "omics-os": ("Omics-OS Cloud", "Omics-OS Cloud account"),
     "nebius": ("Nebius AI Studio", "Open-weight models"),
     "ollama-cloud": ("Ollama Cloud", "Hosted models, requires API key"),
 }

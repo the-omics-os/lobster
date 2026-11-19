@@ -322,7 +322,9 @@ def test_classic_cloud_wizard_does_not_attempt_browser_before_key(
 
     monkeypatch.setattr(http.server, "HTTPServer", forbidden_listener)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
-    answers = iter(["1", "1", KEY])  # language (English), provider, key
+    answers = iter(
+        ["1", "1", "1", KEY]
+    )  # language, provider, "Yes, I have an account", key
     monkeypatch.setattr(
         init_commands.Prompt, "ask", lambda *args, **kwargs: next(answers)
     )
@@ -784,6 +786,11 @@ def run_classic(monkeypatch, capsys, answers):
     return asked, capsys.readouterr().out
 
 
+def saved_provider(tmp_path):
+    config = (tmp_path / ".lobster_workspace" / "provider_config.json").read_text()
+    return json.loads(config)["global_provider"]
+
+
 @pytest.fixture
 def opened(monkeypatch):
     import webbrowser
@@ -832,9 +839,8 @@ def test_classic_no_opens_the_page_and_returns_to_the_providers(
     choose = [kw for prompt, kw in asked if "Choose provider" in prompt]
     assert choose[0].get("default") == "1"
     assert "default" not in choose[1]  # Omics-OS is not picked by Enter
-    text = (tmp_path / ".env").read_text()
-    assert "LOBSTER_LLM_PROVIDER=anthropic" in text
-    assert "OMICS_OS" not in text
+    assert saved_provider(tmp_path) == "anthropic"
+    assert "OMICS_OS" not in (tmp_path / ".env").read_text()
 
 
 def test_classic_cancel_on_the_question_returns_to_the_providers(
@@ -847,7 +853,7 @@ def test_classic_cancel_on_the_question_returns_to_the_providers(
     assert opened == []
     assert ACCESS_SENT not in " ".join(out.split())
     assert len([p for p, _ in asked if "Choose provider" in p]) == 2
-    assert "LOBSTER_LLM_PROVIDER=anthropic" in (tmp_path / ".env").read_text()
+    assert saved_provider(tmp_path) == "anthropic"
 
 
 def test_access_request_prints_the_address_when_the_browser_fails(monkeypatch, capsys):
@@ -871,12 +877,19 @@ def test_access_request_prints_the_address_when_the_browser_fails(monkeypatch, c
 
 @pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])
 def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display):
+    import subprocess
     import webbrowser
 
     from lobster.config.cloud_setup import request_access
 
-    urls = []
-    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: urls.append(url))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("webbrowser may pick a console browser on Linux")
+
+    started = []
+    monkeypatch.setattr(webbrowser, "open", forbidden)
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda argv, **kw: started.append((argv, kw))
+    )
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
@@ -886,5 +899,12 @@ def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display)
 
     request_access(said.append, lambda prompt: None)
 
-    assert urls == ([ACCESS_URL] if display else [])
     assert ACCESS_URL in said
+    if not display:
+        assert started == []
+        return
+    [(argv, kw)] = started
+    assert argv == ["xdg-open", ACCESS_URL]
+    # Detached from the wizard's terminal, so no browser can read or draw on it.
+    assert kw["stdin"] is kw["stdout"] is kw["stderr"] is subprocess.DEVNULL
+    assert kw["start_new_session"] is True
