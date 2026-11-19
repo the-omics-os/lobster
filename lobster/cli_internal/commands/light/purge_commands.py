@@ -18,6 +18,13 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from rich.markup import escape
+
+from lobster.core.runtime.workspace import (
+    WORKSPACE_FOLDER_NAME,
+    _is_project_workspace,
+    _named_workspace,
+)
 from lobster.i18n import h
 
 if TYPE_CHECKING:
@@ -62,14 +69,14 @@ class LobsterPaths:
 
     @staticmethod
     def get_workspace_dir(workspace_path: Optional[Path] = None) -> Path:
-        """Get the workspace directory."""
+        """Get the workspace directory (a project folder names its own workspace)."""
         if workspace_path:
-            return workspace_path
+            return _named_workspace(Path(workspace_path))
         # Check LOBSTER_WORKSPACE env var
         env_workspace = os.environ.get("LOBSTER_WORKSPACE")
         if env_workspace:
-            return Path(env_workspace)
-        return Path.cwd() / ".lobster_workspace"
+            return _named_workspace(Path(env_workspace))
+        return Path.cwd() / WORKSPACE_FOLDER_NAME
 
     # Marker files that identify Lobster AI directories
     GLOBAL_CONFIG_MARKERS = ["providers.json", "credentials.env"]
@@ -88,6 +95,7 @@ class PurgeTarget:
     file_count: int = 0
     is_verified: bool = False  # True if contains Lobster AI marker files
     marker_found: Optional[str] = None
+    refusal: Optional[str] = None  # why an unverified workspace is never removed
 
 
 @dataclass
@@ -166,34 +174,49 @@ def _verify_lobster_directory(
     return False, None
 
 
+def _never_removed(path: Path) -> Optional[str]:
+    """Why ``path`` must never be removed, whatever it holds; None if it may be."""
+    from lobster.core.projects import is_home_or_above
+
+    if is_home_or_above(path):
+        return h("Not removed: {path} is your home folder or contains it").format(
+            path=path
+        )
+    if _is_project_workspace(path / WORKSPACE_FOLDER_NAME):
+        return h(
+            "Not removed: {path} is a project folder; its workspace is {workspace}"
+        ).format(path=path, workspace=path / WORKSPACE_FOLDER_NAME)
+    return None
+
+
+def _workspace_refusal(path: Path) -> Optional[str]:
+    """Why ``path`` is not removed as a workspace; None if it is one."""
+    if refusal := _never_removed(path):
+        return refusal
+    if path.name == WORKSPACE_FOLDER_NAME or any(
+        (path / marker).exists() for marker in LobsterPaths.WORKSPACE_MARKERS
+    ):
+        return None
+    # Folders such as data/ and exports/ are no proof: a user's own folder has them.
+    return h(
+        "Not removed: {path} is not a Lobster workspace "
+        "(no provider_config.json or .session.json)"
+    ).format(path=path)
+
+
 def _verify_workspace_directory(path: Path) -> Tuple[bool, Optional[str]]:
     """
     Verify a workspace directory belongs to Lobster AI.
 
-    Checks for:
-    1. Marker files (provider_config.json, .session.json)
-    2. Standard subdirectory structure (data/, cache/, plots/)
+    It must be named .lobster_workspace or hold a marker file (provider_config.json,
+    .session.json), and must not be a project folder or the home folder.
     """
-    if not path.exists() or not path.is_dir():
+    if not path.exists() or not path.is_dir() or _workspace_refusal(path):
         return False, None
-
-    # Check marker files
     for marker in LobsterPaths.WORKSPACE_MARKERS:
-        marker_path = path / marker
-        if marker_path.exists():
+        if (path / marker).exists():
             return True, marker
-
-    # Check for characteristic subdirectory structure
-    # If at least 2 of these exist, it's likely our workspace
-    found_subdirs = 0
-    for subdir in LobsterPaths.WORKSPACE_SUBDIRS:
-        if (path / subdir).exists():
-            found_subdirs += 1
-
-    if found_subdirs >= 2:
-        return True, f"{found_subdirs} standard subdirs"
-
-    return False, None
+    return True, WORKSPACE_FOLDER_NAME
 
 
 def discover_purge_targets(
@@ -257,7 +280,8 @@ def discover_purge_targets(
         workspace_dir = LobsterPaths.get_workspace_dir(workspace_path)
         if workspace_dir.exists():
             is_verified, marker = _verify_workspace_directory(workspace_dir)
-            size, count = _get_dir_size(workspace_dir)
+            # Never walk a folder that is not removed (it may be the whole disk).
+            size, count = _get_dir_size(workspace_dir) if is_verified else (0, 0)
             targets.append(
                 PurgeTarget(
                     path=workspace_dir,
@@ -266,6 +290,7 @@ def discover_purge_targets(
                     file_count=count,
                     is_verified=is_verified,
                     marker_found=marker,
+                    refusal=None if is_verified else _workspace_refusal(workspace_dir),
                 )
             )
 
@@ -291,6 +316,11 @@ def execute_purge(
     for target in targets:
         if not target.is_verified:
             result.targets_skipped.append(target)
+            continue
+
+        if refusal := _never_removed(target.path):  # holds under --force too
+            result.errors.append(refusal)
+            result.success = False
             continue
 
         if dry_run:
@@ -321,6 +351,12 @@ def execute_purge(
             result.success = False
 
     return result
+
+
+def _skipped_line(target: PurgeTarget, unmarked: str) -> str:
+    if target.refusal:
+        return f"  [yellow]{escape(target.refusal)}[/yellow]"
+    return unmarked.format(path=target.path)
 
 
 def purge(
@@ -375,8 +411,8 @@ def purge(
         )
         for target in unverified_targets:
             output.print(
-                h("  • [dim]{path}[/dim] - No marker files found").format(
-                    path=target.path
+                _skipped_line(
+                    target, h("  • [dim]{path}[/dim] - No marker files found")
                 )
             )
         output.print(
@@ -417,7 +453,7 @@ def purge(
         )
         for target in unverified_targets:
             output.print(
-                h("  [dim]{path}[/dim] - No marker files").format(path=target.path)
+                _skipped_line(target, h("  [dim]{path}[/dim] - No marker files"))
             )
 
     # Summary

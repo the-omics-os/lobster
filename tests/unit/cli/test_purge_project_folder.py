@@ -75,9 +75,10 @@ def test_a_dry_run_on_a_project_folder_lists_only_its_workspace(project):
 
     assert [t.path for t in targets] == [project / ".lobster_workspace"]
     assert result.exit_code == 0, result.output
-    listed = [line.strip() for line in result.output.splitlines()]
-    assert str(project / ".lobster_workspace") in listed
-    assert str(project) not in listed
+    text = "".join(result.output.split())  # long paths wrap across lines
+    nested = str(project / ".lobster_workspace")
+    assert nested in text
+    assert text.count(str(project)) == text.count(nested)  # the root only inside it
 
 
 def test_purge_never_removes_the_home_folder(home):
