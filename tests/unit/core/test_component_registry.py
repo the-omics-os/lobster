@@ -622,6 +622,18 @@ class TestEdgeCases:
 class TestInstallCommandHints:
     """Test environment-aware install command generation."""
 
+    def test_a_venv_hint_names_the_python_it_installs_into(self, monkeypatch):
+        # Without an activated venv a bare `uv pip install` finds no environment.
+        monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
+        monkeypatch.setattr("sys.executable", "/opt/my env/bin/python")
+
+        assert get_install_command("anthropic", is_extra=True) == (
+            "uv pip install --python '/opt/my env/bin/python' 'lobster-ai[anthropic]'"
+        )
+        assert get_install_command("gseapy") == (
+            "uv pip install --python '/opt/my env/bin/python' gseapy"
+        )
+
     def test_get_install_command_uses_uv_tool_builder_for_extras(self, monkeypatch):
         seen = {}
 
