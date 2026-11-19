@@ -1,6 +1,6 @@
 """``-w <project folder>`` names the project's own workspace, for every command."""
 
-from pathlib import Path
+import os
 
 import pytest
 
@@ -87,3 +87,16 @@ def test_the_workspace_variable_with_a_plain_folder_stays_itself(tmp_path, monke
     monkeypatch.setenv("LOBSTER_WORKSPACE", str(tmp_path / "plain"))
 
     assert resolve_workspace(create=False) == tmp_path / "plain"
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX modes")
+def test_a_folder_under_an_unreadable_parent_is_returned_as_given(tmp_path):
+    locked = tmp_path / "locked"
+    (locked / "proj").mkdir(parents=True)
+    locked.chmod(0)
+    try:
+        folder = locked / "proj"
+        assert resolve_workspace(folder, create=False) == folder
+        assert projects.run_workspace(folder) == folder
+    finally:
+        locked.chmod(0o755)
