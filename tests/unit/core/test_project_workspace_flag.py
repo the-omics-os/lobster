@@ -73,3 +73,17 @@ def test_a_linked_project_workspace_is_not_followed(tmp_path, project):
     (linked / ".lobster_workspace").symlink_to(project / ".lobster_workspace")
 
     assert resolve_workspace(linked, create=False) == linked
+
+
+def test_the_workspace_variable_with_a_project_folder_is_its_workspace(
+    project, monkeypatch
+):
+    monkeypatch.setenv("LOBSTER_WORKSPACE", str(project))
+
+    assert resolve_workspace(create=False) == project / ".lobster_workspace"
+
+
+def test_the_workspace_variable_with_a_plain_folder_stays_itself(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOBSTER_WORKSPACE", str(tmp_path / "plain"))
+
+    assert resolve_workspace(create=False) == tmp_path / "plain"
