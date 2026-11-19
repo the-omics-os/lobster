@@ -77,10 +77,10 @@ class TestMultiomicsFullPresetExpansion:
         ), "multiomics-full should include genomics_expert"
 
     def test_multiomics_full_contains_machine_learning_expert(self):
-        """multiomics-full includes machine_learning_expert_agent for ML workflows."""
+        """multiomics-full includes machine_learning_expert for ML workflows."""
         agents = expand_preset("multiomics-full")
         assert (
-            "machine_learning_expert_agent" in agents
+            "machine_learning_expert" in agents
         ), "multiomics-full should include ML expert"
 
     def test_multiomics_full_has_exactly_10_agents(self):
@@ -125,7 +125,7 @@ class TestMultiomicsFullPresetExpansion:
         expected_extras = {
             "proteomics_expert",
             "genomics_expert",
-            "machine_learning_expert_agent",
+            "machine_learning_expert",
         }
         assert extra_agents == expected_extras, f"Extra agents mismatch: {extra_agents}"
 

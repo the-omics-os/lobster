@@ -196,7 +196,7 @@ class TestAgentPresets:
         assert len(agents) == 10
         assert "proteomics_expert" in agents
         assert "genomics_expert" in agents
-        assert "machine_learning_expert_agent" in agents
+        assert "machine_learning_expert" in agents
 
     def test_invalid_preset_returns_none(self):
         """Invalid preset name returns None."""

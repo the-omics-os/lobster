@@ -50,7 +50,7 @@ def test_agent_modifications():
         from lobster.core.component_registry import component_registry
 
         # Check agent is discoverable via ComponentRegistry
-        ml_agent_config = component_registry.get_agent("machine_learning_expert_agent")
+        ml_agent_config = component_registry.get_agent("machine_learning_expert")
         if isinstance(ml_agent_config, AgentRegistryConfig):
             print("✅ Agent registry typo fixed successfully")
         else:

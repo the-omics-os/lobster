@@ -89,7 +89,7 @@ class TestScrnaFullPresetExpansion:
         ), "scrna-full should not include proteomics"
         assert "genomics_expert" not in agents, "scrna-full should not include genomics"
         assert (
-            "machine_learning_expert_agent" not in agents
+            "machine_learning_expert" not in agents
         ), "scrna-full should not include ML"
 
     def test_scrna_full_has_description(self):
