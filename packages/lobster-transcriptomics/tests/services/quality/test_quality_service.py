@@ -605,10 +605,9 @@ class TestQualityIRGeneration:
         # Replay must preserve the service's columns and all five QC criteria.
         for column in ("mt_pct", "ribo_pct", "housekeeping_score", "qc_pass"):
             assert f"adata.obs['{column}']" in ir.code_template
-        assert (
-            "_total_counts = np.asarray(adata.X.sum(axis=1)).ravel()"
-            in ir.code_template
-        )
+        # Totals come from raw counts through the shared helper, not from X.
+        assert "_total_counts = _qc['total_counts']" in ir.code_template
+        assert "adata.X.sum(axis=1)" not in ir.code_template
         assert (
             "_n_genes = np.asarray((adata.X > 0).sum(axis=1)).ravel()"
             in ir.code_template

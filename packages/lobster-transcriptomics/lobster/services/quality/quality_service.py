@@ -8,6 +8,7 @@ This service emits Intermediate Representation (IR) for automatic notebook expor
 """
 
 import inspect
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
 import anndata
@@ -30,7 +31,7 @@ class QualityError(Exception):
     pass
 
 
-def _add_drawing_qc_metrics(adata, total_counts, n_genes):
+def _add_drawing_qc_metrics(adata, total_counts, n_genes, hb_counts):
     """Persist descriptive drawing metrics during QC, never during plotting."""
     adata.obs["n_counts"] = total_counts
     adata.obs["n_genes"] = n_genes
@@ -39,14 +40,77 @@ def _add_drawing_qc_metrics(adata, total_counts, n_genes):
     adata.obs["log10_genes"] = np.log10(n_genes + 1)
     adata.obs["percent_mito"] = adata.obs["mt_pct"].to_numpy()
     adata.obs["percent_ribo"] = adata.obs["ribo_pct"].to_numpy()
-    hb_mask = adata.var_names.str.startswith(("HBA", "HBB", "hba", "hbb"))
-    hb_counts = np.asarray(adata[:, hb_mask].X.sum(axis=1)).ravel()
     adata.obs["percent_hb"] = np.divide(
         hb_counts * 100,
         total_counts,
         out=np.zeros(adata.n_obs, dtype=float),
         where=total_counts != 0,
     )
+
+
+# Per-cell QC metrics that are sums of counts: on normalized values they are not counts,
+# so they come from raw counts or are not computed (NaN).
+QC_COUNT_METRICS = ("total_counts", "mt_pct", "ribo_pct", "housekeeping_score")
+
+
+def _qc_count_metrics(adata, mt_mask_of, ribo_mask_of):
+    """Count-based QC metrics from raw counts, never from normalized values.
+
+    The counts are X when it holds counts (no `uns["log1p"]`, only whole numbers), else
+    `layers["counts"]`, else `adata.raw` with its own genes, else the totals an earlier
+    step left in obs (`total_counts`, `pct_counts_mt`, `pct_counts_ribo`). A metric
+    without a source is NaN. `mt_mask_of` / `ribo_mask_of` map gene names to a boolean
+    mask. Returns (metrics, source); source is None when there are no counts at all.
+    """
+    X = adata.X
+    values = X.data if hasattr(X, "toarray") else np.asarray(X)
+    if "log1p" not in adata.uns and np.all(np.mod(values, 1) == 0):
+        matrix, names, source = X, adata.var_names, "X"
+    elif "counts" in adata.layers:
+        matrix, names, source = (
+            adata.layers["counts"],
+            adata.var_names,
+            "layers['counts']",
+        )
+    elif adata.raw is not None:
+        matrix, names, source = adata.raw.X, adata.raw.var_names, "raw"
+    else:
+        unknown = np.full(adata.n_obs, np.nan)
+        obs = adata.obs
+
+        def carried(column):
+            if column in obs.columns:
+                return obs[column].to_numpy(dtype=float)
+            return unknown
+
+        metrics = {
+            "total_counts": carried("total_counts"),
+            "mt_pct": carried("pct_counts_mt"),
+            "ribo_pct": carried("pct_counts_ribo"),
+            "housekeeping_score": unknown,
+            "hb_counts": unknown,
+        }
+        return metrics, "obs" if "total_counts" in obs.columns else None
+
+    def row_sum(mask):
+        if not mask.any():
+            return np.zeros(adata.n_obs)
+        return np.asarray(matrix[:, mask].sum(axis=1)).ravel()
+
+    total_counts = np.asarray(matrix.sum(axis=1)).ravel()
+    mt_mask = np.asarray(mt_mask_of(names), dtype=bool)
+    ribo_mask = np.asarray(ribo_mask_of(names), dtype=bool)
+    hk_mask = np.isin(names, ["ACTB", "GAPDH", "MALAT1"])
+    hb_mask = np.asarray(names.str.startswith(("HBA", "HBB", "hba", "hbb")), dtype=bool)
+    metrics = {
+        "total_counts": total_counts,
+        # Add small epsilon to avoid division by zero
+        "mt_pct": (row_sum(mt_mask) / (total_counts + 1e-8)) * 100,
+        "ribo_pct": (row_sum(ribo_mask) / (total_counts + 1e-8)) * 100,
+        "housekeeping_score": row_sum(hk_mask),
+        "hb_counts": np.asarray(matrix[:, hb_mask].sum(axis=1)).ravel(),
+    }
+    return metrics, source
 
 
 # The thresholds a QC assessment applied, written as two arrays of the same length in
@@ -247,15 +311,20 @@ class QualityService:
                 adata_qc,
                 qc_metrics["total_counts"].to_numpy(),
                 qc_metrics["n_genes"].to_numpy(),
+                qc_metrics["hb_counts"].to_numpy(),
             )
 
-            # Filter cells based on QC metrics (with upper bound for doublets)
+            # Filter cells based on QC metrics (with upper bound for doublets).
+            # A count-based metric that is NaN (no raw counts) is not applied.
+            mt_pct = qc_metrics["mt_pct"]
+            ribo_pct = qc_metrics["ribo_pct"]
+            housekeeping = qc_metrics["housekeeping_score"]
             passing_cells = (
                 (qc_metrics["n_genes"] >= min_genes)
                 & (qc_metrics["n_genes"] <= max_genes)
-                & (qc_metrics["mt_pct"] <= max_mt_pct)
-                & (qc_metrics["ribo_pct"] <= max_ribo_pct)
-                & (qc_metrics["housekeeping_score"] >= min_housekeeping_score)
+                & (mt_pct.isna() | (mt_pct <= max_mt_pct))
+                & (ribo_pct.isna() | (ribo_pct <= max_ribo_pct))
+                & (housekeeping.isna() | (housekeeping >= min_housekeeping_score))
             )
 
             # Add QC pass/fail flag to observations
@@ -273,8 +342,24 @@ class QualityService:
             cells_before = len(qc_metrics)
             cells_after = passing_cells.sum()
 
+            count_source = qc_metrics.attrs["count_source"]
+            unavailable = [
+                metric
+                for metric in QC_COUNT_METRICS
+                if cells_before > 0 and qc_metrics[metric].isna().all()
+            ]
+            count_note = (
+                "Not computed: count-based metrics need raw counts; this modality is "
+                f"normalized and has none for {', '.join(unavailable)} (looked in "
+                "layers['counts'], adata.raw and obs)."
+                if unavailable
+                else None
+            )
+
             # Generate summary
             summary = self._generate_qc_summary(qc_metrics)
+            if count_note:
+                summary = f"{count_note} {summary}".strip()
 
             # Distribution statistics describe every input observation, not only
             # QC-pass rows. Quantile interpolation is part of the report contract.
@@ -333,10 +418,17 @@ class QualityService:
                     (cells_after / cells_before) * 100 if cells_before > 0 else 0.0
                 ),
                 "quality_status": (
-                    "Pass"
-                    if cells_before > 0 and cells_after / cells_before > 0.7
-                    else "Warning"
+                    "Not assessed: count-based metrics need raw counts"
+                    if count_source is None and cells_before > 0
+                    else (
+                        "Pass"
+                        if cells_before > 0 and cells_after / cells_before > 0.7
+                        else "Warning"
+                    )
                 ),
+                "count_source": count_source,
+                "count_metrics_unavailable": unavailable,
+                "count_metrics_note": count_note,
                 "mean_total_counts": float(qc_metrics["total_counts"].mean()),
                 "mean_genes_per_cell": float(qc_metrics["n_genes"].mean()),
                 "mean_mt_pct": float(qc_metrics["mt_pct"].mean()),
@@ -648,85 +740,60 @@ class QualityService:
             adata: AnnData object
 
         Returns:
-            DataFrame: DataFrame with QC metrics
+            DataFrame: DataFrame with QC metrics. The count-based ones come from raw
+            counts (see `_qc_count_metrics`) and are NaN without them;
+            `attrs["count_source"]` says where the counts came from.
         """
         logger.debug("Calculating quality metrics from AnnData")
 
-        # Identify mitochondrial genes using multi-pattern cascade
-        mt_genes = self._detect_mitochondrial_genes(adata)
+        # Identify mitochondrial / ribosomal genes using the multi-pattern cascades,
+        # on the genes of whichever matrix holds the counts
+        def mt_mask_of(names):
+            mask = self._detect_mitochondrial_genes(SimpleNamespace(var_names=names))
+            if not mask.any():
+                logger.warning(
+                    "No mitochondrial genes found. Setting mitochondrial percentage to 0."
+                )
+            return mask
 
-        # Identify ribosomal genes using multi-pattern cascade
-        ribo_genes = self._detect_ribosomal_genes(adata)
+        def ribo_mask_of(names):
+            mask = self._detect_ribosomal_genes(SimpleNamespace(var_names=names))
+            if not mask.any():
+                logger.warning(
+                    "No ribosomal genes found. Setting ribosomal percentage to 0."
+                )
+            return mask
 
-        # Identify housekeeping genes for score
-        housekeeping_genes = ["ACTB", "GAPDH", "MALAT1"]
-
-        # Calculate basic metrics
-        if hasattr(adata.X, "toarray"):
-            # Sparse matrix
-            total_counts = np.array(adata.X.sum(axis=1)).flatten()
-            n_genes = np.array((adata.X > 0).sum(axis=1)).flatten()
-        else:
-            # Dense matrix
-            total_counts = adata.X.sum(axis=1)
-            n_genes = (adata.X > 0).sum(axis=1)
-
-        # Calculate mitochondrial percentage
-        if mt_genes.sum() > 0:
-            if hasattr(adata.X, "toarray"):
-                mt_counts = np.array(adata[:, mt_genes].X.sum(axis=1)).flatten()
-            else:
-                mt_counts = adata[:, mt_genes].X.sum(axis=1)
-            mt_pct = (
-                mt_counts / (total_counts + 1e-8)
-            ) * 100  # Add small epsilon to avoid division by zero
-        else:
+        counts, source = _qc_count_metrics(adata, mt_mask_of, ribo_mask_of)
+        if source is None or source == "obs":
             logger.warning(
-                "No mitochondrial genes found. Setting mitochondrial percentage to 0."
+                "Count-based QC metrics need raw counts; this modality is normalized "
+                f"(count source: {source})."
             )
-            mt_pct = np.zeros(adata.n_obs)
-
-        # Calculate ribosomal percentage
-        if ribo_genes.sum() > 0:
-            if hasattr(adata.X, "toarray"):
-                ribo_counts = np.array(adata[:, ribo_genes].X.sum(axis=1)).flatten()
-            else:
-                ribo_counts = adata[:, ribo_genes].X.sum(axis=1)
-            ribo_pct = (ribo_counts / (total_counts + 1e-8)) * 100
-        else:
-            logger.warning(
-                "No ribosomal genes found. Setting ribosomal percentage to 0."
-            )
-            ribo_pct = np.zeros(adata.n_obs)
-
-        # Calculate housekeeping gene score
-        available_hk_genes = [
-            gene for gene in housekeeping_genes if gene in adata.var_names
-        ]
-        if available_hk_genes:
-            if hasattr(adata.X, "toarray"):
-                housekeeping_score = np.array(
-                    adata[:, available_hk_genes].X.sum(axis=1)
-                ).flatten()
-            else:
-                housekeeping_score = adata[:, available_hk_genes].X.sum(axis=1)
-        else:
+        elif not any(
+            gene in (adata.raw.var_names if source == "raw" else adata.var_names)
+            for gene in ("ACTB", "GAPDH", "MALAT1")
+        ):
             logger.warning(
                 "No housekeeping genes found. Setting housekeeping score to 0."
             )
-            housekeeping_score = np.zeros(adata.n_obs)
+
+        # Genes per cell: normalization keeps zeros, so X answers this either way
+        n_genes = np.asarray((adata.X > 0).sum(axis=1)).ravel()
 
         # Combine metrics into a DataFrame
         qc_df = pd.DataFrame(
             {
-                "total_counts": total_counts,
+                "total_counts": counts["total_counts"],
                 "n_genes": n_genes,
-                "mt_pct": mt_pct,
-                "ribo_pct": ribo_pct,
-                "housekeeping_score": housekeeping_score,
+                "mt_pct": counts["mt_pct"],
+                "ribo_pct": counts["ribo_pct"],
+                "housekeeping_score": counts["housekeeping_score"],
+                "hb_counts": counts["hb_counts"],
             },
             index=adata.obs_names,
         )
+        qc_df.attrs["count_source"] = source
 
         logger.debug(f"Generated QC metrics for {len(qc_df)} cells")
         return qc_df
@@ -1107,8 +1174,10 @@ class QualityService:
 
         issues = []
 
-        # Check mitochondrial percentage
-        if mt_mean < 5:
+        # Check mitochondrial percentage (NaN: no raw counts, nothing to judge)
+        if np.isnan(mt_mean):
+            mt_status = None
+        elif mt_mean < 5:
             mt_status = "low mitochondrial gene expression (healthy)"
         elif mt_mean < 10:
             mt_status = (
@@ -1134,7 +1203,7 @@ class QualityService:
             issues.append("low gene count per cell")
 
         # Generate summary text
-        quality_assessment = f"The cells show {mt_status}."
+        quality_assessment = f"The cells show {mt_status}." if mt_status else ""
 
         if issues:
             quality_assessment += f" Quality concerns detected: {', '.join(issues)}."
@@ -1151,12 +1220,14 @@ class QualityService:
                 )
 
             quality_assessment += " Consider adjusting filtering thresholds if many cells are being removed."
+        elif mt_status is None:
+            quality_assessment += " Only genes per cell could be assessed."
         else:
             quality_assessment += (
                 " Overall cell quality appears good based on standard metrics."
             )
 
-        return quality_assessment
+        return quality_assessment.strip()
 
     def _format_quality_report(
         self,
@@ -1308,43 +1379,36 @@ class QualityService:
 # var['ribo'] and without reading or changing those columns if the data
 # already has them (an adapter adds them on load). The filtering stage
 # annotates them itself, so nothing downstream loses them.
-_mt_mask = _detect_mt(adata.var_names.tolist())
-_ribo_mask = _detect_ribo(adata.var_names.tolist())
-
-# QC metrics — computed exactly as QualityService._calculate_qc_metrics_from_adata
-_total_counts = np.asarray(adata.X.sum(axis=1)).ravel()
+# QC metrics — computed exactly as QualityService._calculate_qc_metrics_from_adata.
+# Count-based metrics come from raw counts (X when it holds counts, else
+# layers['counts'], else adata.raw, else totals carried in obs), never from
+# normalized values; without raw counts they are NaN.
+_qc, _qc_count_source = _qc_count_metrics(
+    adata,
+    lambda names: _detect_mt(names.tolist()),
+    lambda names: _detect_ribo(names.tolist()),
+)
+_total_counts = _qc['total_counts']
 _n_genes = np.asarray((adata.X > 0).sum(axis=1)).ravel()
 
-if _mt_mask.sum() > 0:
-    _mt_counts = np.asarray(adata[:, _mt_mask].X.sum(axis=1)).ravel()
-    adata.obs['mt_pct'] = (_mt_counts / (_total_counts + 1e-8)) * 100
-else:
-    adata.obs['mt_pct'] = np.zeros(adata.n_obs)
-
-if _ribo_mask.sum() > 0:
-    _ribo_counts = np.asarray(adata[:, _ribo_mask].X.sum(axis=1)).ravel()
-    adata.obs['ribo_pct'] = (_ribo_counts / (_total_counts + 1e-8)) * 100
-else:
-    adata.obs['ribo_pct'] = np.zeros(adata.n_obs)
-
-_hk_genes = [g for g in ['ACTB', 'GAPDH', 'MALAT1'] if g in adata.var_names]
-if _hk_genes:
-    adata.obs['housekeeping_score'] = np.asarray(
-        adata[:, _hk_genes].X.sum(axis=1)
-    ).ravel()
-else:
-    adata.obs['housekeeping_score'] = np.zeros(adata.n_obs)
+adata.obs['mt_pct'] = _qc['mt_pct']
+adata.obs['ribo_pct'] = _qc['ribo_pct']
+adata.obs['housekeeping_score'] = _qc['housekeeping_score']
+if _qc_count_source in (None, 'obs'):
+    print("Count-based metrics need raw counts; this modality is normalized "
+          f"(count source: {_qc_count_source}). Missing ones are NaN, not applied.")
 
 # Drawing metrics are analysis outputs, not figure side effects.
-_add_drawing_qc_metrics(adata, _total_counts, _n_genes)
+_add_drawing_qc_metrics(adata, _total_counts, _n_genes, _qc['hb_counts'])
 
-# QC pass/fail — all FIVE criteria, including the housekeeping floor
+# QC pass/fail — all FIVE criteria, including the housekeeping floor; a count-based
+# metric that is NaN (no raw counts) is not applied
 adata.obs['qc_pass'] = (
     (_n_genes >= {{ min_genes }}) &
     (_n_genes <= {{ max_genes }}) &
-    (adata.obs['mt_pct'].values <= {{ max_mt_pct }}) &
-    (adata.obs['ribo_pct'].values <= {{ max_ribo_pct }}) &
-    (adata.obs['housekeeping_score'].values >= {{ min_housekeeping_score }})
+    (np.isnan(adata.obs['mt_pct'].values) | (adata.obs['mt_pct'].values <= {{ max_mt_pct }})) &
+    (np.isnan(adata.obs['ribo_pct'].values) | (adata.obs['ribo_pct'].values <= {{ max_ribo_pct }})) &
+    (np.isnan(adata.obs['housekeeping_score'].values) | (adata.obs['housekeeping_score'].values >= {{ min_housekeeping_score }}))
 )
 
 # The thresholds qc_pass was judged against, as the service records them: two arrays of
@@ -1400,6 +1464,7 @@ print(f"Mean mitochondrial %: {adata.obs['mt_pct'].mean():.2f}")
             requires_validation=False,
             helper_code=[
                 ANNOTATE_QC_GENES_HELPER,
+                inspect.getsource(_qc_count_metrics),
                 inspect.getsource(_add_drawing_qc_metrics),
             ],
         )
