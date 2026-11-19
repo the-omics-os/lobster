@@ -92,6 +92,9 @@ func randomState() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
+// browserOpen is the wizard's one way to open a page; tests replace it.
+var browserOpen = openBrowser
+
 // openBrowser opens a URL in the user's default browser.
 func openBrowser(rawURL string) error {
 	switch runtime.GOOS {
@@ -261,7 +264,7 @@ func startOAuthFlow(params *oauthFlowParams, cancel <-chan struct{}) tea.Cmd {
 			}
 		}()
 
-		_ = openBrowser(params.AuthURL)
+		_ = browserOpen(params.AuthURL)
 
 		// Wait for result, cancel, timeout, or server error.
 		defer server.Close()
