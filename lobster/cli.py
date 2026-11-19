@@ -697,6 +697,8 @@ def purge(
     \b
     SAFETY:
       Only directories verified to contain Lobster AI files will be removed.
+      A workspace is removed only from a folder named .lobster_workspace;
+      a project folder or your home folder is never removed, even with --force.
       Other software named "lobster" will NOT be affected.
 
     \b

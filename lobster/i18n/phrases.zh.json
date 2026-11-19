@@ -1240,7 +1240,7 @@
   "  [dim]{path}[/dim] - No marker files": "  [dim]{path}[/dim] - 未找到标记文件",
   "Not removed: {path} is your home folder or contains it": "未删除：{path} 是你的主文件夹，或包含你的主文件夹",
   "Not removed: {path} is a project folder; its workspace is {workspace}": "未删除：{path} 是项目文件夹；它的工作区是 {workspace}",
-  "Not removed: {path} is not a Lobster workspace (no provider_config.json or .session.json)": "未删除：{path} 不是 Lobster 工作区（没有 provider_config.json 或 .session.json）",
+  "Not removed: {path} is not a standard Lobster workspace (.lobster_workspace). Check what it holds and delete it yourself if it is yours to delete.": "未删除：{path} 不是标准的 Lobster 工作区（.lobster_workspace）。请检查其中的内容；如果确实可以删除，请自行删除。",
   "Not removed: {path} is reached through a link; name the real folder instead": "未删除：{path} 是通过链接访问的；请改为指定实际的文件夹",
   "Not removed: {path} holds a Lobster workspace; name {workspace} instead": "未删除：{path} 包含一个 Lobster 工作区；请改为指定 {workspace}",
   "Not removed: {path} holds too many folders to check for projects": "未删除：{path} 包含的文件夹太多，无法检查其中是否有项目",

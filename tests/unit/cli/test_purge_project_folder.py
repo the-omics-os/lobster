@@ -302,8 +302,8 @@ def test_a_linked_workspace_gets_a_reason_not_an_error(tmp_path, home, monkeypat
 def test_an_error_naming_a_bracketed_path_is_printed_as_written(
     tmp_path, home, monkeypatch
 ):
-    workspace = tmp_path / "[bold]ws"
-    workspace.mkdir()
+    workspace = tmp_path / "[bold]ws" / ".lobster_workspace"
+    workspace.mkdir(parents=True)
     (workspace / ".session.json").write_text("{}")
     failed = purge_commands.PurgeResult(
         success=False, errors=[f"Failed to remove {workspace}: busy"]
@@ -375,3 +375,31 @@ def test_a_linked_default_workspace_is_still_refused(tmp_path, home, monkeypatch
 
     assert (elsewhere / "provider_config.json").exists(), result.output
     assert said(result, "is reached through a link")
+
+
+def test_removal_refuses_a_custom_named_folder_even_when_told_it_is_verified(home):
+    docs = home / "docs"
+    docs.mkdir()
+    (docs / ".session.json").write_text("{}")
+    (docs / "thesis.docx").write_text("x")
+    target = PurgeTarget(path=docs, description="", is_verified=True)
+
+    result = execute_purge([target])
+
+    assert not result.success and (docs / "thesis.docx").exists()
+    assert "is not a standard Lobster workspace" in " ".join(result.errors)
+
+
+def test_the_global_lobster_folders_are_still_removed(home):
+    folders = [
+        purge_commands.LobsterPaths.get_lobster_home_dir(),
+        purge_commands.LobsterPaths.get_global_config_dir(),
+    ]
+    for folder in folders:
+        folder.mkdir(parents=True, exist_ok=True)
+    targets = [PurgeTarget(path=f, description="", is_verified=True) for f in folders]
+
+    result = execute_purge(targets)
+
+    assert result.success, result.errors
+    assert not any(f.exists() for f in folders)

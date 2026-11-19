@@ -6,8 +6,9 @@ This module provides a comprehensive cleanup command that removes:
 - License and history (~/.lobster/)
 - Workspace data (.lobster_workspace/)
 
-SAFETY: Only removes directories that contain Lobster AI specific marker files
-to avoid removing files from other software named "lobster".
+SAFETY: Only removes global directories that contain Lobster AI specific marker
+files, to avoid removing files from other software named "lobster", and only a
+workspace folder named .lobster_workspace.
 """
 
 import os
@@ -265,23 +266,34 @@ def _workspace_refusal(path: Path) -> Optional[str]:
     """Why ``path`` is not removed as a workspace; None if it is one."""
     if refusal := _never_removed(path):
         return refusal
-    if path.name == WORKSPACE_FOLDER_NAME or any(
-        (path / marker).exists() for marker in LobsterPaths.WORKSPACE_MARKERS
-    ):
+    if path.name == WORKSPACE_FOLDER_NAME:
         return None
-    # Folders such as data/ and exports/ are no proof: a user's own folder has them.
+    # A marker file proves only that Lobster once used the folder, not that
+    # everything in it is Lobster's: the user's own files may sit beside it.
     return h(
-        "Not removed: {path} is not a Lobster workspace "
-        "(no provider_config.json or .session.json)"
+        "Not removed: {path} is not a standard Lobster workspace (.lobster_workspace). "
+        "Check what it holds and delete it yourself if it is yours to delete."
     ).format(path=path)
+
+
+def _is_global_directory(path: Path) -> bool:
+    from lobster.core.projects import _same
+
+    return any(
+        _same(path, d)
+        for d in (
+            LobsterPaths.get_lobster_home_dir(),
+            LobsterPaths.get_global_config_dir(),
+        )
+    )
 
 
 def _verify_workspace_directory(path: Path) -> Tuple[bool, Optional[str]]:
     """
     Verify a workspace directory belongs to Lobster AI.
 
-    It must be named .lobster_workspace or hold a marker file (provider_config.json,
-    .session.json), and must not be a project folder or the home folder.
+    It must be named .lobster_workspace, and must not be reached through a link,
+    hold or contain a project, or be the home folder.
     """
     if not path.exists() or not path.is_dir() or _workspace_refusal(path):
         return False, None
@@ -390,7 +402,12 @@ def execute_purge(
             result.targets_skipped.append(target)
             continue
 
-        if refusal := _never_removed(target.path):  # holds under --force too
+        # Holds under --force too: --force skips only the prompt.
+        if refusal := (
+            _never_removed(target.path)
+            if _is_global_directory(target.path)
+            else _workspace_refusal(target.path)
+        ):
             result.errors.append(refusal)
             result.success = False
             continue
