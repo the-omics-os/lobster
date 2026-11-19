@@ -114,7 +114,9 @@ def test_the_vector_hint_keeps_the_extra_in_the_command(monkeypatch):
 
     init_commands._print_vector_backend_unavailable()
 
-    assert "uv pip install 'lobster-ai[vector-search]'" in console.export_text()
+    text = console.export_text()
+    assert "uv pip install --python " in text
+    assert "'lobster-ai[vector-search]'" in text
 
 
 def test_uninstall_targets_the_running_interpreter(monkeypatch):

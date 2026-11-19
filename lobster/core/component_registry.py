@@ -158,9 +158,9 @@ def get_install_command(package: str, *, is_extra: bool = False) -> str:
     else:
         specifier = package
 
-    if is_uv_tool_env():
-        import shlex
+    import shlex
 
+    if is_uv_tool_env():
         from lobster.core.uv_tool_env import build_tool_install_command
 
         # Keeps the receipt's extras and --with set; quoted, because the
@@ -171,8 +171,8 @@ def get_install_command(package: str, *, is_extra: bool = False) -> str:
         else:
             cmd = build_tool_install_command(with_packages=[package])
         return shlex.join(["uv", *cmd[1:]])
-    else:
-        return f"uv pip install '{specifier}'"
+    # Without an activated venv, uv pip finds no environment unless told which.
+    return shlex.join(["uv", "pip", "install", "--python", sys.executable, specifier])
 
 
 def get_provider_install_command(provider_name: str) -> Optional[str]:
