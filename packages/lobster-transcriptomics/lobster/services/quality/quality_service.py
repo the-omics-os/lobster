@@ -56,24 +56,30 @@ QC_COUNT_METRICS = ("total_counts", "mt_pct", "ribo_pct", "housekeeping_score")
 def _qc_count_metrics(adata, mt_mask_of, ribo_mask_of):
     """Count-based QC metrics from raw counts, never from normalized values.
 
-    The counts are X when it holds counts (no `uns["log1p"]`, only whole numbers), else
-    `layers["counts"]`, else `adata.raw` with its own genes, else the totals an earlier
-    step left in obs (`total_counts`, `pct_counts_mt`, `pct_counts_ribo`). A metric
-    without a source is NaN. `mt_mask_of` / `ribo_mask_of` map gene names to a boolean
-    mask. Returns (metrics, source); source is None when there are no counts at all.
+    The counts are the first that holds whole numbers of: X (only without
+    `uns["log1p"]`), `layers["counts"]`, `adata.raw` with its own genes (scanpy's
+    recipe often sets raw after log1p); else the totals an earlier step left in obs
+    (`total_counts`, `pct_counts_mt`, `pct_counts_ribo`). A metric without a source is
+    NaN. `mt_mask_of` / `ribo_mask_of` map gene names to a boolean mask. Returns
+    (metrics, source); source is None when there are no counts at all.
     """
-    X = adata.X
-    values = X.data if hasattr(X, "toarray") else np.asarray(X)
-    if "log1p" not in adata.uns and np.all(np.mod(values, 1) == 0):
-        matrix, names, source = X, adata.var_names, "X"
-    elif "counts" in adata.layers:
-        matrix, names, source = (
-            adata.layers["counts"],
-            adata.var_names,
-            "layers['counts']",
-        )
-    elif adata.raw is not None:
-        matrix, names, source = adata.raw.X, adata.raw.var_names, "raw"
+
+    def holds_counts(matrix):
+        # shortcut: checks the first 1e6 values; a matrix whose tail alone is non-integer passes
+        values = matrix.data if hasattr(matrix, "toarray") else np.asarray(matrix)
+        values = values.ravel()[:1_000_000]
+        return bool(np.all(np.mod(values, 1) == 0))
+
+    candidates = []
+    if "log1p" not in adata.uns:
+        candidates.append(("X", adata.X, adata.var_names))
+    if "counts" in adata.layers:
+        candidates.append(("layers['counts']", adata.layers["counts"], adata.var_names))
+    if adata.raw is not None:
+        candidates.append(("raw", adata.raw.X, adata.raw.var_names))
+    for source, matrix, names in candidates:
+        if holds_counts(matrix):
+            break
     else:
         unknown = np.full(adata.n_obs, np.nan)
         obs = adata.obs

@@ -10,6 +10,7 @@ dataset characteristics.
 """
 
 import json
+import math
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.tools import tool
@@ -366,6 +367,13 @@ def create_shared_tools(
             obs_label_lower = "cells" if data_type == "single_cell" else "samples"
             type_label = data_type.replace("_", " ").title()
 
+            def count_metric(key, fmt, unit=""):
+                # NaN: the service had no raw counts for it; never print "nan"
+                value = assessment_stats[key]
+                if math.isnan(value):
+                    return "not computed (no raw counts)"
+                return f"{value:{fmt}}{unit}"
+
             response = f"""Quality Assessment Complete for '{modality_name}'!
 
 **Data Type**: {type_label}
@@ -377,9 +385,9 @@ def create_shared_tools(
 
 **Quality Metrics:**
 - Mean genes per {obs_label_lower[:-1]}: {assessment_stats["mean_genes_per_cell"]:.0f}
-- Mean mitochondrial %: {assessment_stats["mean_mt_pct"]:.1f}%
-- Mean ribosomal %: {assessment_stats["mean_ribo_pct"]:.1f}%
-- Mean total counts: {assessment_stats["mean_total_counts"]:.0f}
+- Mean mitochondrial %: {count_metric("mean_mt_pct", ".1f", "%")}
+- Mean ribosomal %: {count_metric("mean_ribo_pct", ".1f", "%")}
+- Mean total counts: {count_metric("mean_total_counts", ".0f")}
 
 **QC Parameters Applied:**
 - Min genes: {min_genes}
