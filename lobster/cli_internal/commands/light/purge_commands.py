@@ -183,12 +183,14 @@ def _is_link(path: Path) -> bool:
 
 
 def _reached_through_link(path: Path) -> bool:
-    """The folder, or the folder named to find its ``.lobster_workspace``, is a link.
+    """The folder, the folder named to find its ``.lobster_workspace``, or any
+    ``.lobster_workspace`` above it is a link.
 
-    Links above that (``/tmp`` on macOS, a linked home) are the system's, not a redirect.
+    Other links above (``/tmp`` on macOS, a linked home) are the system's, not a redirect.
     """
     named = [path.parent] if path.name == WORKSPACE_FOLDER_NAME else []
-    return any(_is_link(p) for p in [path, *named])
+    above = [p for p in path.parents if p.name == WORKSPACE_FOLDER_NAME]
+    return any(_is_link(p) for p in [path, *named, *above])
 
 
 def _project_inside(path: Path) -> Optional[str]:
