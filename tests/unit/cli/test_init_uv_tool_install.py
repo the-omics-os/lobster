@@ -560,3 +560,87 @@ def test_windows_agents_install_prints_one_command_without_the_uv_path(
     # A quoted path first is an expression in PowerShell; one command only.
     assert "First Last" not in result.output
     assert result.output.count("tool install") == 1
+
+
+# A copy of the installer's check (PS_INSTALLER, step 5: the pending install
+# it runs after init); keep both in step.
+INSTALLER_SPEC = re.compile(
+    r"^lobster-[a-z-]+(\[[a-z0-9,-]+\])?([<>=~!]=?[0-9.]+(,[<>=~!]=?[0-9.]+)*)?$"
+)
+
+
+def _installer_accepts(argv):
+    if argv[:4] != ["uv", "tool", "install", "--reinstall"]:
+        return False
+    rest = argv[4:]
+    if rest[-2:] not in (["--python", "3.12"], ["--python", "3.13"]):
+        return False
+    specs, rest = [rest[0]], rest[1:-2]
+    while rest[:1] == ["--with"]:
+        specs.append(rest[1])
+        rest = rest[2:]
+    return not rest and all(INSTALLER_SPEC.match(s) for s in specs)
+
+
+def _pending():
+    import json
+
+    path = global_config.CONFIG_DIR / "pending_install.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+@pytest.mark.parametrize("ui_mode", [None, "auto"])
+def test_windows_init_leaves_the_reinstall_for_the_installer(
+    tool_env, monkeypatch, capsys, ui_mode
+):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    if ui_mode is None:
+        assert _init().exit_code == 0
+    else:
+        _run_interactive(monkeypatch, capsys, ui_mode)
+
+    pending = _pending()
+    assert pending["version"] == 1
+    assert pending["lobster"] == "1.3.0"
+    created = datetime.strptime(pending["created"], "%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert now - timedelta(minutes=1) < created <= now
+    assert "lobster-transcriptomics>=1.3.0" in pending["argv"]
+    assert _installer_accepts(pending["argv"]), pending["argv"]
+
+
+def test_init_that_runs_the_install_itself_leaves_no_pending_install(tool_env):
+    stale = global_config.CONFIG_DIR / "pending_install.json"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text('{"version": 1, "argv": ["uv"]}')
+
+    assert _init().exit_code == 0
+
+    assert len(tool_env.installs) == 1
+    assert not stale.exists()
+
+
+def test_init_without_an_install_removes_an_old_pending_install(tool_env):
+    stale = global_config.CONFIG_DIR / "pending_install.json"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text('{"version": 1, "argv": ["uv"]}')
+
+    assert _init("--skip-extras").exit_code == 0
+
+    assert not stale.exists()
+
+
+def test_windows_agents_install_leaves_no_pending_install(
+    tool_env, monkeypatch, tmp_path
+):
+    from lobster.cli_internal.commands.light.agent_commands import agents_app
+
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    CliRunner().invoke(
+        agents_app,
+        ["install", "lobster-research", "--workspace", str(tmp_path / "ws")],
+    )
+
+    assert _pending() is None
