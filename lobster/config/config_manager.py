@@ -178,7 +178,7 @@ NCBI_API_KEY="your-ncbi-api-key-here"
 # OMICS-OS CLOUD CONFIGURATION (Optional)
 # =============================================================================
 # Set these to use Omics-OS Cloud instead of local processing
-# Get your API key from https://cloud.lobster.ai or contact info@omics-os.com
+# Get your API key from https://app.omics-os.com or contact info@omics-os.com
 
 # LOBSTER_CLOUD_KEY="your-cloud-api-key-here"
 # LOBSTER_ENDPOINT="https://api.lobster.omics-os.com"  # Optional: defaults to production

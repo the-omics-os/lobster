@@ -897,7 +897,7 @@ def init_client_or_raise_startup_diagnostic(
                 "[bold white]Get Omics-OS Cloud Access:[/bold white]"
             )
             _startup_console_print(
-                "   Visit: [bold blue]https://cloud.lobster.ai[/bold blue]"
+                "   Visit: [bold blue]https://app.omics-os.com[/bold blue]"
             )
             _startup_console_print(
                 "   Email: [bold blue]cloud@omics-os.com[/bold blue]"
