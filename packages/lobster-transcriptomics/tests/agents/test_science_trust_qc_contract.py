@@ -482,3 +482,19 @@ def test_unsupported_tool_method_refuses_before_real_backed_retrieval(
         assert source_path.read_bytes() == source_bytes
     finally:
         backed.file.close()
+
+
+def test_qc_reply_says_not_computed_instead_of_nan(tmp_path, counts):
+    """The agent reads this reply and repeats it: no "nan" for a missing metric."""
+    normalized = counts.copy()
+    x = dense(normalized.X)
+    x = np.log1p(x / np.maximum(x.sum(axis=1, keepdims=True), 1) * 1e4)
+    normalized.X = sparse.csr_matrix(x) if sparse.issparse(counts.X) else x
+    normalized.uns["log1p"] = {"base": None}
+    dm, tools = tool_context(tmp_path, normalized)
+    response = tools["assess_data_quality"].invoke(
+        {"modality_name": "input", "min_genes": 200, "max_genes": 2500}
+    )
+    assert "nan" not in response.lower()
+    for label in ("Mean mitochondrial %", "Mean ribosomal %", "Mean total counts"):
+        assert f"- {label}: not computed (no raw counts)" in response

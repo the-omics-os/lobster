@@ -189,3 +189,29 @@ def test_raw_counts_modality_is_unchanged(sparse):
     assert stats["count_metrics_unavailable"] == []
     assert stats["quality_status"] in ("Pass", "Warning")
     pd.testing.assert_frame_equal(_replay(ir, raw).obs, result.obs)
+
+
+@pytest.mark.parametrize("carried", [False, True], ids=["nothing_carried", "obs"])
+@pytest.mark.parametrize("where", ["raw", "layer"])
+def test_log_normalized_raw_or_layer_is_not_taken_as_counts(where, carried):
+    # scanpy's common recipe sets `adata.raw = adata` after log1p, so raw (or a
+    # layer named "counts") can hold normalized values too.
+    raw = _counts()
+    norm = _log_cp10k(raw)
+    if where == "raw":
+        norm.raw = norm.copy()
+    else:
+        norm.layers["counts"] = norm.X.copy()
+    if carried:
+        norm.obs["total_counts"] = raw.X.sum(axis=1)
+
+    result, stats, ir = QualityService().assess_quality(norm, **PARAMS)
+
+    if carried:
+        assert stats["count_source"] == "obs"
+        np.testing.assert_allclose(result.obs["n_counts"], raw.X.sum(axis=1))
+    else:
+        assert stats["count_source"] is None
+        assert result.obs["n_counts"].isna().all()
+    assert result.obs["mt_pct"].isna().all()
+    pd.testing.assert_frame_equal(_replay(ir, norm).obs, result.obs)
