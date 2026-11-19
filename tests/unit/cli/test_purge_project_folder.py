@@ -290,3 +290,19 @@ def test_an_error_naming_a_bracketed_path_is_printed_as_written(
     text = "".join(result.output.split())  # long paths wrap across lines
     assert f"Failedtoremove{workspace}:busy" in text, result.output
     assert text.count("[bold]ws") == 2  # the listing and the error
+
+
+def test_purge_never_goes_through_a_linked_workspace_above(tmp_path, home):
+    other = tmp_path / "other"
+    projects.init_project(other)
+    old = other / ".lobster_workspace" / "old"
+    old.mkdir()
+    (old / ".session.json").write_text("{}")
+    study = tmp_path / "study"
+    study.mkdir()
+    link(study / ".lobster_workspace", other / ".lobster_workspace")
+
+    result = purge("-w", str(study / ".lobster_workspace" / "old"), "--force")
+
+    assert (old / ".session.json").exists(), result.output
+    assert said(result, "is reached through a link")
