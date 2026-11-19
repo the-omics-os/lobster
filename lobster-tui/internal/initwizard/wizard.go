@@ -256,6 +256,16 @@ const (
 	stepOptionalKeys
 	stepDone
 	stepLanguage
+	stepOmicsAccount  // "Do you have an Omics-OS account?" after choosing Omics-OS Cloud
+	stepAccessRequest // the No answer: the access-request page, waiting for Enter
+)
+
+// accessRequestURL is where someone without an Omics-OS account asks for access.
+const accessRequestURL = "https://www.omics-os.com/early-access"
+
+const (
+	answerHasAccount = "yes"
+	answerNoAccount  = "no"
 )
 
 // askLangEnv makes the wizard start with the language screen.
@@ -540,6 +550,10 @@ type WizardModel struct {
 
 	// Step 2: Provider
 	providerSelect singleSelectModel
+	// accessNotice is shown above the provider list after an access request, until the next choice.
+	accessNotice string
+	// Omics-OS Cloud account question (between the provider and its key step).
+	accountSelect singleSelectModel
 
 	// Step 0: Language (only when askedLang)
 	langSelect singleSelectModel
@@ -606,7 +620,7 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 		title:       "LLM Provider",
 		description: "Select the provider for Lobster AI.",
 		items: []singleSelectItem{
-			{label: "Omics-OS Cloud      -- Free Omics-OS Cloud LLMs", value: providerOmicsOS},
+			{label: "Omics-OS Cloud      -- Omics-OS Cloud account", value: providerOmicsOS},
 			{label: "Anthropic (Claude)  -- Quick testing, development", value: providerAnthropic},
 			{label: "AWS Bedrock         -- Production, enterprise use", value: providerBedrock},
 			{label: "Ollama (Local)      -- Privacy, zero cost, offline", value: providerOllama},
@@ -679,6 +693,10 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAgentPackages(msg)
 	case stepProvider:
 		return m.updateProvider(msg)
+	case stepOmicsAccount:
+		return m.updateOmicsAccount(msg)
+	case stepAccessRequest:
+		return m.updateAccessRequest(msg)
 	case stepAPIKey:
 		return m.updateAPIKey(msg)
 	case stepModelSelect:
@@ -701,7 +719,11 @@ func (m WizardModel) View() tea.View {
 	case stepAgentPackages:
 		content = m.agentSelect.View(m.theme)
 	case stepProvider:
-		content = m.providerSelect.View(m.theme)
+		content = m.viewProvider()
+	case stepOmicsAccount:
+		content = m.accountSelect.View(m.theme)
+	case stepAccessRequest:
+		content = m.viewAccessRequest()
 	case stepAPIKey:
 		content = m.viewAPIKey()
 	case stepModelSelect:
@@ -789,15 +811,93 @@ func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.cancel()
 	}
 	if done {
-		m.result.Provider = value
-		// Reset OAuth state when provider actually changes.
-		m.oauthWaiting = false
-		m.oauthLastError = ""
-		m.oauthAuthURL = ""
-		m.result.OAuthAuthenticated = false
-		m.initAPIKeyStep()
-		m.step = stepAPIKey
-		return m, textinput.Blink
+		m.accessNotice = ""
+		if value == providerOmicsOS {
+			// Ask first; the provider is saved only on "Yes".
+			m.accountSelect = singleSelectModel{
+				title: "Do you have an Omics-OS account?",
+				items: []singleSelectItem{
+					{label: "Yes, I have an account", value: answerHasAccount},
+					{label: "No, request access", value: answerNoAccount},
+				},
+			}
+			m.step = stepOmicsAccount
+			return m, nil
+		}
+		return m.chooseProvider(value)
+	}
+	return m, nil
+}
+
+// chooseProvider records the provider and enters its key step.
+func (m WizardModel) chooseProvider(value string) (tea.Model, tea.Cmd) {
+	m.result.Provider = value
+	// Reset OAuth state when provider actually changes.
+	m.oauthWaiting = false
+	m.oauthLastError = ""
+	m.oauthAuthURL = ""
+	m.result.OAuthAuthenticated = false
+	m.initAPIKeyStep()
+	m.step = stepAPIKey
+	return m, textinput.Blink
+}
+
+func (m WizardModel) viewProvider() string {
+	list := m.providerSelect.View(m.theme)
+	if m.accessNotice == "" {
+		return list
+	}
+	notice := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2).Render(i18n.P(m.accessNotice))
+	return notice + "\n\n" + list
+}
+
+// ---------------------------------------------------------------------------
+// Omics-OS Cloud account question
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) updateOmicsAccount(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var value string
+	var done, cancelled bool
+	m.accountSelect, value, done, cancelled = m.accountSelect.Update(msg)
+	if cancelled {
+		m.step = stepProvider
+		return m, nil
+	}
+	if !done {
+		return m, nil
+	}
+	if value == answerHasAccount {
+		return m.chooseProvider(providerOmicsOS)
+	}
+	// No: nothing is saved and nothing is sent. A failure to open is ignored; the
+	// address stays on screen for the user to copy.
+	_ = browserOpen(accessRequestURL)
+	m.step = stepAccessRequest
+	return m, nil
+}
+
+func (m WizardModel) viewAccessRequest() string {
+	titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+	textStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Text)
+	mutedStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+	return titleStyle.Render(i18n.P("Opening the access request page in your browser:")) + "\n" +
+		textStyle.Render(accessRequestURL) + "\n\n" +
+		mutedStyle.Render(i18n.P("If it does not open, copy the address into your browser.")) + "\n" +
+		mutedStyle.Render(i18n.P("Press Enter when you have sent the request."))
+}
+
+func (m WizardModel) updateAccessRequest(msg tea.Msg) (tea.Model, tea.Cmd) {
+	km, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, nil
+	}
+	switch km.String() {
+	case "enter":
+		m.accessNotice = "Your access request is on its way. We'll email you when it's approved. " +
+			"Until then, choose a different provider to continue."
+		m.step = stepProvider
+	case "esc":
+		m.step = stepOmicsAccount
 	}
 	return m, nil
 }

@@ -13,6 +13,9 @@ func TestCloudSetupViewNamesSupportedAPIKeyAndNPMDevicePaths(t *testing.T) {
 	}
 	model, _ := m.Update(makeKeyPress("enter"))
 	m = model.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	model, _ = m.Update(makeKeyPress("enter"))
+	m = model.(WizardModel)
 	if m.result.Provider != providerOmicsOS || m.step != stepAPIKey {
 		t.Fatal("Cloud choice did not enter its credential step")
 	}
@@ -30,6 +33,9 @@ func TestCloudSetupViewNamesSupportedAPIKeyAndNPMDevicePaths(t *testing.T) {
 func TestCloudSetupEmptyKeyDoesNotStartOAuthOrAdvance(t *testing.T) {
 	m := NewWizardModel("", "")
 	model, _ := m.Update(makeKeyPress("enter"))
+	m = model.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	model, _ = m.Update(makeKeyPress("enter"))
 	m = model.(WizardModel)
 	model, _ = m.Update(makeKeyPress("enter"))
 	m = model.(WizardModel)
@@ -49,6 +55,9 @@ func TestCloudSetupVerifiedAccountKeyRoute(t *testing.T) {
 	m := NewWizardModel("", "")
 	model, _ := m.Update(makeKeyPress("enter"))
 	m = model.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	model, _ = m.Update(makeKeyPress("enter"))
+	m = model.(WizardModel)
 	if !strings.Contains(m.viewAPIKey(), "https://app.omics-os.com/account") {
 		t.Error("Cloud key guidance must use the verified account route")
 	}
@@ -60,6 +69,9 @@ func TestCloudSetupVerifiedAccountKeyRoute(t *testing.T) {
 func TestCloudSetupManualKeyRemainsSupportedAndIsNotRendered(t *testing.T) {
 	m := NewWizardModel("", "")
 	model, _ := m.Update(makeKeyPress("enter"))
+	m = model.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	model, _ = m.Update(makeKeyPress("enter"))
 	m = model.(WizardModel)
 	const key = "omk_local_setup_test"
 	m.apiKeyInputs[0].SetValue(key)

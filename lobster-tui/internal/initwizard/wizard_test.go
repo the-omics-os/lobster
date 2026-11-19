@@ -399,6 +399,9 @@ func TestCloudEmptyKeyStaysAtCredentialStep(t *testing.T) {
 	// Select Omics-OS Cloud (index 0).
 	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	result, _ = m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
 
 	if m.step != stepAPIKey {
 		t.Fatalf("expected stepAPIKey, got %d", m.step)
@@ -427,6 +430,9 @@ func TestOAuthSucceededAdvancesStep(t *testing.T) {
 
 	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
@@ -458,6 +464,9 @@ func TestOAuthFailedRefocusesInput(t *testing.T) {
 	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	result, _ = m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
 	m.oauthWaiting = true
@@ -480,6 +489,9 @@ func TestEscDuringOAuthCancels(t *testing.T) {
 
 	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
@@ -573,6 +585,9 @@ func TestOAuthFieldsResetOnProviderChange(t *testing.T) {
 
 	// Select omics-os (index 0) to get to API key step.
 	result, _ := m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+	// "Yes, I have an account": the question comes before the key step.
+	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate having authenticated via OAuth.
