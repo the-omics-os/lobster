@@ -835,7 +835,7 @@ def init(
     cloud_key: Optional[str] = typer.Option(
         None,
         "--cloud-key",
-        help=h("Lobster Cloud API key (optional, enables premium tier)"),
+        help=h("Omics-OS Cloud API key (optional, enables premium tier)"),
     ),
     cloud_endpoint: Optional[str] = typer.Option(
         None,

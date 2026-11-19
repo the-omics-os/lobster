@@ -175,9 +175,9 @@ AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key-here"
 NCBI_API_KEY="your-ncbi-api-key-here"
 
 # =============================================================================
-# LOBSTER CLOUD CONFIGURATION (Optional)
+# OMICS-OS CLOUD CONFIGURATION (Optional)
 # =============================================================================
-# Set these to use Lobster Cloud instead of local processing
+# Set these to use Omics-OS Cloud instead of local processing
 # Get your API key from https://cloud.lobster.ai or contact info@omics-os.com
 
 # LOBSTER_CLOUD_KEY="your-cloud-api-key-here"

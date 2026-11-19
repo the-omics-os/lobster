@@ -2484,7 +2484,7 @@ def init_impl(
     cloud_key: Optional[str] = typer.Option(
         None,
         "--cloud-key",
-        help=h("Lobster Cloud API key (optional, enables premium tier)"),
+        help=h("Omics-OS Cloud API key (optional, enables premium tier)"),
     ),
     cloud_endpoint: Optional[str] = typer.Option(
         None,
@@ -3280,7 +3280,7 @@ def init_impl(
             env_lines.append(f"NCBI_API_KEY={ncbi_key.strip()}")
 
         if cloud_key:
-            env_lines.append("\n# Lobster Cloud configuration (enables premium tier)")
+            env_lines.append("\n# Omics-OS Cloud configuration (enables premium tier)")
             env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
             if cloud_endpoint:
                 env_lines.append(f"LOBSTER_ENDPOINT={cloud_endpoint.strip()}")
@@ -4250,7 +4250,7 @@ def init_impl(
                     password=True,
                 )
                 if cloud_key_val.strip():
-                    env_lines.append("\n# Lobster Cloud configuration")
+                    env_lines.append("\n# Omics-OS Cloud configuration")
                     env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key_val.strip()}")
                     console.print(h("[green]✓ Cloud API key configured[/green]"))
 

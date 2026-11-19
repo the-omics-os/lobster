@@ -1,5 +1,5 @@
 """
-Lobster Cloud - Cloud client for Lobster AI
+Omics-OS Cloud - Cloud client for Lobster AI
 """
 
 __version__ = "0.1.0"

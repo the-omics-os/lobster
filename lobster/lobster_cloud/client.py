@@ -1,5 +1,5 @@
 """
-Lobster Cloud Client - Connects to Lobster Cloud API
+Omics-OS Cloud Client - Connects to Omics-OS Cloud API
 """
 
 import os
@@ -125,9 +125,9 @@ class CloudLobsterClient(BaseClient):
 
         except requests.exceptions.ConnectionError:
             error_response = {
-                "error": "Could not connect to Lobster Cloud. Please check your internet connection.",
+                "error": "Could not connect to Omics-OS Cloud. Please check your internet connection.",
                 "success": False,
-                "response": "I couldn't connect to Lobster Cloud. Please check your internet connection and try again.",
+                "response": "I couldn't connect to Omics-OS Cloud. Please check your internet connection and try again.",
                 "session_id": self.session_id,
                 "has_data": False,
                 "plots": [],

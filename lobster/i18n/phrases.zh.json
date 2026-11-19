@@ -20,7 +20,7 @@
   "Azure AI API credential (non-interactive mode)": "Azure AI 凭证（不提问模式）",
   "Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.": "智能体配置档（development、production、performance、max）。仅用于 Anthropic 和 Bedrock。",
   "NCBI API key (optional, non-interactive mode)": "NCBI API 密钥（可选，不提问模式）",
-  "Lobster Cloud API key (optional, enables premium tier)": "Lobster Cloud API 密钥（可选，用于高级等级）",
+  "Omics-OS Cloud API key (optional, enables premium tier)": "Omics-OS Cloud API 密钥（可选，用于高级等级）",
   "Custom cloud endpoint URL (optional)": "自定义云端地址（可选）",
   "Skip SSL connectivity test during init": "初始化时跳过 SSL 连通测试",
   "Enable/disable SSL verification (non-interactive mode)": "打开或关闭 SSL 校验（不提问模式）",

@@ -802,7 +802,7 @@ def init_client_or_raise_startup_diagnostic(
             from lobster.lobster_cloud.client import CloudLobsterClient
 
             _startup_console_print(
-                "[bold blue]   Initializing Lobster Cloud...[/bold blue]"
+                "[bold blue]   Initializing Omics-OS Cloud...[/bold blue]"
             )
             if cloud_endpoint:
                 _startup_console_print(
@@ -884,7 +884,7 @@ def init_client_or_raise_startup_diagnostic(
 
         except ImportError:
             _startup_console_print(
-                "[bold yellow]Lobster Cloud Not Available Locally[/bold yellow]"
+                "[bold yellow]Omics-OS Cloud Not Available Locally[/bold yellow]"
             )
             _startup_console_print(
                 "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
@@ -893,7 +893,9 @@ def init_client_or_raise_startup_diagnostic(
                 "[white]You have a [bold blue]LOBSTER_CLOUD_KEY[/bold blue] set, but this is the open-source version.[/white]"
             )
             _startup_console_print("")
-            _startup_console_print("[bold white]Get Lobster Cloud Access:[/bold white]")
+            _startup_console_print(
+                "[bold white]Get Omics-OS Cloud Access:[/bold white]"
+            )
             _startup_console_print(
                 "   Visit: [bold blue]https://cloud.lobster.ai[/bold blue]"
             )
