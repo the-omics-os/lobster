@@ -539,3 +539,24 @@ def test_windows_failed_install_line_quotes_for_powershell_and_cmd(monkeypatch):
 
     assert '"lobster-ai[lamin]"' in lines[-1]
     assert "'" not in lines[-1]
+
+
+def test_windows_agents_install_prints_one_command_without_the_uv_path(
+    tool_env, monkeypatch, tmp_path
+):
+    from lobster.cli_internal.commands.light.agent_commands import agents_app
+
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    spaced = r"C:\Users\First Last\.local\bin\uv.exe"
+    monkeypatch.setattr(uv_tool_env.shutil, "which", lambda _name: spaced)
+
+    result = CliRunner().invoke(
+        agents_app,
+        ["install", "lobster-research", "--workspace", str(tmp_path / "ws")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert tool_env.installs == []
+    # A quoted path first is an expression in PowerShell; one command only.
+    assert "First Last" not in result.output
+    assert result.output.count("tool install") == 1
