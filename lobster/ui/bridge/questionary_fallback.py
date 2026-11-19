@@ -70,6 +70,24 @@ def _cancelled(result: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _has_omics_os_account(questionary) -> bool:
+    """Ask the account question; "No" shows the access request, cancel goes back."""
+    from lobster.config.cloud_setup import request_access
+
+    answer = questionary.select(
+        h("Do you have an Omics-OS account?"),
+        choices=[
+            questionary.Choice(h("Yes, I have an account"), value="yes"),
+            questionary.Choice(h("No, request access"), value="no"),
+        ],
+    ).ask()
+    if answer == "no":
+        print()
+        request_access(print, lambda prompt: input(f"{prompt} "))
+        print()
+    return answer == "yes"
+
+
 def run_questionary_init(
     manifest: WizardManifest, *, lamin_default: Optional[bool] = None
 ) -> dict:
@@ -100,14 +118,18 @@ def run_questionary_init(
             questionary.Choice(f"{p.display_name:<24} {p.description}", value=p.name)
             for p in manifest.providers
         ]
-        provider = questionary.select(
-            h("Select your LLM provider:"),
-            choices=provider_choices,
-            default="omics-os",
-        ).ask()
-
-        if provider is None:
-            return _cancelled(result)
+        default = "omics-os"
+        while True:
+            provider = questionary.select(
+                h("Select your LLM provider:"),
+                choices=provider_choices,
+                default=default,
+            ).ask()
+            if provider is None:
+                return _cancelled(result)
+            if provider != "omics-os" or _has_omics_os_account(questionary):
+                break
+            default = None  # back to the list with Omics-OS not picked
 
         result["provider"] = provider
 
