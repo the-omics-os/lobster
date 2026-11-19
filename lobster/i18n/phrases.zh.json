@@ -208,7 +208,6 @@
   "Ollama API Key": "Ollama API 密钥",
   "enter: select  esc: back": "回车：选择  esc：返回",
   "Hosted model, pricing varies by subscription": "托管模型，费用取决于订阅",
-  "Omics-OS Cloud      -- Free Omics-OS Cloud LLMs": "Omics-OS Cloud      -- 免费的 Omics-OS Cloud 模型",
   "Omics-OS Cloud      -- Omics-OS Cloud account": "Omics-OS Cloud      -- Omics-OS Cloud 账户",
   "Anthropic (Claude)  -- Quick testing, development": "Anthropic (Claude)  -- 快速测试、开发",
   "AWS Bedrock         -- Production, enterprise use": "AWS Bedrock         -- 正式环境、企业使用",
