@@ -25,10 +25,11 @@ import json
 import logging
 import os
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Tuple
+from typing import Any, Callable, Iterator, Mapping, Optional, Tuple
 
 from lobster.core.catalog.layout import Layout, catalog_layout
 from lobster.core.catalog.null import NullCatalog
@@ -331,6 +332,7 @@ def begin_session_run(
                 kind=kind,
             )
         )
+        abort_runs_on_sigterm()
         return catalog
     except Exception:
         logger.debug("Catalog: session run not started", exc_info=True)
@@ -350,6 +352,90 @@ def begin_command_run(
     return begin_session_run(
         data_manager, workspace_path, run_id, session_dir, kind="command"
     )
+
+
+def note_run_status(
+    holder: Any,
+    status: Optional[str],
+    session_id: Optional[str] = None,
+    reason: Optional[str] = None,
+    *,
+    if_unset: bool = False,
+) -> None:
+    """Say how the run of ``holder`` (a client or its data manager) ended; never raises.
+
+    Every command sets it on each way out; a run nobody ended stays open, so a
+    failed or killed command is never recorded as completed. A session clears
+    it (None) as each turn starts: a turn cut short never reads as the last one.
+    """
+    try:
+        data_manager = getattr(holder, "data_manager", holder)
+        setter = getattr(getattr(data_manager, "catalog", None), "set_end_status", None)
+        if callable(setter):
+            setter(status, session_id, reason, if_unset=if_unset)
+    except Exception:
+        logger.debug("Catalog: run status not noted", exc_info=True)
+
+
+# Exit codes of a process stopped by Ctrl-C (SIGINT) or SIGTERM.
+_ABORT_EXIT_CODES = {130: "Ctrl-C", 143: "SIGTERM"}
+
+
+def _on_sigterm(signum: int, frame: Any) -> None:
+    # No lock: the handler may run while this thread holds it.
+    bound = _process_catalog
+    catalog = None if bound is None else bound[1]
+    setter = getattr(catalog, "set_end_status", None)
+    if callable(setter):
+        # Between a session's turns the last one's outcome stands.
+        setter("aborted", None, "SIGTERM", if_unset=True)
+    # Exiting (unlike dying of the signal) lets the exit hook end the run.
+    raise SystemExit(143)
+
+
+def abort_runs_on_sigterm() -> None:
+    """A SIGTERM ends the open run as aborted; only where nobody handles it yet."""
+    import signal
+
+    try:
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+            signal.signal(signal.SIGTERM, _on_sigterm)
+    except (ValueError, OSError, AttributeError):
+        logger.debug("Catalog: SIGTERM not handled", exc_info=True)
+
+
+@contextmanager
+def recorded_run_status(holder: Any, *, session: bool = False) -> Iterator[None]:
+    """Note how the run of ``holder`` ended, on every way out of the block.
+
+    Success (or an exit with code 0) is completed, Ctrl-C or SIGTERM is aborted,
+    anything else (an error exit, an exception) is errored. A status noted in
+    the block wins over one read from an exit code; for a chat (``session``)
+    that ends normally, the status its last turn noted stands.
+    """
+    try:
+        yield
+    except KeyboardInterrupt:
+        note_run_status(holder, "aborted", reason="Ctrl-C")
+        raise
+    except BaseException as exc:
+        # typer.Exit carries exit_code, sys.exit code; any other error is its class.
+        if isinstance(exc, SystemExit) or hasattr(exc, "exit_code"):
+            code = exc.code if isinstance(exc, SystemExit) else exc.exit_code
+            if code in (0, None):
+                note_run_status(holder, "completed", if_unset=session)
+            elif code in _ABORT_EXIT_CODES:
+                reason = _ABORT_EXIT_CODES[code]
+                note_run_status(holder, "aborted", reason=reason, if_unset=True)
+            else:
+                reason = f"exit code {code}"
+                note_run_status(holder, "errored", reason=reason, if_unset=True)
+        else:
+            note_run_status(holder, "errored", reason=type(exc).__name__)
+        raise
+    note_run_status(holder, "completed", if_unset=session)
 
 
 def _reset_for_tests() -> None:

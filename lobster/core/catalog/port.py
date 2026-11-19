@@ -176,8 +176,9 @@ class Catalog(Protocol):
         status: RunStatus,
         report_path: Optional[Path] = None,
         environment_path: Optional[Path] = None,
+        reason: Optional[str] = None,
     ) -> None:
-        """Close the open run, if any."""
+        """Close the open run, if any; ``reason`` says why it did not complete."""
 
     def status(self) -> CatalogStatus:
         """Mode, location and health of the catalog."""

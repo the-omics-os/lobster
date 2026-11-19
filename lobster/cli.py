@@ -279,10 +279,12 @@ def config_callback(
         # Create minimal client for config access
         try:
             client = AgentClient(workspace_path=str(workspace_path))
-            output = ConsoleOutputAdapter(console)
+            from lobster.core.catalog.factory import recorded_run_status
 
-            # Use unified config_show implementation from config_commands.py
-            config_show(client, output)
+            with recorded_run_status(client):
+                output = ConsoleOutputAdapter(console)
+                # Use unified config_show implementation from config_commands.py
+                config_show(client, output)
         except Exception as e:
             console.print(f"[red]{t('cli.config.error', detail=str(e))}[/red]")
             console.print(f"[dim]{t('cli.config.run_init')}[/dim]")
@@ -1634,8 +1636,10 @@ def config_show_subcommand(
     workspace_path = resolve_workspace(workspace, create=False)
     try:
         client = AgentClient(workspace_path=str(workspace_path))
-        output = ConsoleOutputAdapter(console)
-        config_show(client, output)
+        from lobster.core.catalog.factory import recorded_run_status
+
+        with recorded_run_status(client):
+            config_show(client, ConsoleOutputAdapter(console))
     except Exception as e:
         console.print(
             h("[red]Error displaying configuration: {error}[/red]").format(error=str(e))

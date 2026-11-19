@@ -2327,8 +2327,14 @@ def _has_omics_os_account() -> bool:
         return True
     console.print()
     request_access(
-        lambda line: console.print(line, markup=False, highlight=False, soft_wrap=True),
-        lambda prompt: Prompt.ask(prompt, default="", show_default=False),
+        # Sentences wrap at word boundaries; the address stays on one line to copy.
+        lambda line: console.print(
+            line, markup=False, highlight=False, soft_wrap=" " not in line
+        ),
+        # A space, not Rich's default ": ", which would end the sentence in ".:".
+        lambda prompt: Prompt.ask(
+            prompt, default="", show_default=False, prompt_suffix=" "
+        ),
     )
     return False
 

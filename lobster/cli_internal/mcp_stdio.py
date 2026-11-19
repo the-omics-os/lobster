@@ -1088,14 +1088,22 @@ def _run_turn(
         mcp_record.Turn.begin(data_manager, request.turn),
         not_restored=not_restored,
     )
+    _note_run_status(client, "running")
     try:
         with _stop_on_cancel(client, cancel_event) as stop, _plan_first(request):
             status = _follow_turn(
                 client, manager, prompt, request, cancel_event, output_dir, turn
             )
-    except BaseException:
+    except BaseException as exc:
         _record_turn_end(client, output_dir, request.turn, "failed")
+        _note_run_status(
+            client,
+            "cancelled" if isinstance(exc, KeyboardInterrupt) else "failed",
+            type(exc).__name__,
+        )
         raise
+    # The session's catalog run ends as its latest turn did.
+    _note_run_status(client, status["status"], _end_reason(status))
     if status["status"] == "cancelled":
         _forget_cancelled_turn(client, stop)
     if status["status"] != "completed":  # a completed turn noted itself in _completed
@@ -1111,6 +1119,30 @@ def _run_turn(
                 status["summary"], total, first_turn=request.turn == 1
             )
     return status
+
+
+_RUN_STATUS = {
+    "running": None,  # no end status while the turn runs
+    "completed": "completed",
+    "cancelled": "aborted",
+    "failed": "errored",
+}
+
+
+def _note_run_status(client: Any, outcome: str, reason: Optional[str] = None) -> None:
+    from lobster.core.catalog.factory import note_run_status
+
+    if outcome in _RUN_STATUS:
+        session_id = getattr(client, "session_id", None)
+        note_run_status(client, _RUN_STATUS[outcome], session_id, reason)
+
+
+def _end_reason(status: Dict[str, Any]) -> Optional[str]:
+    """Why a turn did not complete: its error code, or why it was cancelled."""
+    error = status.get("error")
+    if isinstance(error, dict) and error.get("code"):
+        return str(error["code"])
+    return status.get("cancel_reason") or None
 
 
 def _follow_turn(
@@ -2853,6 +2885,10 @@ def run_mcp_stdio(
         stdout = _claim_stdout()
     out = stdout
     mcp_watch.stacks_on_signal()
+    from lobster.core.catalog.factory import abort_runs_on_sigterm
+
+    # Runs begin on worker threads, where no handler can be set: set it here.
+    abort_runs_on_sigterm()
     if stdin is None:
         # MCP stdio is UTF-8; Codex passes no LANG, so a Windows locale
         # default would misread it. Untested on Windows.

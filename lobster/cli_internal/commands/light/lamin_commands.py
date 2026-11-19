@@ -197,7 +197,8 @@ def _status_label(status: Optional[str]) -> str:
     labels = {
         "scheduled": h("scheduled"),
         "restarted": h("restarted"),
-        "started": h("started"),
+        # Open: its command has not said how it ended (still running, or killed).
+        "started": h("not finished"),
         "completed": h("completed"),
         "errored": h("errored"),
         "aborted": h("aborted"),
@@ -428,9 +429,11 @@ def ls_cmd(
                 recorded.append(h("report"))
             if row.get("environment"):
                 recorded.append(h("environment"))
+            if row.get("end_reason"):
+                recorded.insert(0, row["end_reason"])
             notes = f"  [{', '.join(recorded)}]" if recorded else ""
             typer.echo(
-                f"{row['started_at'] or '-':<19}  {_status_label(row['status']):<9}"
+                f"{row['started_at'] or '-':<19}  {_status_label(row['status']):<12}"
                 f"  {row['name'] or '-'}  ({counts}){notes}"
             )
         else:

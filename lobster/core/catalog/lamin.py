@@ -316,8 +316,7 @@ class LaminCatalog:
     # -- Catalog -----------------------------------------------------------------
 
     def begin_run(self, session: SessionInfo) -> None:
-        if self._run is not None:
-            self.end_run("completed")
+        # A run not ended first stays open: how it ended is not known here.
         self._run = self._new_run(session).save()
 
     def _new_run(self, session: SessionInfo):
@@ -614,11 +613,14 @@ class LaminCatalog:
         status: RunStatus,
         report_path: Optional[Path] = None,
         environment_path: Optional[Path] = None,
+        reason: Optional[str] = None,
     ) -> None:
         run, self._run = self._run, None
         if run is None:
             return
         run.finished_at = datetime.now(timezone.utc)
+        if reason:
+            run.extra_data = {**(run.extra_data or {}), "end_reason": reason}
         # No public setter yet; the Run model documents this field for completion.
         run._status_code = _STATUS_CODES.get(status, 1)
         run.save()
@@ -1510,6 +1512,7 @@ def _run_row(run: Any) -> Dict[str, Any]:
         "verdict": extra.get("verdict") if replay else None,
         "name": run.name,
         "status": run.status,
+        "end_reason": extra.get("end_reason"),
         "started_at": _iso(run.started_at),
         "finished_at": _iso(run.finished_at),
         "lobster_version": run.transform.version,

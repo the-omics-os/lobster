@@ -3552,28 +3552,31 @@ def metadata_command_impl(
 
         # Create client
         client = AgentClient(workspace_path=str(workspace_path))
+        from lobster.core.catalog.factory import recorded_run_status
 
-        # Route to appropriate command
-        if command == "overview":
-            metadata_overview(client, output)
-        elif command == "publications":
-            metadata_publications(client, output, status_filter=status_filter)
-        elif command == "samples":
-            metadata_samples(client, output)
-        elif command == "workspace":
-            metadata_workspace(client, output)
-        elif command == "exports":
-            metadata_exports(client, output)
-        elif command == "list":
-            metadata_list(client, output)
-        else:  # clear
-            # Each clear previews and asks for confirmation before deleting.
-            if target == "exports":
-                metadata_clear_exports(client, output)
-            elif target == "all":
-                metadata_clear_all(client, output)
-            else:
-                metadata_clear(client, output)
+        with recorded_run_status(client):
+
+            # Route to appropriate command
+            if command == "overview":
+                metadata_overview(client, output)
+            elif command == "publications":
+                metadata_publications(client, output, status_filter=status_filter)
+            elif command == "samples":
+                metadata_samples(client, output)
+            elif command == "workspace":
+                metadata_workspace(client, output)
+            elif command == "exports":
+                metadata_exports(client, output)
+            elif command == "list":
+                metadata_list(client, output)
+            else:  # clear
+                # Each clear previews and asks for confirmation before deleting.
+                if target == "exports":
+                    metadata_clear_exports(client, output)
+                elif target == "all":
+                    metadata_clear_all(client, output)
+                else:
+                    metadata_clear(client, output)
 
     except typer.Exit:
         raise
@@ -3696,36 +3699,39 @@ def _command_cmd_impl(
                 raise typer.Exit(1)
 
         cmd_client = CommandClient(workspace_path, session_id=resolved_session_id)
+        from lobster.core.catalog.factory import recorded_run_status
 
-        if json_output:
-            runtime_output = output
-        else:
-            runtime_output = output
+        with recorded_run_status(cmd_client):
 
-        if base_cmd == "help" and help_profile == "query":
-            with _blocks_lang(runtime_output):
-                _render_structured_output(
-                    runtime_output,
-                    _build_query_help_blocks(
-                        protocol_friendly=_is_protocol_output(runtime_output)
-                    ),
-                )
-            result = None
-        else:
-            result = _dispatch_command(cmd_str, cmd_client, runtime_output)
-        success = result is not _UNKNOWN_COMMAND
+            if json_output:
+                runtime_output = output
+            else:
+                runtime_output = output
 
-        if json_output:
-            envelope: Dict[str, Any] = {
-                "success": success,
-                "command": cmd_str,
-                "data": runtime_output.to_dict(),
-            }
-            if result is not _UNKNOWN_COMMAND and result is not None:
-                envelope["summary"] = result
-            print(json.dumps(envelope))
-        if not success:
-            raise typer.Exit(1)
+            if base_cmd == "help" and help_profile == "query":
+                with _blocks_lang(runtime_output):
+                    _render_structured_output(
+                        runtime_output,
+                        _build_query_help_blocks(
+                            protocol_friendly=_is_protocol_output(runtime_output)
+                        ),
+                    )
+                result = None
+            else:
+                result = _dispatch_command(cmd_str, cmd_client, runtime_output)
+            success = result is not _UNKNOWN_COMMAND
+
+            if json_output:
+                envelope: Dict[str, Any] = {
+                    "success": success,
+                    "command": cmd_str,
+                    "data": runtime_output.to_dict(),
+                }
+                if result is not _UNKNOWN_COMMAND and result is not None:
+                    envelope["summary"] = result
+                print(json.dumps(envelope))
+            if not success:
+                raise typer.Exit(1)
 
     except typer.Exit:
         raise

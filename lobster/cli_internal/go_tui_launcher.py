@@ -929,6 +929,15 @@ def _maybe_restore_go_session_transcript(
 
 def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
     """Main event loop: dispatch messages from the Go TUI to the client."""
+    from lobster.core.catalog.factory import recorded_run_status
+
+    # The session's catalog run ends as its last turn did (a chat without one,
+    # completed); a failure of the loop itself, errored.
+    with recorded_run_status(client, session=True):
+        _dispatch_events(bridge, client)
+
+
+def _dispatch_events(bridge: _LightBridge, client: Any) -> None:
     cancel_event = threading.Event()
     bridge.cancel_event = cancel_event
     while True:
@@ -1001,11 +1010,13 @@ class _TurnState:
     so the outcome strings stay within the existing ``done.summary`` field.
     """
 
-    __slots__ = ("settled", "saw_error")
+    __slots__ = ("settled", "saw_error", "summary", "reason")
 
     def __init__(self) -> None:
         self.settled = False
         self.saw_error = False
+        self.summary: Optional[str] = None
+        self.reason: Optional[str] = None  # the error class, when one ended it
 
 
 def _settle_turn(bridge: _LightBridge, turn: _TurnState, summary: str) -> bool:
@@ -1013,6 +1024,7 @@ def _settle_turn(bridge: _LightBridge, turn: _TurnState, summary: str) -> bool:
     if turn.settled:
         return False
     turn.settled = True
+    turn.summary = summary
     bridge.send("done", {"summary": summary})
     return True
 
@@ -1056,6 +1068,24 @@ def _settle_unfinished_stream(
     _settle_turn(bridge, turn, "error")
 
 
+# How a settled turn ends the session's catalog run.
+_TURN_RUN_STATUS = {
+    "": ("completed", None),
+    "cancelled": ("aborted", "cancelled"),
+    "error": ("errored", "error"),
+}
+
+
+def _note_turn_status(client: Any, turn: _TurnState) -> None:
+    from lobster.core.catalog.factory import note_run_status
+
+    if turn.summary in _TURN_RUN_STATUS:
+        status, reason = _TURN_RUN_STATUS[turn.summary]
+        if status != "completed":
+            reason = turn.reason or reason
+        note_run_status(client, status, reason=reason)
+
+
 def _handle_user_query(
     bridge: _LightBridge,
     client: Any,
@@ -1070,6 +1100,7 @@ def _handle_user_query(
     Every exit path settles the turn with one terminal ``done`` (see
     :class:`_TurnState`); a HITL interrupt pauses the turn and is not terminal.
     """
+    from lobster.core.catalog.factory import note_run_status
     from lobster.core.runs import DecisionError, runs_for
 
     bridge.send("spinner", {"active": True})
@@ -1077,6 +1108,7 @@ def _handle_user_query(
     is_first = True
     stream_source: Any = None  # Will be set to the generator each iteration.
     turn = _TurnState()
+    note_run_status(client, None)  # no end status while the turn runs
     runs = runs_for(client)
     forward_run_events = getattr(bridge, "forward_run_events", False)
     run = None
@@ -1091,136 +1123,147 @@ def _handle_user_query(
         )
 
     try:
-        while True:
-            # Build the stream: first iteration starts a run, later ones resume.
-            if is_first:
-                run = runs.start(text, cancel_event=cancel_event)
-                stream_source = run.stream()
-                is_first = False
-            # else: stream_source was set by the resume path below.
+        try:
+            while True:
+                # Build the stream: first iteration starts a run, later ones resume.
+                if is_first:
+                    run = runs.start(text, cancel_event=cancel_event)
+                    stream_source = run.stream()
+                    is_first = False
+                # else: stream_source was set by the resume path below.
 
-            interrupt_event = None
-            cancelled = False
+                interrupt_event = None
+                cancelled = False
 
-            for event in stream_source:
-                if cancel_event and cancel_event.is_set():
-                    cancelled = True
-                    break
-                etype = event["type"]
-                if etype == "decision_required":
-                    interrupt_event = event
-                    break  # Exit inner loop to handle interrupt.
-                if etype == "run_state":
+                for event in stream_source:
+                    if cancel_event and cancel_event.is_set():
+                        cancelled = True
+                        break
+                    etype = event["type"]
+                    if etype == "decision_required":
+                        interrupt_event = event
+                        break  # Exit inner loop to handle interrupt.
+                    if etype == "run_state":
+                        if forward_run_events:
+                            forward_state(event)
+                        continue
+                    _forward_stream_event(bridge, client, event, query_start, turn=turn)
+
+                if cancelled:
+                    stream_source.close()  # records a running run as cancelled
+                    # A run cancelled as its question arrived is still waiting:
+                    # end it and its decision too (a no-op on an ended run).
+                    runs.end(run.run_id)
                     if forward_run_events:
-                        forward_state(event)
-                    continue
-                _forward_stream_event(bridge, client, event, query_start, turn=turn)
+                        _forward_run_end(runs, run, forward_state, forwarded)
+                    _settle_cancelled(bridge, turn, query_start)
+                    return
 
-            if cancelled:
-                stream_source.close()  # records a running run as cancelled
-                # A run cancelled as its question arrived is still waiting:
-                # end it and its decision too (a no-op on an ended run).
-                runs.end(run.run_id)
-                if forward_run_events:
-                    _forward_run_end(runs, run, forward_state, forwarded)
-                _settle_cancelled(bridge, turn, query_start)
-                return
+                if interrupt_event is None:
+                    # The stream ended: normally via a complete event, otherwise
+                    # (silent cancel, reported failure) it must be settled here.
+                    _settle_unfinished_stream(bridge, turn, cancel_event, query_start)
+                    return
 
-            if interrupt_event is None:
-                # The stream ended: normally via a complete event, otherwise
-                # (silent cancel, reported failure) it must be settled here.
-                _settle_unfinished_stream(bridge, turn, cancel_event, query_start)
-                return
+                # --- HITL interrupt: render component and await user response ---
+                # Flush any streamed text to scrollback BEFORE rendering the
+                # component so the supervisor's question is visible while the
+                # user interacts with the HITL widget.
+                bridge.send("done", {"summary": "interrupt"})
+                turn.saw_error = False  # the resumed stream is judged on its own
 
-            # --- HITL interrupt: render component and await user response ---
-            # Flush any streamed text to scrollback BEFORE rendering the
-            # component so the supervisor's question is visible while the
-            # user interacts with the HITL widget.
-            bridge.send("done", {"summary": "interrupt"})
-            turn.saw_error = False  # the resumed stream is judged on its own
-
-            batch = [
-                e
-                for e in run.events
-                if e["type"] == "decision_required"
-                and runs.decisions[e["decision_id"]].state == "pending"
-            ]
-            outcome, reply = (
-                ("unsupported", None)
-                if len(batch) > 1  # one decision at a time in 1.3
-                else _handle_interrupt(bridge, interrupt_event)
-            )
-            origin = run
-            while outcome == "answer":
-                try:
-                    run = runs.answer(
-                        reply["decision_id"],
-                        reply["answer"],
-                        source=reply["source"],
-                        request_version=reply["request_version"],
-                        comment=reply["comment"],
-                        cancel_event=cancel_event,
-                    )
-                    break
-                except DecisionError as exc:
-                    # A refused answer never changes the run: keep waiting.
-                    _send_refusal(
-                        bridge, exc, runs.decisions.get(interrupt_event["decision_id"])
-                    )
-                    outcome, reply = _handle_interrupt(
-                        bridge, interrupt_event, render=False
-                    )
-            if outcome != "answer":
-                # Nobody answered, or this view cannot present the question:
-                # the paused run will never continue, so end it. The TUI
-                # discards nothing it already printed (the question was
-                # flushed above).
-                if outcome == "unsupported" and forward_run_events:
-                    # stdio only: the Go TUI wire stays as it was.
-                    bridge.send(
-                        "alert",
-                        {
-                            "level": "warning",
-                            "message": h(
-                                "This view cannot show Lobster's question, so the run was stopped."
-                            ),
-                            "code": "decision_unsupported",
-                        },
-                    )
-                reason = (
-                    "decision_unsupported"
-                    if outcome == "unsupported"
-                    else "decision_abandoned"
+                batch = [
+                    e
+                    for e in run.events
+                    if e["type"] == "decision_required"
+                    and runs.decisions[e["decision_id"]].state == "pending"
+                ]
+                outcome, reply = (
+                    ("unsupported", None)
+                    if len(batch) > 1  # one decision at a time in 1.3
+                    else _handle_interrupt(bridge, interrupt_event)
                 )
-                runs.cancel(run.run_id, reason=reason)
-                if forward_run_events:
-                    _forward_run_end(runs, run, forward_state, forwarded)
-                bridge.send("spinner", {"active": False})
-                _settle_turn(bridge, turn, "cancelled")
-                return
+                origin = run
+                while outcome == "answer":
+                    try:
+                        run = runs.answer(
+                            reply["decision_id"],
+                            reply["answer"],
+                            source=reply["source"],
+                            request_version=reply["request_version"],
+                            comment=reply["comment"],
+                            cancel_event=cancel_event,
+                        )
+                        break
+                    except DecisionError as exc:
+                        # A refused answer never changes the run: keep waiting.
+                        _send_refusal(
+                            bridge,
+                            exc,
+                            runs.decisions.get(interrupt_event["decision_id"]),
+                        )
+                        outcome, reply = _handle_interrupt(
+                            bridge, interrupt_event, render=False
+                        )
+                if outcome != "answer":
+                    # Nobody answered, or this view cannot present the question:
+                    # the paused run will never continue, so end it. The TUI
+                    # discards nothing it already printed (the question was
+                    # flushed above).
+                    if outcome == "unsupported" and forward_run_events:
+                        # stdio only: the Go TUI wire stays as it was.
+                        bridge.send(
+                            "alert",
+                            {
+                                "level": "warning",
+                                "message": h(
+                                    "This view cannot show Lobster's question, so the run was stopped."
+                                ),
+                                "code": "decision_unsupported",
+                            },
+                        )
+                    reason = (
+                        "decision_unsupported"
+                        if outcome == "unsupported"
+                        else "decision_abandoned"
+                    )
+                    runs.cancel(run.run_id, reason=reason)
+                    if forward_run_events:
+                        _forward_run_end(runs, run, forward_state, forwarded)
+                    bridge.send("spinner", {"active": False})
+                    _settle_turn(bridge, turn, "cancelled")
+                    return
 
-            # Resume the graph with the user's response.
-            bridge.send("spinner", {"active": True, "label": h("resuming")})
-            if forward_run_events and origin.state == "completed":
-                # The origin's terminal ``completed {resumed_by}``.
-                _forward_run_end(runs, origin, forward_state, forwarded)
-            stream_source = run.stream()
-            # Continue the while loop to process the resumed stream.
+                # Resume the graph with the user's response.
+                bridge.send("spinner", {"active": True, "label": h("resuming")})
+                if forward_run_events and origin.state == "completed":
+                    # The origin's terminal ``completed {resumed_by}``.
+                    _forward_run_end(runs, origin, forward_state, forwarded)
+                stream_source = run.stream()
+                # Continue the while loop to process the resumed stream.
 
-    except KeyboardInterrupt:
-        if forward_run_events and run is not None:
-            _forward_run_end(runs, run, forward_state, forwarded)
-        bridge.send("alert", {"level": "warning", "message": h("Query interrupted")})
-        bridge.send("spinner", {"active": False})
-        _settle_turn(bridge, turn, "cancelled")
-    except Exception as exc:
-        if forward_run_events and run is not None:
-            error = {"code": "exception", "message": str(exc), "retryable": False}
-            _forward_run_end(runs, run, forward_state, forwarded, error=error)
-        title, friendly = _friendly_error(str(exc))
-        bridge.send("alert", {"level": "error", "title": title, "message": friendly})
-        bridge.send("spinner", {"active": False})
-        _settle_turn(bridge, turn, "error")
+        except KeyboardInterrupt:
+            if forward_run_events and run is not None:
+                _forward_run_end(runs, run, forward_state, forwarded)
+            bridge.send(
+                "alert", {"level": "warning", "message": h("Query interrupted")}
+            )
+            bridge.send("spinner", {"active": False})
+            _settle_turn(bridge, turn, "cancelled")
+        except Exception as exc:
+            if forward_run_events and run is not None:
+                error = {"code": "exception", "message": str(exc), "retryable": False}
+                _forward_run_end(runs, run, forward_state, forwarded, error=error)
+            turn.reason = type(exc).__name__
+            title, friendly = _friendly_error(str(exc))
+            bridge.send(
+                "alert", {"level": "error", "title": title, "message": friendly}
+            )
+            bridge.send("spinner", {"active": False})
+            _settle_turn(bridge, turn, "error")
+    finally:
+        # The session's catalog run ends as its latest turn did.
+        _note_turn_status(client, turn)
 
 
 def _forward_run_end(runs, run, forward_state, forwarded, error=None) -> None:

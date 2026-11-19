@@ -404,145 +404,150 @@ def query_impl(
             interactive=False,
         )
 
-    # Load session if found
-    if session_file_to_load:
-        try:
-            load_result = client.load_session(session_file_to_load)
-            if not json_output:
-                console.print(
-                    h("[green]✓ Loaded {n} previous messages[/green]").format(
-                        n=load_result["messages_loaded"]
-                    )
-                )
-                if load_result.get("original_session_id"):
+    from lobster.core.catalog.factory import note_run_status, recorded_run_status
+
+    with recorded_run_status(client):
+        # Load session if found
+        if session_file_to_load:
+            try:
+                load_result = client.load_session(session_file_to_load)
+                if not json_output:
                     console.print(
-                        h("[dim]  Original session: {sid}[/dim]").format(
-                            sid=load_result["original_session_id"]
+                        h("[green]✓ Loaded {n} previous messages[/green]").format(
+                            n=load_result["messages_loaded"]
                         )
                     )
-        except Exception as e:
-            if not json_output:
-                console.print(
-                    h("[red]❌ Failed to load session: {e}[/red]").format(e=e)
-                )
-                console.print(h("[yellow]   Creating new session instead[/yellow]"))
-
-    # Process query
-    if json_output:
-        # JSON mode: no streaming, no Rich output, no spinners
-        from lobster.core.runs import mark_usage, with_run_cost
-
-        cost_mark = mark_usage(client)
-        result = client.query(question)
-    else:
-        # Determine if streaming is appropriate
-        trace_mode = reasoning or verbose
-        use_streaming = stream and not trace_mode
-
-        if use_streaming:
-            result = _display_streaming_response(client, question, console)
-        elif should_show_progress(client):
-            with console.status(h("[red]🦞 Processing query...[/red]")):
-                result = client.query(question)
-        else:
-            if trace_mode:
-                if stream:
-                    console.print(
-                        h(
-                            "[dim]◀ Lobster  Trace mode active; final answer renders on completion.[/dim]"
+                    if load_result.get("original_session_id"):
+                        console.print(
+                            h("[dim]  Original session: {sid}[/dim]").format(
+                                sid=load_result["original_session_id"]
+                            )
                         )
+            except Exception as e:
+                if not json_output:
+                    console.print(
+                        h("[red]❌ Failed to load session: {e}[/red]").format(e=e)
                     )
-                else:
-                    console.print(h("[dim]◀ Lobster  Working…[/dim]"))
+                    console.print(h("[yellow]   Creating new session instead[/yellow]"))
+
+        # Process query
+        if json_output:
+            # JSON mode: no streaming, no Rich output, no spinners
+            from lobster.core.runs import mark_usage, with_run_cost
+
+            cost_mark = mark_usage(client)
             result = client.query(question)
-
-    # JSON output mode: emit structured JSON and exit
-    if json_output:
-        json_result = {
-            "success": result.get("success", False),
-            "response": result.get("response", ""),
-            "session_id": getattr(client, "session_id", None),
-        }
-        if result.get("success"):
-            json_result["last_agent"] = result.get("last_agent")
-            token_usage = result.get("token_usage")
-            if (
-                not token_usage
-                and hasattr(client, "token_tracker")
-                and client.token_tracker
-            ):
-                token_usage = (
-                    client.token_tracker.get_summary()
-                    if hasattr(client.token_tracker, "get_summary")
-                    else None
-                )
-            if token_usage:
-                json_result["token_usage"] = with_run_cost(
-                    token_usage, client, cost_mark
-                )
         else:
-            json_result["error"] = result.get("error", "Unknown error")
-        from lobster.core.runs import build_result, new_run_id
+            # Determine if streaming is appropriate
+            trace_mode = reasoning or verbose
+            use_streaming = stream and not trace_mode
 
-        # Additive: lobster.result/1 fields; the legacy keys above win.
-        json_result = {
-            **build_result(client, new_run_id(), json_result["session_id"], result),
-            **json_result,
-        }
-        json_result["response"] = json_result["response"] or ""
-        print(json.dumps(json_result, default=str))
-        if not json_result["success"]:
-            # Scripts and CI rely on the exit code to detect a failed query.
-            raise typer.Exit(1)
-        return
+            if use_streaming:
+                result = _display_streaming_response(client, question, console)
+            elif should_show_progress(client):
+                with console.status(h("[red]🦞 Processing query...[/red]")):
+                    result = client.query(question)
+            else:
+                if trace_mode:
+                    if stream:
+                        console.print(
+                            h(
+                                "[dim]◀ Lobster  Trace mode active; final answer renders on completion.[/dim]"
+                            )
+                        )
+                    else:
+                        console.print(h("[dim]◀ Lobster  Working…[/dim]"))
+                result = client.query(question)
 
-    # Display or save result (Rich mode)
-    if result["success"]:
-        if output:
-            output.write_text(result["response"])
-            console.print(
-                h(
-                    "[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{path}[/grey74]"
-                ).format(path=output)
-            )
-        else:
-            _render_human_query_result(
-                console,
-                result,
-                client,
-                reasoning=reasoning,
-                verbose=verbose,
-            )
-    else:
-        error_msg = result.get("error", "Unknown error")
-        if "rate limit" in error_msg.lower() or "RateLimitError" in error_msg:
-            from rich.panel import Panel
+        # JSON output mode: emit structured JSON and exit
+        if json_output:
+            json_result = {
+                "success": result.get("success", False),
+                "response": result.get("response", ""),
+                "session_id": getattr(client, "session_id", None),
+            }
+            if result.get("success"):
+                json_result["last_agent"] = result.get("last_agent")
+                token_usage = result.get("token_usage")
+                if (
+                    not token_usage
+                    and hasattr(client, "token_tracker")
+                    and client.token_tracker
+                ):
+                    token_usage = (
+                        client.token_tracker.get_summary()
+                        if hasattr(client.token_tracker, "get_summary")
+                        else None
+                    )
+                if token_usage:
+                    json_result["token_usage"] = with_run_cost(
+                        token_usage, client, cost_mark
+                    )
+            else:
+                json_result["error"] = result.get("error", "Unknown error")
+            from lobster.core.runs import build_result, new_run_id
 
-            console.print(
-                Panel(
+            # Additive: lobster.result/1 fields; the legacy keys above win.
+            json_result = {
+                **build_result(client, new_run_id(), json_result["session_id"], result),
+                **json_result,
+            }
+            json_result["response"] = json_result["response"] or ""
+            print(json.dumps(json_result, default=str))
+            if not json_result["success"]:
+                # Scripts and CI rely on the exit code to detect a failed query.
+                raise typer.Exit(1)
+            return
+
+        # Display or save result (Rich mode)
+        if result["success"]:
+            if output:
+                output.write_text(result["response"])
+                console.print(
                     h(
-                        "[bold]Too many API requests in a short window.[/bold]\n\n"
-                        "This can happen when multiple browser tabs are open on app.omics-os.com "
-                        "(each tab polls the API).\n\n"
-                        "[bold]What to do:[/bold]\n"
-                        "  \u2022 Wait 10-15 seconds and retry\n"
-                        "  \u2022 Close extra browser tabs on app.omics-os.com\n"
-                        "  \u2022 Run: [bold]lobster cloud status[/bold]"
-                    ),
-                    title=h("\U0001f6ab Rate Limited"),
-                    border_style="yellow",
+                        "[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{path}[/grey74]"
+                    ).format(path=output)
                 )
-            )
+            else:
+                _render_human_query_result(
+                    console,
+                    result,
+                    client,
+                    reasoning=reasoning,
+                    verbose=verbose,
+                )
         else:
-            console.print(
-                h(
-                    "[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error}[/red]"
-                ).format(error=error_msg)
-            )
+            error_msg = result.get("error", "Unknown error")
+            if "rate limit" in error_msg.lower() or "RateLimitError" in error_msg:
+                from rich.panel import Panel
 
-    _maybe_print_timings(client, "Query")
-    if not result["success"]:
-        raise typer.Exit(1)
+                console.print(
+                    Panel(
+                        h(
+                            "[bold]Too many API requests in a short window.[/bold]\n\n"
+                            "This can happen when multiple browser tabs are open on app.omics-os.com "
+                            "(each tab polls the API).\n\n"
+                            "[bold]What to do:[/bold]\n"
+                            "  \u2022 Wait 10-15 seconds and retry\n"
+                            "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                            "  \u2022 Run: [bold]lobster cloud status[/bold]"
+                        ),
+                        title=h("\U0001f6ab Rate Limited"),
+                        border_style="yellow",
+                    )
+                )
+            else:
+                console.print(
+                    h(
+                        "[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error}[/red]"
+                    ).format(error=error_msg)
+                )
+
+        _maybe_print_timings(client, "Query")
+        if not result["success"]:
+            if result.get("interrupted"):  # Ctrl-C while streaming
+                note_run_status(client, "aborted", reason="Ctrl-C")
+            raise typer.Exit(1)
 
 
 # ============================================================================

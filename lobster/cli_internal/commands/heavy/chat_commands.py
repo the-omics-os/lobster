@@ -42,6 +42,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     render_startup_diagnostic_rich,
 )
+from lobster.core.catalog.factory import note_run_status
 from lobster.i18n import h
 from lobster.ui import setup_logging
 from lobster.ui.console_manager import get_console_manager
@@ -788,6 +789,16 @@ def _collect_classic_answers(interrupts: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _note_turn_status(client, result: dict[str, Any]) -> None:
+    """The session's catalog run ends as its latest turn did."""
+    if result.get("success"):
+        note_run_status(client, "completed")
+    elif result.get("interrupted"):
+        note_run_status(client, "aborted", reason="Ctrl-C")
+    else:
+        note_run_status(client, "errored", reason="error")
+
+
 def _query_classic(client, user_input: str) -> dict[str, Any]:
     """Run a query and resume after any supervisor questions."""
     result = client.query(user_input, stream=False)
@@ -888,6 +899,7 @@ def _display_streaming_response(
         return {
             "success": False,
             "error": "Interrupted by user",
+            "interrupted": True,
             "response": accumulated_text,
         }
     except Exception as e:
@@ -1100,6 +1112,7 @@ def chat_impl(
     # Show compact session status
     _show_workspace_prompt(client)
 
+    querying = False  # a turn is running: Ctrl-C or an error ends it
     while True:
         try:
             # Get current token usage for prompt prefix
@@ -1176,8 +1189,12 @@ def chat_impl(
             # (disable when verbose/reasoning callbacks are handling output)
             use_streaming = stream and should_show_progress(client)
 
+            querying = True
+            note_run_status(client, None)  # no end status while the turn runs
             if use_streaming:
                 result = _display_streaming_response(client, user_input, console)
+                querying = False
+                _note_turn_status(client, result)
 
                 # Show final markdown-rendered response
                 if result["success"] and result.get("response"):
@@ -1195,6 +1212,8 @@ def chat_impl(
                     console.print("[dim]...[/dim]", end="")
 
                 result = _query_classic(client, user_input)
+                querying = False
+                _note_turn_status(client, result)
 
                 if should_show_progress(client):
                     console.print("\r   \r", end="")
@@ -1224,6 +1243,9 @@ def chat_impl(
             _maybe_print_timings(client, "Chat Query")
 
         except KeyboardInterrupt:
+            if querying:  # Ctrl-C stopped the turn
+                querying = False
+                note_run_status(client, "aborted", reason="Ctrl-C")
             if Confirm.ask(h("\n[dim]exit?[/dim]")):
                 if hasattr(client, "_save_session_json"):
                     try:
@@ -1254,9 +1276,14 @@ def chat_impl(
                     if summary:
                         console.print(f"[dim]{summary}[/dim]")
                 console.print()  # Empty line before exit
+                # A chat ends as its last turn did; one without a turn, completed.
+                note_run_status(client, "completed", if_unset=True)
                 break
             continue
         except Exception as e:
+            if querying:
+                querying = False
+                note_run_status(client, "errored", reason=type(e).__name__)
             # Enhanced error reporting with context
             error_message = str(e)
             error_type = type(e).__name__

@@ -26,15 +26,18 @@ OMICS_OS_KEY_NOT_VERIFIED = (
 )
 
 
-def _open_in_browser(url: str) -> None:
-    """Best effort; the wizard always prints the address as well."""
+def _open_in_browser(url: str) -> bool:
+    """Best effort; the wizard always prints the address as well.
+
+    True only when a browser was started; then the wizard says it is opening.
+    """
     import subprocess  # nosec B404 # fixed argv, no shell
     import webbrowser
 
     try:
         if sys.platform != "linux":
-            webbrowser.open(url)
-        elif os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            return bool(webbrowser.open(url))
+        if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
             # Not webbrowser, nor xdg-open on our terminal: both may fall back to a
             # console browser (lynx, w3m) that takes over the wizard's terminal.
             subprocess.Popen(  # nosec B603 B607 # fixed argv, no shell
@@ -44,8 +47,10 @@ def _open_in_browser(url: str) -> None:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            return True
     except Exception:  # nosec B110 # the printed address is the way in
         pass
+    return False
 
 
 def request_access(say: Callable[[str], None], wait: Callable[[str], object]) -> None:
@@ -55,10 +60,13 @@ def request_access(say: Callable[[str], None], wait: Callable[[str], object]) ->
     """
     from lobster.i18n import h
 
-    _open_in_browser(ACCESS_REQUEST_URL)
-    say(h("Opening the access request page in your browser:"))
-    say(ACCESS_REQUEST_URL)
-    say(h("If it does not open, copy the address into your browser."))
+    if _open_in_browser(ACCESS_REQUEST_URL):
+        say(h("Opening the access request page in your browser:"))
+        say(ACCESS_REQUEST_URL)
+        say(h("If it does not open, copy the address into your browser."))
+    else:
+        say(h("Open this link to request access:"))
+        say(ACCESS_REQUEST_URL)
     wait(h("Press Enter when you have sent the request."))
     say(
         h(

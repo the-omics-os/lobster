@@ -53,11 +53,22 @@ class NullCatalog:
     ) -> Optional[TransformRef]:
         return None
 
+    def set_end_status(
+        self,
+        status: Optional[RunStatus],
+        session_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        *,
+        if_unset: bool = False,
+    ) -> None:
+        return None
+
     def end_run(
         self,
         status: RunStatus,
         report_path: Optional[Path] = None,
         environment_path: Optional[Path] = None,
+        reason: Optional[str] = None,
     ) -> None:
         return None
 

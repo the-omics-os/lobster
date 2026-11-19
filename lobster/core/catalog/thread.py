@@ -279,6 +279,10 @@ class ThreadedCatalog:
         self._reported: set = set()
         self._session: Optional[SessionInfo] = None
         self._run_open = False
+        # How the open run ended, as its command said; None leaves it open (an
+        # unfinished run is never recorded as completed).
+        self._end_status: Optional[RunStatus] = None
+        self._end_reason: Optional[str] = None
         self._engine: Optional[Catalog] = None
         # The lock held for a recorded save, from keep_path to its registration;
         # used on the worker only.
@@ -303,19 +307,22 @@ class ThreadedCatalog:
         """Fire and forget: the next call waits behind it on the worker."""
         with self._state_lock:
             previous = self._session if self._run_open else None
+            previous_status, self._end_status = self._end_status, None
+            previous_reason, self._end_reason = self._end_reason, None
             self._session = session
             self._run_open = True
             # Both calls are queued while the lock is held (``wait=False`` returns
             # at once), so two switches cannot interleave their end and begin.
             # Known, deferred: a save whose section is open during a switch is
             # registered under the run the switch begins.
-            if previous is not None:
+            if previous is not None and previous_status is not None:
                 # A session switch: the run being left ends with its own step log.
                 self._call(
                     "end_run",
-                    "completed",
+                    previous_status,
                     _step_log(previous),
                     None,
+                    previous_reason,
                     write=True,
                     wait=False,
                 )
@@ -565,6 +572,7 @@ class ThreadedCatalog:
         status: RunStatus,
         report_path: Optional[Path] = None,
         environment_path: Optional[Path] = None,
+        reason: Optional[str] = None,
         *,
         timeout: Optional[float] = None,
     ) -> None:
@@ -575,6 +583,7 @@ class ThreadedCatalog:
             status,
             report_path,
             environment_path,
+            reason,
             write=True,
             timeout=timeout,
         )
@@ -600,6 +609,29 @@ class ThreadedCatalog:
     def worker_ident(self) -> Optional[int]:
         return self._worker.ident
 
+    def set_end_status(
+        self,
+        status: Optional[RunStatus],
+        session_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        *,
+        if_unset: bool = False,
+    ) -> None:
+        """How the open run ends when the process exits or the session switches.
+
+        With ``session_id``, only that session's run: a server running sessions
+        side by side must not end one with another's outcome. ``reason`` says why a
+        run did not complete (an exit code, an error class). ``if_unset`` keeps a
+        status already set (a chat ends as its last turn did). None: a turn is
+        running, so the run has no end status until it ends.
+        """
+        with self._state_lock:
+            current = None if self._session is None else self._session.session_id
+            if not self._run_open or session_id not in (None, current):
+                return
+            if not (if_unset and self._end_status is not None):
+                self._end_status, self._end_reason = status, reason
+
     def close(self, status: RunStatus = "completed") -> None:
         """End the open run and stop the worker (tests, explicit shutdown)."""
         atexit.unregister(self._at_exit)
@@ -609,7 +641,8 @@ class ThreadedCatalog:
         if self._forked:
             return
         self._finish(
-            "completed",
+            self._end_status,
+            reason=self._end_reason,
             timeout=min(self._timeout, AT_EXIT_TIMEOUT_S),
             wait_for_build=True,
         )
@@ -622,19 +655,27 @@ class ThreadedCatalog:
         self._degraded_reason = "the process was forked; the parent keeps the catalog"
 
     def _finish(
-        self, status: RunStatus, *, timeout: float, wait_for_build: bool = False
+        self,
+        status: Optional[RunStatus],
+        *,
+        timeout: float,
+        reason: Optional[str] = None,
+        wait_for_build: bool = False,
     ) -> None:
         # A degraded catalog ends nothing: if it degraded after begin_run (a call
         # timed out), that run stays open in the catalog, with no finish time.
         self._watchdog.cancel()
         deadline = time.monotonic() + timeout
         with self._state_lock:  # a switch at exit must not be read half-way
-            is_open = self._run_open and self._degraded_reason is None
+            # No status: the command never said how it ended; the run stays open.
+            is_open = (
+                self._run_open and self._degraded_reason is None and status is not None
+            )
             session = self._session
         if is_open:
             starting = not self._ready.is_set()
             report = None if session is None else _step_log(session)
-            self.end_run(status, report, timeout=timeout)
+            self.end_run(status, report, None, reason, timeout=timeout)
             if starting and wait_for_build:
                 self._wait_for_worker(deadline)
         self._worker.stop()

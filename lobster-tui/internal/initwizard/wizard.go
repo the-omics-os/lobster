@@ -555,6 +555,8 @@ type WizardModel struct {
 	providerSelect singleSelectModel
 	// accessNotice is shown above the provider list after an access request, until the next choice.
 	accessNotice string
+	// accessOpened: a browser was started for the access-request page.
+	accessOpened bool
 	// Omics-OS Cloud account question (between the provider and its key step).
 	accountSelect singleSelectModel
 
@@ -876,9 +878,9 @@ func (m WizardModel) updateOmicsAccount(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if value == answerHasAccount {
 		return m.chooseProvider(providerOmicsOS)
 	}
-	// No: nothing is saved and nothing is sent. A failure to open is ignored; the
-	// address stays on screen for the user to copy.
-	_ = browserOpen(accessRequestURL)
+	// No: nothing is saved and nothing is sent. A failure to open only changes the
+	// wording; the address stays on screen for the user to copy.
+	m.accessOpened = browserOpen(accessRequestURL) == nil
 	m.result.Provider = "" // the list comes back with nothing selected
 	m.step = stepAccessRequest
 	return m, nil
@@ -888,6 +890,11 @@ func (m WizardModel) viewAccessRequest() string {
 	titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
 	textStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Text)
 	mutedStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+	if !m.accessOpened {
+		return titleStyle.Render(i18n.P("Open this link to request access:")) + "\n" +
+			textStyle.Render(accessRequestURL) + "\n\n" +
+			mutedStyle.Render(i18n.P("Press Enter when you have sent the request."))
+	}
 	return titleStyle.Render(i18n.P("Opening the access request page in your browser:")) + "\n" +
 		textStyle.Render(accessRequestURL) + "\n\n" +
 		mutedStyle.Render(i18n.P("If it does not open, copy the address into your browser.")) + "\n" +
