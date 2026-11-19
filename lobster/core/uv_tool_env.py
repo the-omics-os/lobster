@@ -190,6 +190,25 @@ def build_tool_install_command(
     return cmd
 
 
+def _windows_join(argv: list[str]) -> str:
+    # Double quotes work in PowerShell and cmd; ">=" and "[" bare do not, and
+    # single quotes are literal in cmd.
+    return " ".join(
+        f'"{arg}"' if any(c in arg for c in " []<>=@&|^") else arg for arg in argv
+    )
+
+
+def command_line(argv: list[str]) -> str:
+    """A command the user can paste into the shell they are likely in.
+
+    shortcut: on Windows a quoted path first (e.g. a python.exe under a folder
+    with a space) is an expression in PowerShell; callers print plain ``uv``.
+    """
+    import shlex
+
+    return _windows_join(argv) if sys.platform == "win32" else shlex.join(argv)
+
+
 def windows_locks_running_tool() -> bool:
     """Windows locks the running lobster.exe and its venv; uv cannot replace them."""
     return sys.platform == "win32"
@@ -216,12 +235,8 @@ def run_tool_install(cmd: list[str], next_step: Optional[str] = None) -> NoRetur
 
     if windows_locks_running_tool():
         # A reinstall from inside could fail halfway and leave no lobster.
-        # Double quotes work in PowerShell and cmd; ">=" and "[" bare do not.
         # Plain "uv": PowerShell reads a leading quoted path as an expression.
-        line = " ".join(
-            f'"{arg}"' if any(c in arg for c in " []<>=@&|^") else arg
-            for arg in ["uv", *cmd[1:]]
-        )
+        line = _windows_join(["uv", *cmd[1:]])
         print("  " + t("cli.init.windows_tool_install", command=line))
         sys.stdout.flush()
         os._exit(0)

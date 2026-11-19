@@ -696,10 +696,8 @@ def _build_uv_tool_init_command(
 
 def _print_deferred_agent_install(selected_agents: list[str]) -> None:
     """Record the choice without installs; show a command valid for this environment."""
-    import shlex
-
     from lobster.core.component_registry import AGENT_TO_PACKAGE
-    from lobster.core.uv_tool_env import is_uv_tool_env
+    from lobster.core.uv_tool_env import command_line, is_uv_tool_env
 
     packages = sorted(
         {AGENT_TO_PACKAGE[a] for a in selected_agents if a in AGENT_TO_PACKAGE}
@@ -714,6 +712,7 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
         command = build_tool_install_command(
             with_packages=[_pinned_to_lobster(p, ">=") for p in packages]
         )
+        command[0] = "uv"  # a quoted path first is an expression in PowerShell
         command.insert(3, "--reinstall")
     else:
         pinned = [_pinned_to_lobster(p) for p in packages]
@@ -723,7 +722,7 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
     )
     # soft_wrap: a wrapped command breaks when pasted.
     console.print(
-        h("Install later: ") + shlex.join(command), markup=False, soft_wrap=True
+        h("Install later: ") + command_line(command), markup=False, soft_wrap=True
     )
 
 
@@ -1767,10 +1766,10 @@ def _tool_install_follows(skip_extras: bool) -> bool:
 
 def _failed_install_lines() -> List[str]:
     """Localized lines naming the installs that failed in this run, and the fix."""
-    import shlex
     import shutil
 
     from lobster.cli_internal.commands.light.agent_commands import FAILED_INSTALLS
+    from lobster.core.uv_tool_env import command_line
     from lobster.i18n import t
 
     failed = list(dict.fromkeys(FAILED_INSTALLS))
@@ -1782,7 +1781,7 @@ def _failed_install_lines() -> List[str]:
         command = [sys.executable, "-m", "pip", "install", *failed]
     return [
         t("cli.init.install_failed", packages=", ".join(failed)),
-        t("cli.init.next_install", command=shlex.join(command)),
+        t("cli.init.next_install", command=command_line(command)),
     ]
 
 
