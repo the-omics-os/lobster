@@ -879,6 +879,7 @@ func (m WizardModel) updateOmicsAccount(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// No: nothing is saved and nothing is sent. A failure to open is ignored; the
 	// address stays on screen for the user to copy.
 	_ = browserOpen(accessRequestURL)
+	m.result.Provider = "" // the list comes back with nothing selected
 	m.step = stepAccessRequest
 	return m, nil
 }

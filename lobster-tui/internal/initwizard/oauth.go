@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -101,7 +102,19 @@ func openBrowser(rawURL string) error {
 	case "darwin":
 		return exec.Command("open", rawURL).Start()
 	case "linux":
-		return exec.Command("xdg-open", rawURL).Start()
+		// With no display xdg-open falls back to a console browser (w3m, lynx) that can
+		// open our controlling terminal and draw over the wizard. The callers print the
+		// address, so say no and start nothing.
+		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+			return errors.New("no display to open a browser on")
+		}
+		cmd := exec.Command("xdg-open", rawURL)
+		detachFromTerminal(cmd)
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		go func() { _ = cmd.Wait() }() // reap it; nothing to report
+		return nil
 	case "windows":
 		// Use rundll32 instead of cmd /c start to avoid shell interpretation
 		// of & characters in the URL (which cmd.exe treats as command separators).
