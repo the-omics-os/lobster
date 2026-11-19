@@ -152,5 +152,7 @@ def test_a_start_where_no_project_can_be_made_points_at_a_project_and_the_config
     for text in (seen["next"], refused):
         assert line in text and "terminal" in text
         assert "--workspace <project folder>" in text
-        assert "MCP config" in text and "cwd" in text
+        assert "MCP config" in text
+        # --workspace is the verified form; a host's cwd setting is not.
+        assert "cwd" not in text
     assert "sk-not-shown" not in str(seen) + refused
