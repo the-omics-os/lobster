@@ -99,7 +99,7 @@ def resolve_workspace(
         Path: Resolved workspace path (absolute)
 
     Resolution Order:
-        1. explicit_path (if provided)
+        1. explicit_path (if provided); a project folder names its own workspace
         2. LOBSTER_WORKSPACE environment variable
         3. The workspace of the project that contains the current directory
         4. Path.cwd() / ".lobster_workspace" (default fallback)
@@ -120,6 +120,9 @@ def resolve_workspace(
     if explicit_path is not None:
         workspace = Path(explicit_path)
         source = "explicit parameter"
+        if _is_project_workspace(workspace / WORKSPACE_FOLDER_NAME):
+            workspace = workspace / WORKSPACE_FOLDER_NAME  # -w <project folder>
+            source = "explicit project folder"
     elif env_workspace := os.environ.get(WORKSPACE_ENV_VAR):
         workspace = Path(env_workspace)
         source = f"${WORKSPACE_ENV_VAR} environment variable"

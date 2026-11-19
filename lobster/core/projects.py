@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from lobster.core.runtime.workspace import (
     PROJECT_FILE_NAME,
     WORKSPACE_FOLDER_NAME,
+    _is_project_workspace,
     find_project_root,
 )
 
@@ -452,8 +453,11 @@ def effective_settings(
 
 def run_workspace(folder: Path) -> Path:
     """The workspace ``-w <folder>`` names: the nested ``.lobster_workspace`` of a run
-    folder (or project), else the folder itself when it holds its own ``data``."""
+    folder (or project), else the folder itself when it holds its own ``data``.
+    A project's workspace wins even then: that ``data`` was made by mistake."""
     nested = Path(folder) / WORKSPACE_FOLDER_NAME
+    if _is_project_workspace(nested):
+        return nested
     if nested.is_dir() and not (Path(folder) / "data").is_dir():
         return nested
     return Path(folder)
