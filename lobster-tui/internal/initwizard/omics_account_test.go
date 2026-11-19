@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
@@ -223,5 +225,36 @@ func TestAccountScreensFollowTheLanguage(t *testing.T) {
 	}
 	if !hasLine(render(m), "https://www.omics-os.com/early-access") {
 		t.Errorf("the URL is not on its own line in zh: %s", render(m))
+	}
+}
+
+// The renderer cuts a line wider than the window (it does not wrap), so every line of
+// the new screens must fit a default 80-column terminal, in English and in Chinese
+// (Chinese characters are two columns wide).
+func TestAccountScreensFitEightyColumns(t *testing.T) {
+	for _, lang := range []string{"en", "zh"} {
+		t.Run(lang, func(t *testing.T) {
+			fakeBrowser(t, nil)
+			i18n.Set(lang)
+			t.Cleanup(func() { i18n.Set("en") })
+			m := NewWizardModel("", "")
+			m = keys(m, "enter")
+			screens := map[string]string{"question": render(m)}
+			m = keys(m, "down", "enter")
+			screens["no screen"] = render(m)
+			m = keys(m, "enter")
+			screens["list with message"] = render(m)
+			for name, screen := range screens {
+				for _, line := range lines(screen) {
+					if w := lipgloss.Width(line); w > 80 {
+						t.Errorf("%s: a line is %d columns wide: %q", name, w, line)
+					}
+				}
+			}
+			if !strings.Contains(strings.Join(strings.Fields(screens["list with message"]), ""),
+				strings.Join(strings.Fields(i18n.P(accessSent)), "")) {
+				t.Errorf("the wrapped message lost words: %s", screens["list with message"])
+			}
+		})
 	}
 }
