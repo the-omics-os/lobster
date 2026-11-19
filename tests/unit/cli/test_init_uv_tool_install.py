@@ -513,3 +513,29 @@ def test_on_windows_the_next_step_runs_in_powershell(monkeypatch, tmp_path):
 
     assert f"cd {tmp_path / 'study'}; lobster chat" in text
     assert "&&" not in text
+
+
+def test_windows_install_later_quotes_for_powershell_and_cmd(
+    tool_env, monkeypatch, capsys
+):
+    monkeypatch.setattr("sys.platform", "win32")
+
+    init_commands._print_deferred_agent_install(["transcriptomics_expert"])
+
+    out = capsys.readouterr().out
+    # Single quotes are literal in cmd.exe; ">=" bare is a redirect in both.
+    assert '"lobster-transcriptomics>=1.3.0"' in out
+    assert "'" not in out
+
+
+def test_windows_failed_install_line_quotes_for_powershell_and_cmd(monkeypatch):
+    from lobster.cli_internal.commands.light import agent_commands
+
+    monkeypatch.setattr(agent_commands, "FAILED_INSTALLS", ["lobster-ai[lamin]"])
+    monkeypatch.setattr("shutil.which", lambda _name: "uv")
+    monkeypatch.setattr("sys.platform", "win32")
+
+    lines = init_commands._failed_install_lines()
+
+    assert '"lobster-ai[lamin]"' in lines[-1]
+    assert "'" not in lines[-1]

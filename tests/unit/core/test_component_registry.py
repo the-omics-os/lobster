@@ -634,6 +634,17 @@ class TestInstallCommandHints:
             "uv pip install --python '/opt/my env/bin/python' gseapy"
         )
 
+    def test_a_windows_venv_hint_quotes_for_powershell_and_cmd(self, monkeypatch):
+        # Single quotes are literal in cmd.exe; "[" and ">=" need quoting.
+        monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
+        monkeypatch.setattr("sys.executable", r"C:\Program Files\Python312\python.exe")
+        monkeypatch.setattr("sys.platform", "win32")
+
+        assert get_install_command("anthropic", is_extra=True) == (
+            r'uv pip install --python "C:\Program Files\Python312\python.exe" '
+            '"lobster-ai[anthropic]"'
+        )
+
     def test_get_install_command_uses_uv_tool_builder_for_extras(self, monkeypatch):
         seen = {}
 
