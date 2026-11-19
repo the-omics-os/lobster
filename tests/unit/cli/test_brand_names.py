@@ -1,13 +1,14 @@
 """The cloud product is Omics-OS Cloud, in every string the engine ships.
 
-`lobster cloud ...` stays: it is a command, not the product name.
+`lobster cloud ...` stays: it is a command, not the product name. The old
+cloud.lobster.ai host does not resolve; Omics-OS Cloud is app.omics-os.com.
 """
 
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-OLD_NAME = re.compile(r"Lobster Cloud|LOBSTER CLOUD")
+OLD_NAME = re.compile(r"Lobster Cloud|LOBSTER CLOUD|cloud\.lobster\.ai")
 
 
 def test_no_shipped_string_says_lobster_cloud():
