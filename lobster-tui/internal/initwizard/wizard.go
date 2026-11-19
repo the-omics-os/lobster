@@ -260,6 +260,9 @@ const (
 	stepAccessRequest // the No answer: the access-request page, waiting for Enter
 )
 
+// accessNoticeWidth is the column width the access-request message wraps to.
+const accessNoticeWidth = 72
+
 // accessRequestURL is where someone without an Omics-OS account asks for access.
 const accessRequestURL = "https://www.omics-os.com/early-access"
 
@@ -847,7 +850,11 @@ func (m WizardModel) viewProvider() string {
 	if m.accessNotice == "" {
 		return list
 	}
-	notice := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2).Render(i18n.P(m.accessNotice))
+	// shortcut: fixed 72-column wrap; the wizard has no window width yet (1.3.1 L17 adds it).
+	// The renderer cuts a line wider than the window, and this one holds the instruction
+	// to choose another provider.
+	notice := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2).Width(accessNoticeWidth).
+		Render(i18n.P(m.accessNotice))
 	return notice + "\n\n" + list
 }
 

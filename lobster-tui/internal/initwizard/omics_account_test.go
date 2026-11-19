@@ -52,6 +52,9 @@ func fakeBrowser(t *testing.T, err error) *[]string {
 	return &urls
 }
 
+// flat joins a wrapped passage back into one line of single spaces.
+func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
+
 func lines(s string) []string { return strings.Split(s, "\n") }
 
 func hasLine(s, want string) bool {
@@ -147,10 +150,10 @@ func TestAccountNoEnterReturnsToTheProviderListWithTheMessage(t *testing.T) {
 		t.Fatalf("not back on the list: step %v provider %q done %v", m.step, m.result.Provider, m.done)
 	}
 	view := render(m)
-	if !strings.Contains(view, accessSent) {
+	if !strings.Contains(flat(view), accessSent) {
 		t.Fatalf("message missing: %s", view)
 	}
-	msgAt, listAt := strings.Index(view, accessSent), strings.Index(view, "Select the provider")
+	msgAt, listAt := strings.Index(view, "Your access request is on its way."), strings.Index(view, "Select the provider")
 	if listAt < 0 || msgAt > listAt {
 		t.Fatalf("the message is not above the provider list: %s", view)
 	}
@@ -181,7 +184,7 @@ func TestEscOnTheQuestionReturnsToTheProviderList(t *testing.T) {
 		t.Fatalf("Esc opened a page: %v", *urls)
 	}
 	view := render(m)
-	if strings.Contains(view, accessSent) || strings.Contains(view, accountQuestion) {
+	if strings.Contains(flat(view), accessSent) || strings.Contains(view, accountQuestion) {
 		t.Fatalf("stale text after Esc: %s", view)
 	}
 }
@@ -193,11 +196,11 @@ func TestTheMessageGoesAtTheNextProviderChoice(t *testing.T) {
 	if m.step != stepAPIKey || m.result.Provider != providerAnthropic {
 		t.Fatalf("could not continue with another provider: step %v provider %q", m.step, m.result.Provider)
 	}
-	if strings.Contains(render(m), accessSent) {
+	if strings.Contains(flat(render(m)), accessSent) {
 		t.Fatalf("the message followed the user into the next step: %s", render(m))
 	}
 	m = keys(m, "esc") // back to the list
-	if strings.Contains(render(m), accessSent) {
+	if strings.Contains(flat(render(m)), accessSent) {
 		t.Fatalf("the message came back with the list: %s", render(m))
 	}
 }
