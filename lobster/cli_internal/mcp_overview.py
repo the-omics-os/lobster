@@ -414,8 +414,7 @@ def no_project_text(start: Path) -> str:
             "config sets no folder). Ask the user to make a project in a "
             "terminal, choosing <name>: " + " or ".join(lines) + ". Then add "
             "--workspace <project folder> to this server's args in the host's "
-            "MCP config (for Codex, set cwd to the project folder) and restart "
-            "the server."
+            "MCP config and restart the server."
         )
     found = providers_with_keys()
     if found:
