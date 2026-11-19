@@ -191,6 +191,67 @@ SIGTERM_CHILD = textwrap.dedent("""
 """)
 
 
+SIGTERM_QUERY_CHILD = textwrap.dedent("""
+    import atexit, time
+    from pathlib import Path
+    from types import SimpleNamespace
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+    from lobster.cli_internal.commands.heavy import query_commands
+    from lobster.core.catalog import factory, thread
+    from lobster.utils.callbacks import TerminalCallbackHandler
+    thread.AT_EXIT_TIMEOUT_S = 1.0
+    class Catalog:
+        status = reason = None
+        def set_end_status(self, status, session_id=None, reason=None, **only):
+            if self.status is None:
+                self.status, self.reason = status, reason
+    catalog = Catalog()
+    atexit.register(lambda: print("RUN", catalog.status, catalog.reason, flush=True))
+    class Hung(FakeListChatModel):
+        def _generate(self, *args, **kwargs):
+            print("ready", flush=True)
+            time.sleep(30)  # a model call that never answers
+    class Client:
+        callbacks = [TerminalCallbackHandler()]
+        data_manager = SimpleNamespace(catalog=catalog)
+        def query(self, question, stream=False):
+            config = {"callbacks": self.callbacks}
+            answer = Hung(responses=["x"]).invoke(question, config=config)
+            return {"success": True, "response": answer.content}
+    def init_client(*args, **kwargs):
+        factory._process_catalog = (Path("."), catalog)
+        factory.abort_runs_on_sigterm()  # as a client with a catalog run does
+        return Client()
+    query_commands.init_client = init_client
+    query_commands.validate_startup_or_raise_startup_diagnostic = lambda **kw: None
+    from lobster.cli import app
+    app(["query", "--no-stream", "hello"])
+""")
+
+
+def test_sigterm_during_a_query_prints_no_error_and_aborts_the_run(tmp_path):
+    """A SIGTERM is not an agent error: no error panel, exit 143, run aborted."""
+    pytest.importorskip("langchain_core")
+    child = subprocess.Popen(
+        [sys.executable, "-c", SIGTERM_QUERY_CHILD],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=tmp_path,
+        env={"PATH": "", "PYTHONPATH": ":".join(sys.path), "HOME": str(tmp_path)},
+    )
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        child.send_signal(signal.SIGTERM)
+        out, _ = child.communicate(timeout=20)
+    finally:
+        child.kill()
+    assert child.returncode == 143, out
+    assert "RUN aborted SIGTERM" in out
+    assert "Agent Error" not in out and "Report this issue" not in out, out
+    assert "143" not in out.replace("RUN aborted SIGTERM", "")
+
+
 @pytest.mark.parametrize("bound", ["catalog", "none"])
 def test_sigterm_ends_the_process_within_the_exit_budget(tmp_path, bound):
     """A tool still running must not hold the process for its whole length."""
