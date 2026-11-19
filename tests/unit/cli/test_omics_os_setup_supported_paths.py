@@ -798,7 +798,12 @@ def opened(monkeypatch):
     import webbrowser
 
     urls = []
-    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: urls.append(url))
+
+    def open_page(url, *args, **kwargs):
+        urls.append(url)
+        return True  # a browser was started
+
+    monkeypatch.setattr(webbrowser, "open", open_page)
     monkeypatch.setattr(sys, "platform", "darwin")
     return urls
 
@@ -873,8 +878,45 @@ def test_access_request_prints_the_address_when_the_browser_fails(monkeypatch, c
     request_access(said.append, waited.append)
 
     assert ACCESS_REQUEST_URL == ACCESS_URL
-    assert said == [*ACCESS_LINES[:3], ACCESS_SENT]
+    # Nothing opened: no "Opening ..." and no "If it does not open".
+    assert said == ["Open this link to request access:", ACCESS_URL, ACCESS_SENT]
     assert waited == [ACCESS_LINES[3]]
+
+
+def test_access_request_says_open_this_link_when_no_browser_starts(monkeypatch):
+    import webbrowser
+
+    from lobster.config.cloud_setup import request_access
+
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    said = []
+
+    request_access(said.append, lambda prompt: None)
+
+    assert said[:2] == ["Open this link to request access:", ACCESS_URL]
+    assert ACCESS_LINES[0] not in said and ACCESS_LINES[2] not in said
+
+
+def test_classic_wait_prompt_ends_in_a_space_and_sentences_wrap_whole_words(
+    monkeypatch, capsys, tmp_path, opened
+):
+    from rich.console import Console
+
+    monkeypatch.setattr(init_commands, "console", Console(width=80, color_system=None))
+    asked, out = run_classic(
+        monkeypatch, capsys, ["1", "1", "2", "", "2", "sk-ant-synthetic"]
+    )
+
+    [wait] = [kw for prompt, kw in asked if ACCESS_LINES[3] in prompt]
+    assert wait.get("prompt_suffix") == " "  # not Rich's ": " after the full stop
+    lines = out.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("Your access"))
+    sent = lines[start : start + 3]
+    # A terminal cuts a longer line wherever column 80 falls, even mid-word.
+    assert all(len(line) <= 80 for line in sent)
+    assert ACCESS_SENT in " ".join(line.strip() for line in sent)
+    assert ACCESS_URL in lines  # the address is never split
 
 
 @pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])

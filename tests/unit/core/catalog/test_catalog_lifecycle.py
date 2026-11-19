@@ -348,6 +348,7 @@ def test_exit_waits_for_an_engine_that_is_still_building(
 
     catalog = make_catalog(slow_factory, startup_wait=0.2, timeout=5.0)
     catalog.begin_run(_session(ws))
+    catalog.set_end_status("completed")
     catalog._at_exit()
     assert engine.ops() == ["begin_run", "end_run"]
     assert not catalog.degraded

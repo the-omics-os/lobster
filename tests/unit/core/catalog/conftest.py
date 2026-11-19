@@ -17,6 +17,7 @@ class RecordingCatalog:
         self.workspace_path = workspace_path
         self.instance = instance
         self.calls: List[Tuple[str, Any]] = []
+        self.end_reasons: List[Optional[str]] = []
         self.threads: List[int] = []
         self.next_keep_path: Any = None
         self.existing_ref: Optional[ArtifactRef] = None
@@ -71,8 +72,9 @@ class RecordingCatalog:
         )
         return TransformRef(uid="t1", key=key)
 
-    def end_run(self, status, report_path=None, environment_path=None):
+    def end_run(self, status, report_path=None, environment_path=None, reason=None):
         self._enter("end_run", (status, report_path))
+        self.end_reasons.append(reason)
 
     def status(self):
         self._enter("status", None)

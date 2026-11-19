@@ -271,6 +271,30 @@ def test_ls_runs_names_the_records_a_run_has(ws, monkeypatch):
     ]
 
 
+def test_ls_runs_reads_an_open_run_as_not_finished_and_names_why_one_failed(
+    ws, monkeypatch
+):
+    rows = [
+        {**RUN_ROWS[2], "name": "open", "status": "started", "end_reason": None},
+        {**RUN_ROWS[2], "name": "failed", "end_reason": "exit code 1"},
+    ]
+    _engine_with_runs(ws, monkeypatch, rows)
+    lines = _invoke("ls", "--runs", "-w", str(ws)).output.splitlines()
+    assert "not finished" in lines[0] and "started" not in lines[0].split()
+    assert "errored" not in lines[0] and "completed" not in lines[0]
+    assert lines[1].endswith("failed  (0 out, 0 in)  [exit code 1]")
+    as_json = json.loads(_invoke("ls", "--runs", "--json", "-w", str(ws)).output)
+    assert [(r["status"], r["end_reason"]) for r in as_json] == [
+        ("started", None),  # LaminDB's own word; no finish time
+        ("errored", "exit code 1"),
+    ]
+    set_lang("zh")
+    try:
+        assert "未结束" in _invoke("ls", "--runs", "-w", str(ws)).output
+    finally:
+        set_lang("en")
+
+
 def test_ls_runs_marks_a_replay_with_its_verdict(ws, monkeypatch):
     replay = {
         **RUN_ROWS[0],

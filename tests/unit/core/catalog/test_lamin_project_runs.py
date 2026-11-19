@@ -56,6 +56,7 @@ RUNS = """
         kinds.append(type(catalog).__name__)
         dm.store_modality("x", adata(seed + i))
         dm.save_modality("x", "x.h5ad")
+        factory.note_run_status(dm, "completed")
     status = catalog.status()
     getattr(catalog, "close", lambda status: None)("completed")
     emit(kinds=kinds, degraded=status.degraded, reason=status.reason,

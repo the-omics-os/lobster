@@ -335,11 +335,77 @@ def test_exit_ends_an_open_run_with_the_session_report(make_catalog, engine, tmp
     (session.session_dir / "provenance.jsonl").write_text("{}\n")
     catalog = make_catalog()
     catalog.begin_run(session)
+    catalog.set_end_status("completed")
     catalog._at_exit()
     assert engine.calls[-1] == (
         "end_run",
         ("completed", session.session_dir / "provenance.jsonl"),
     )
+
+
+@pytest.mark.parametrize("status", ["errored", "aborted"])
+def test_exit_ends_the_run_as_its_command_said(make_catalog, engine, tmp_path, status):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status(status)
+    catalog._at_exit()
+    assert engine.calls[-1][0] == "end_run" and engine.calls[-1][1][0] == status
+
+
+def test_exit_leaves_a_run_open_when_its_command_never_said(
+    make_catalog, engine, tmp_path
+):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog._at_exit()
+    assert "end_run" not in engine.ops()
+
+
+def test_a_running_turn_clears_the_end_status(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("completed")
+    catalog.set_end_status(None)  # the next turn started and never ended
+    catalog._at_exit()
+    assert "end_run" not in engine.ops()
+
+
+@pytest.mark.parametrize("keep", [True, False])
+def test_if_unset_keeps_a_status_already_set(make_catalog, engine, tmp_path, keep):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    if keep:
+        catalog.set_end_status("errored", reason="exit code 1")
+    catalog.set_end_status("aborted", reason="SIGTERM", if_unset=True)
+    catalog._at_exit()
+    assert engine.calls[-1][1][0] == ("errored" if keep else "aborted")
+    assert engine.end_reasons == ["exit code 1" if keep else "SIGTERM"]
+
+
+def test_a_status_for_another_session_is_ignored(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path, "s1"))
+    catalog.set_end_status("errored", session_id="s2")
+    catalog._at_exit()
+    assert "end_run" not in engine.ops()
+
+
+def test_a_new_run_starts_with_no_end_status(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path, "s1"))
+    catalog.set_end_status("errored")
+    catalog.begin_run(_session(tmp_path, "s2"))
+    catalog.status()  # the switch's end has run
+    catalog._at_exit()
+    assert [c[1][0] for c in engine.calls if c[0] == "end_run"] == ["errored"]
+
+
+def test_a_session_switch_leaves_an_unended_run_open(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path, "s1"))
+    catalog.begin_run(_session(tmp_path, "s2"))
+    catalog.status()  # the worker has run everything queued before
+    assert engine.ops().count("end_run") == 0
 
 
 def test_a_session_switch_ends_the_previous_run_with_its_own_report(
@@ -351,6 +417,7 @@ def test_a_session_switch_ends_the_previous_run_with_its_own_report(
         (session.session_dir / "provenance.jsonl").write_text("{}\n")
     catalog = make_catalog()
     catalog.begin_run(first)
+    catalog.set_end_status("completed")
     catalog.begin_run(second)
     catalog.status()  # the worker has run everything queued before
     runs = [c for c in engine.calls if c[0] in ("begin_run", "end_run")]
@@ -359,6 +426,7 @@ def test_a_session_switch_ends_the_previous_run_with_its_own_report(
         ("end_run", ("completed", first.session_dir / "provenance.jsonl")),
         ("begin_run", second),
     ]
+    catalog.set_end_status("completed")
     catalog._at_exit()
     assert engine.calls[-1] == (
         "end_run",
@@ -375,6 +443,7 @@ def test_concurrent_switches_keep_each_end_with_its_own_begin(
         (session.session_dir / "provenance.jsonl").write_text("{}\n")
     catalog = make_catalog()
     catalog.begin_run(sessions[0])
+    catalog.set_end_status("completed")
     entered = threading.Event()
     queue_call = catalog._call
 
@@ -388,6 +457,7 @@ def test_concurrent_switches_keep_each_end_with_its_own_begin(
     first = threading.Thread(target=catalog.begin_run, args=(sessions[1],))
     first.start()
     assert entered.wait(5)
+    catalog.set_end_status("completed")  # waits for the first switch: s1 is open
     catalog.begin_run(sessions[2])
     first.join(5)
     catalog.status()

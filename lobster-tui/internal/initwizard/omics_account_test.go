@@ -21,6 +21,7 @@ const (
 	accountNo       = "No, request access"
 	accessOpening   = "Opening the access request page in your browser:"
 	accessCopy      = "If it does not open, copy the address into your browser."
+	accessLink      = "Open this link to request access:"
 	accessPress     = "Press Enter when you have sent the request."
 	accessSent      = "Your access request is on its way. We'll email you when it's approved. " +
 		"Until then, choose a different provider to continue."
@@ -113,6 +114,9 @@ func TestAccountNoOpensThePageAndPrintsTheFourLines(t *testing.T) {
 		t.Fatalf("browser calls %v", *urls)
 	}
 	view := render(m)
+	if strings.Contains(view, accessLink) {
+		t.Errorf("the no-browser wording shown though the page opened: %s", view)
+	}
 	for _, want := range []string{accessOpening, accessCopy, accessPress} {
 		if !hasLine(view, want) {
 			t.Errorf("missing line %q: %s", want, view)
@@ -126,16 +130,22 @@ func TestAccountNoOpensThePageAndPrintsTheFourLines(t *testing.T) {
 	}
 }
 
-func TestAccountNoPrintsTheLinesEvenWhenTheBrowserFails(t *testing.T) {
+func TestAccountNoPrintsTheLinkWhenTheBrowserFails(t *testing.T) {
 	urls := fakeBrowser(t, errors.New("no browser"))
 	m := keys(NewWizardModel("", ""), "enter", "down", "enter")
 	if len(*urls) != 1 {
 		t.Fatalf("browser calls %v", *urls)
 	}
 	view := render(m)
-	for _, want := range []string{accessOpening, "https://www.omics-os.com/early-access", accessCopy, accessPress} {
+	for _, want := range []string{accessLink, "https://www.omics-os.com/early-access", accessPress} {
 		if !hasLine(view, want) {
 			t.Errorf("missing line %q after a browser error: %s", want, view)
+		}
+	}
+	// Nothing opened: the screen must not say it is opening.
+	for _, gone := range []string{accessOpening, accessCopy} {
+		if strings.Contains(view, gone) {
+			t.Errorf("%q shown though no browser opened: %s", gone, view)
 		}
 	}
 	if strings.Contains(strings.ToLower(view), "no browser") || strings.Contains(strings.ToLower(view), "error") {
@@ -228,6 +238,16 @@ func TestAccountScreensFollowTheLanguage(t *testing.T) {
 	}
 	if !hasLine(render(m), "https://www.omics-os.com/early-access") {
 		t.Errorf("the URL is not on its own line in zh: %s", render(m))
+	}
+}
+
+func TestTheLinkWordingFollowsTheLanguage(t *testing.T) {
+	fakeBrowser(t, errors.New("no browser"))
+	i18n.Set("zh")
+	t.Cleanup(func() { i18n.Set("en") })
+	view := render(keys(NewWizardModel("", ""), "enter", "down", "enter"))
+	if !hasLine(view, "打开此链接申请访问：") || strings.Contains(view, accessLink) {
+		t.Fatalf("the link line is not translated: %s", view)
 	}
 }
 

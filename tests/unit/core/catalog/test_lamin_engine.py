@@ -120,6 +120,7 @@ SESSION = """
     catalog = factory.begin_session_run(dm, ws, "session_20261101_090000")
     dm.store_modality("input", adata(0))
     dm.save_modality("input", "input_copy.h5ad")
+    factory.note_run_status(dm, "completed")
     sid = "session_20261108_100000"
     factory.begin_session_run(dm, ws, sid, ws / ".lobster" / "sessions" / sid)
     dm.load_modality(
@@ -2014,6 +2015,7 @@ def test_a_one_shot_exit_waits_for_a_slow_engine_start(tmp_path):
         ws = Path(os.environ["WS"]).resolve()
         dm = DataManagerV2(workspace_path=ws)
         catalog = factory.begin_session_run(dm, ws, "session_a")
+        factory.note_run_status(dm, "completed")
         emit(type=type(catalog).__name__)
         """)
     readback = """
@@ -2497,6 +2499,8 @@ ENVIRONMENT = """
     for sid, version in (("s1", "0.0.0"), ("s2", "0.0.0"), ("s3", "0.0.1")):
         eng.begin_run(SessionInfo(sid, ws, version))
         runs.append(eng._run.uid)
+        if sid != "s3":
+            eng.end_run("completed")
     data = ws / "data" / "a.csv"
     data.parent.mkdir()
     data.write_text("x\\n1\\n")
@@ -2588,6 +2592,33 @@ def test_a_failed_environment_capture_costs_the_run_nothing(tmp_path):
     """
     r = _run(code, tmp_path, env_extra={"WS": str(tmp_path / "ws")})
     assert (r["status"], r["env"], r["n"]) == ("completed", None, 0)
+
+
+def test_a_run_keeps_why_it_did_not_complete_and_an_open_run_has_no_end(tmp_path):
+    code = """
+        from pathlib import Path
+        from lobster.core.catalog.lamin import LaminCatalog
+        from lobster.core.catalog.port import SessionInfo
+        ws = Path(os.environ["WS"]).resolve()
+        ws.mkdir()
+        eng = LaminCatalog(ws)
+        eng.begin_run(SessionInfo("failed", ws, "0.0.0"))
+        eng.end_run("errored", reason="exit code 1")
+        eng.begin_run(SessionInfo("done", ws, "0.0.0"))
+        eng.end_run("completed")
+        eng.begin_run(SessionInfo("left", ws, "0.0.0"))
+        eng.begin_run(SessionInfo("next", ws, "0.0.0"))  # nobody ended "left"
+        rows = {r["name"]: r for r in eng.list_runs(10)}
+        emit(rows={n: [r["status"], r["end_reason"], r["finished_at"] is None]
+                   for n, r in rows.items()})
+    """
+    r = _run(code, tmp_path, env_extra={"WS": str(tmp_path / "ws")})
+    assert r["rows"] == {
+        "failed": ["errored", "exit code 1", False],
+        "done": ["completed", None, False],
+        "left": ["started", None, True],  # open: never completed by a switch
+        "next": ["started", None, True],
+    }
 
 
 REPORTS = """
