@@ -87,7 +87,10 @@ def find_project_root(start: Optional[Union[str, Path]] = None) -> Optional[Path
 def _named_workspace(folder: Path) -> Path:
     """A project folder named as the workspace means the project's own workspace."""
     nested = folder / WORKSPACE_FOLDER_NAME
-    return nested if _is_project_workspace(nested) else folder
+    try:
+        return nested if _is_project_workspace(nested) else folder
+    except OSError:  # an unreadable parent: nothing proves a project there
+        return folder
 
 
 def resolve_workspace(
