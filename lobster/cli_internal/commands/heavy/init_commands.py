@@ -1171,9 +1171,13 @@ def _uv_tool_env_handoff(
     # prompt must not leave a configured folder without one.
     if _finish_before_tool_install is not None:
         _finish_before_tool_install()
-    from lobster.core.uv_tool_env import windows_locks_running_tool
+    from lobster.core.uv_tool_env import (
+        windows_locks_running_tool,
+        write_pending_install,
+    )
 
     if windows_locks_running_tool():
+        write_pending_install(["uv", *cmd[1:]])  # the installer runs it after init
         run_tool_install(cmd, _next_chat_text())  # prints the command to run later
 
     console.print()
@@ -2344,6 +2348,9 @@ def _creates_project(func):
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        from lobster.core.uv_tool_env import clear_pending_install
+
+        clear_pending_install()  # only this run's Windows reinstall may remain
         pinned = None
         made: List[Path] = []
         if not kwargs.get("global_config"):

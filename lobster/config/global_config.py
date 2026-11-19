@@ -53,6 +53,16 @@ else:
         Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "lobster"
     )
 
+
+def pending_install_path() -> Path:
+    """Where ``lobster init`` leaves a uv tool reinstall it could not run.
+
+    Windows locks the running tool, so init prints the command and exits; the
+    Windows installer runs the command from this file after init.
+    """
+    return CONFIG_DIR / "pending_install.json"
+
+
 CONFIG_FILE_NAME = "providers.json"
 CREDENTIALS_FILE_NAME = "credentials.env"
 

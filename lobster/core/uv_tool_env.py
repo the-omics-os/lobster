@@ -5,11 +5,14 @@ contains a `uv-receipt.toml` at its prefix. This module detects that receipt
 and builds `uv tool install` commands that preserve existing --with packages.
 """
 
+import logging
 import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -207,6 +210,41 @@ def command_line(argv: list[str]) -> str:
     import shlex
 
     return _windows_join(argv) if sys.platform == "win32" else shlex.join(argv)
+
+
+def write_pending_install(argv: list[str]) -> None:
+    """Leave the printed reinstall for the Windows installer (best effort)."""
+    import json
+    import os
+    from datetime import datetime, timezone
+
+    from lobster.config.global_config import pending_install_path
+    from lobster.version import __version__
+
+    path = pending_install_path()
+    record = {
+        "version": 1,
+        "argv": argv,
+        "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "lobster": __version__,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_name(path.name + ".partial")
+        partial.write_text(json.dumps(record), encoding="utf-8")
+        os.replace(partial, path)
+    except OSError as exc:  # the printed command still works by hand
+        logger.debug(f"Could not write {path}: {exc}")
+
+
+def clear_pending_install() -> None:
+    """Remove a reinstall an earlier init left for the installer."""
+    from lobster.config.global_config import pending_install_path
+
+    try:
+        pending_install_path().unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug(f"Could not remove the pending install: {exc}")
 
 
 def windows_locks_running_tool() -> bool:
