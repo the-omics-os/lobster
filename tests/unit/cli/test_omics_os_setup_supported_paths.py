@@ -898,7 +898,7 @@ def test_access_request_says_open_this_link_when_no_browser_starts(monkeypatch):
     assert ACCESS_LINES[0] not in said and ACCESS_LINES[2] not in said
 
 
-def test_classic_wait_prompt_ends_in_a_space_and_sentences_wrap_whole_words(
+def test_classic_access_sentences_wrap_whole_words(
     monkeypatch, capsys, tmp_path, opened
 ):
     from rich.console import Console
@@ -908,8 +908,6 @@ def test_classic_wait_prompt_ends_in_a_space_and_sentences_wrap_whole_words(
         monkeypatch, capsys, ["1", "1", "2", "", "2", "sk-ant-synthetic"]
     )
 
-    [wait] = [kw for prompt, kw in asked if ACCESS_LINES[3] in prompt]
-    assert wait.get("prompt_suffix") == " "  # not Rich's ": " after the full stop
     lines = out.splitlines()
     start = next(i for i, line in enumerate(lines) if line.startswith("Your access"))
     sent = lines[start : start + 3]
@@ -917,6 +915,107 @@ def test_classic_wait_prompt_ends_in_a_space_and_sentences_wrap_whole_words(
     assert all(len(line) <= 80 for line in sent)
     assert ACCESS_SENT in " ".join(line.strip() for line in sent)
     assert ACCESS_URL in lines  # the address is never split
+
+
+class _Terminal:
+    """Scripted keyboard input that reads as a terminal."""
+
+    def __init__(self, lines):
+        self._lines = iter(lines)
+
+    def isatty(self):
+        return True
+
+    def readline(self):
+        return next(self._lines) + "\n"  # StopIteration: the script ran out
+
+
+def run_classic_for_real(monkeypatch, capsys, lines):
+    """Drive the classic wizard through Rich's real prompts; return (exit code, out)."""
+    import builtins
+    import getpass
+
+    import click
+
+    terminal = _Terminal(lines)
+    monkeypatch.setattr("sys.stdin", terminal)
+    # Rich's prompts read input(), and getpass() for a key; both from the script.
+    monkeypatch.setattr(builtins, "input", lambda *a: terminal.readline()[:-1])
+    monkeypatch.setattr(getpass, "getpass", lambda *a, **k: terminal.readline()[:-1])
+    monkeypatch.setattr(
+        init_commands,
+        "_perform_agent_selection_interactive",
+        lambda *args, **kwargs: ([], None),
+    )
+    options = init_kwargs()
+    options.update(ui_mode="classic", skip_extras=True, skip_ssl_test=True)
+    code = 0
+    try:
+        init_commands.init_impl(**options)
+    except (typer.Exit, click.exceptions.Exit) as error:
+        code = error.exit_code
+    return code, capsys.readouterr().out
+
+
+def test_classic_no_runs_through_the_real_prompts(
+    monkeypatch, capsys, tmp_path, opened
+):
+    # language, Omics-OS, No, Enter, then Claude API with its key, its profile,
+    # no NCBI key, no Omics-OS key, no catalog
+    answers = ["1", "1", "2", "", "2", "sk-ant-synthetic", "", "n", "n", "n"]
+    code, out = run_classic_for_real(monkeypatch, capsys, answers)
+
+    assert code == 0, out
+    assert "Configuration failed" not in out
+    flat = " ".join(out.split())
+    for line in ACCESS_LINES:
+        assert line in flat
+    assert ACCESS_SENT in flat
+    assert "Select your LLM provider:" in out[out.index(ACCESS_LINES[0]) :]
+    assert opened == [ACCESS_URL]
+    assert saved_provider(tmp_path) == "anthropic"
+    assert "OMICS_OS" not in (tmp_path / ".env").read_text()
+
+
+def test_classic_yes_runs_through_the_real_prompts(
+    monkeypatch, capsys, tmp_path, opened
+):
+    # language, Omics-OS, Yes, the key, no NCBI key, no catalog
+    code, out = run_classic_for_real(
+        monkeypatch, capsys, ["1", "1", "1", KEY, "n", "n"]
+    )
+
+    assert code == 0, out
+    assert "Configuration failed" not in out
+    assert "Do you have an Omics-OS account?" in out
+    assert opened == []
+    assert_cloud_config(tmp_path, KEY)
+
+
+def test_classic_prompts_pass_only_what_the_prompt_takes():
+    """A keyword the prompt does not take fails only when that prompt is reached."""
+    import ast
+
+    from rich.prompt import Confirm, Prompt
+
+    source = Path(init_commands.__file__).read_text()
+    accepted = {
+        name: set(inspect.signature(getattr(cls, "ask")).parameters)
+        for name, cls in (("Prompt", Prompt), ("Confirm", Confirm))
+    }
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "ask"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in accepted
+    ]
+    assert calls
+    for call in calls:
+        passed = {kw.arg for kw in call.keywords if kw.arg}
+        assert passed <= accepted[call.func.value.id], (call.lineno, passed)
 
 
 @pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])
