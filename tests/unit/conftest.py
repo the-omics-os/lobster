@@ -24,11 +24,15 @@ def restore_model_pricing():
     left there, they change the table for every later test in the worker.
     """
     settings = sys.modules.get("lobster.config.settings")
-    if settings is None:
-        yield
-        return
-    table = settings.MODEL_PRICING
-    saved = dict(table)
+    saved = dict(settings.MODEL_PRICING) if settings else None
     yield
+    settings = sys.modules.get("lobster.config.settings")
+    if settings is None:
+        return
+    if saved is None:  # first imported by this test: rebuild the static table
+        from lobster.config.providers.registry import ProviderRegistry
+
+        saved = ProviderRegistry.get_all_models_with_pricing()
+    table = settings.MODEL_PRICING
     table.clear()
     table.update(saved)
