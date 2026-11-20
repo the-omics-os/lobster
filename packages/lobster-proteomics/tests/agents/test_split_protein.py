@@ -64,6 +64,71 @@ def test_a_split_protein_is_kept_flagged_and_left_out_of_the_correction(method):
     assert stats["n_significant_proteins"] == stats_without["n_significant_proteins"]
 
 
+def _reply(tmp_path, adata, method):
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.store_modality("prot", adata)
+    return factory_tools(de_analysis_expert, DE, dm)[
+        "find_differential_proteins"
+    ].invoke(
+        {
+            "modality_name": "prot",
+            "group_column": "group",
+            "platform_type": "mass_spec",
+            "method": method,
+        }
+    )
+
+
+def _few(adata):
+    """8 proteins: too few for limma_like to borrow variance (it needs 10)."""
+    return adata[:, 42:].copy()
+
+
+def test_limma_like_without_a_prior_flags_a_split_protein_and_drops_a_flat_one():
+    adata = _few(_proteins(split=True))
+    adata.X[:, -2] = 3.0  # P48: one value in every sample
+
+    results, _, stats = _run(adata, "limma_like")
+
+    assert np.isnan(results["P49"]["p_value"])
+    assert results["P49"]["zero_within_group_variance"] is True
+    assert np.isnan(results["P48"]["p_value"])
+    assert np.isnan(results["P48"]["statistic"])  # 0 / 0
+    assert results["P48"]["zero_within_group_variance"] is False
+    assert stats["n_zero_within_group_variance"] == 1
+    assert stats["n_tests_without_pvalue"] == 1
+
+
+def test_limma_like_with_a_prior_gives_a_split_protein_its_p_value():
+    results, _, stats = _run(_proteins(split=True), "limma_like")
+
+    assert np.isfinite(results["P49"]["p_value"])
+    assert results["P49"]["zero_within_group_variance"] is False
+    assert stats["n_zero_within_group_variance"] == 0
+
+
+@pytest.mark.parametrize(
+    "method, adata, test",
+    [
+        ("welch_t_test", _proteins(split=True), "Welch t-test"),
+        ("limma_like", _few(_proteins(split=True)), "limma-like test"),
+    ],
+    ids=["welch", "limma_without_prior"],
+)
+def test_the_reply_names_the_test_that_ran(tmp_path, method, adata, test):
+    reply = _reply(tmp_path, adata, method)
+
+    line = (
+        "- Of the proteins tested, 1 has the same value in every sample of each "
+        f"group (different between the groups): the {test} gives it no p-value"
+    )
+    assert line in reply, reply
+    if method == "limma_like":
+        assert line + " (fewer than 10 proteins: no variance to borrow)\n" in reply
+    else:
+        assert line + "; check it with limma_like" in reply
+
+
 def test_mann_whitney_gives_a_split_protein_its_p_value():
     with_split, _, stats = _run(_proteins(split=True), "mann_whitney")
 
@@ -101,7 +166,8 @@ def test_the_reply_names_a_split_protein(tmp_path, split):
     line = (
         "- Of the proteins tested, 1 has the same value in every sample of each "
         "group (different between the groups): the t-test gives it no p-value; "
-        "check it with limma_like or Mann-Whitney\n"
+        "check it with limma_like, which borrows variance from the other proteins "
+        "(it needs at least 10 proteins)\n"
     )
     assert (line in reply) is split, reply
     assert ("the same value in every sample of each group" in reply) is split
@@ -143,5 +209,6 @@ def test_the_reply_counts_two_split_proteins(tmp_path):
     assert (
         "- Of the proteins tested, 2 have the same value in every sample of each "
         "group (different between the groups): the t-test gives them no p-value; "
-        "check them with limma_like or Mann-Whitney\n" in reply
+        "check them with limma_like, which borrows variance from the other "
+        "proteins (it needs at least 10 proteins)\n" in reply
     ), reply
