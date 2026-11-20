@@ -281,9 +281,10 @@ def _helper_calls(path):
     return calls, direct
 
 
-@pytest.mark.parametrize("entry_name", sorted(DEFAULT_ON))
-def test_default_on_source_name_equals_entry_point_name(entry_name):
-    """The switch keys on AGENT_CONFIG.name; for a default-ON agent it must not drift."""
+@pytest.mark.parametrize("entry_name", sorted(EXPECTED_AGENTS))
+def test_source_name_equals_entry_point_name(entry_name):
+    """Discovery overwrites AGENT_CONFIG.name with the entry point name, but not
+    handoff_tool_name or the code-tool switch key, so the source name must not drift."""
     assert _source_agent_config_name(entry_name) == entry_name
 
 
@@ -426,22 +427,5 @@ def test_structural_switch_uses_the_entry_name_after_discovery(
     _, tools = _build(structural.value, tmp_path)
     assert _code_tools(tools) == []  # default stays off
     monkeypatch.setenv("LOBSTER_CODE_TOOL_PROTEIN_STRUCTURE_VISUALIZATION_EXPERT", "1")
-    _, tools = _build(structural.value, tmp_path)
-    assert len(_code_tools(tools)) == 1
-
-
-def test_structural_direct_call_before_discovery_uses_the_source_name(
-    structural, tmp_path, monkeypatch
-):
-    """Known quirk (default OFF either way): the source name differs from the entry name."""
-    source_name = _source_agent_config_name(STRUCTURAL)
-    assert source_name == "protein_structure_visualization_expert_agent"
-    monkeypatch.setattr(structural.config, "name", source_name)
-    monkeypatch.setenv("LOBSTER_CODE_TOOL_PROTEIN_STRUCTURE_VISUALIZATION_EXPERT", "1")
-    _, tools = _build(structural.value, tmp_path)
-    assert _code_tools(tools) == []
-    monkeypatch.setenv(
-        "LOBSTER_CODE_TOOL_PROTEIN_STRUCTURE_VISUALIZATION_EXPERT_AGENT", "1"
-    )
     _, tools = _build(structural.value, tmp_path)
     assert len(_code_tools(tools)) == 1
