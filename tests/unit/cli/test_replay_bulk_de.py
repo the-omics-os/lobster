@@ -221,3 +221,61 @@ def test_a_snapshot_a_later_session_updated_never_replays_to_match(
     out = json.loads(result.stdout)
     assert out["verdict"] in ("REFUSED", "NOT_COMPARED"), out
     assert result.exit_code != 0, out
+
+
+def _rank_fixture(pseudobulk):
+    """Bulk counts; marked pseudobulk, the first 30 genes are off in treat so that
+    the marker-style filters (still on for pseudobulk) keep them."""
+    adata = _bulk()
+    if pseudobulk:
+        adata.X[6:, :30] = 0
+        adata.layers["counts"] = adata.X.copy()
+        adata.uns["is_pseudobulk"] = True
+    return adata
+
+
+def _verify(notebook, source, workspace):
+    result = runner.invoke(
+        app,
+        ["--verify", str(notebook), "--input", str(source),
+         "-w", str(workspace), "--json"],
+    )  # fmt: skip
+    return result, json.loads(result.stdout)
+
+
+@needs_kernel
+@pytest.mark.parametrize("pseudobulk", [False, True], ids=["bulk", "pseudobulk"])
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+def test_a_rank_or_t_test_notebook_replays_to_match(
+    tmp_path, monkeypatch, method, pseudobulk
+):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "bulk.h5ad"
+    _rank_fixture(pseudobulk).write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("bulk", str(source), adapter="transcriptomics_bulk")
+    reply = _run_de(dm, "run_differential_expression", method)
+    assert "Complete" in reply, reply
+    notebook = dm.export_notebook("de", "bulk DE", filter_strategy="successful")
+    result, out = _verify(notebook, source, dm.workspace_path)
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert out["verdict"] == "MATCH", out
+    assert not any("has no hash" in note for note in out["notes"]), out["notes"]
+
+    # the comparison sees the results: a nudged p-value is a MISMATCH
+    probe = json.loads(notebook.read_text())
+    for cell in probe["cells"]:
+        source_text = "".join(cell["source"])
+        if "de_current_results_key" in source_text and cell["cell_type"] == "code":
+            cell["source"] = source_text + (
+                "\npadj = adata.uns[adata.uns['de_current_results_key']]['padj']"
+                "\ngene = next(iter(padj))"
+                "\npadj[gene] = padj[gene] + 1e-12\n"
+            )
+            break
+    else:
+        raise AssertionError("no DE cell sets de_current_results_key")
+    probed = notebook.with_name("probe.ipynb")
+    probed.write_text(json.dumps(probe))
+    result, out = _verify(probed, source, dm.workspace_path)
+    assert result.exit_code == 1 and out["verdict"] == "MISMATCH", out
