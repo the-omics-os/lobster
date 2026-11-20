@@ -751,3 +751,17 @@ def test_two_workspaces_broken_the_same_way_are_each_told(
         code_tool_enabled("supervisor", default=True, workspace_path=ws)
 
     assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
+
+
+def test_a_file_fixed_then_broken_the_same_way_is_told_again(
+    tmp_path, warnings_seen, told
+):
+    # a long chat: the user fixes the file, then breaks it again identically
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    broken, fixed = "[agent_settings.supervisor\n", "[agent_settings.supervisor]\n"
+    for body in (broken, fixed, broken):
+        (ws / "config.toml").write_text(body)
+        code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
