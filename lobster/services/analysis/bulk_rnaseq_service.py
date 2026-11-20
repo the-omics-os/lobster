@@ -545,13 +545,23 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # A gene whose fold change is not a number, or with no p-value (a
             # t-test gives none for a gene with the same value in every sample),
-            # is not reported; the second are counted apart.
+            # is not reported; the second are counted apart. A t-test gene with
+            # no variance within either group is reported, flagged, without one.
+            flagged = results_df.get(
+                "zero_within_group_variance", pd.Series(False, index=results_df.index)
+            )
             n_genes_without_pvalue = int(
                 (
-                    results_df["pvalue"].isna() & results_df["log2FoldChange"].notna()
+                    results_df["pvalue"].isna()
+                    & results_df["log2FoldChange"].notna()
+                    & ~flagged
                 ).sum()
             )
-            results_df = results_df.dropna()
+            n_zero_within_group_variance = int(flagged.sum())
+            complete = results_df.drop(columns=["pvalue", "padj"]).notna().all(axis=1)
+            results_df = results_df[
+                results_df.notna().all(axis=1) | (flagged & complete)
+            ]
 
             # Add results to AnnData
             adata_de.uns[f"de_results_{group1}_vs_{group2}"] = results_df.to_dict()
@@ -662,6 +672,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_samples_group2": group2_data.n_obs,
                 "n_genes_tested": len(results_df),
                 "n_genes_without_pvalue": n_genes_without_pvalue,
+                "n_zero_within_group_variance": n_zero_within_group_variance,
                 "n_significant_genes": len(significant_genes),
                 "n_upregulated": len(upregulated),
                 "n_downregulated": len(downregulated),
@@ -1043,6 +1054,17 @@ Next suggested step: Import quantification data with tximport for differential e
         p_values = np.array(p_values)
         t_stats = np.array(t_stats)
 
+        # A gene with the same value within each group and a different value
+        # between them has no variance to test against: t is inf and p is 0.
+        # It gets no p-value, so it stays out of the correction, and is flagged.
+        no_variance = (
+            (min(group1_expr.shape[0], group2_expr.shape[0]) > 1)
+            & (np.ptp(group1_expr, axis=0) == 0)
+            & (np.ptp(group2_expr, axis=0) == 0)
+            & (group1_mean != group2_mean)
+        )
+        p_values[no_variance] = np.nan
+
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)
 
@@ -1054,6 +1076,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 "stat": t_stats,
                 "pvalue": p_values,
                 "padj": p_adjusted,
+                "zero_within_group_variance": no_variance,
             },
             index=gene_names,
         )

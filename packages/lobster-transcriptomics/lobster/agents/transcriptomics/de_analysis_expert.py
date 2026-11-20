@@ -223,6 +223,22 @@ def _genes_tested_text(adata, de_stats) -> str:
     return f"{text} ({', '.join(untested)})" if untested else text
 
 
+def _no_variance_text(de_stats) -> str:
+    """A line naming the t-test genes with the same value within each group and a
+    different one between them (they have no p-value), or "" when there is none."""
+    n = de_stats.get("n_zero_within_group_variance", 0)
+    if not n:
+        return ""
+    if n == 1:
+        genes, have, them = "1 gene", "has", "it"
+    else:
+        genes, have, them = f"{n:,} genes", "have", "them"
+    return (
+        f"\n- {genes} {have} the same value within each group: the t-test gives "
+        f"{them} no usable p-value; check {them} with DESeq2 on counts."
+    )
+
+
 def _plain(value: Any) -> Any:
     """Convert numpy scalars/containers into plain Python for IR literals."""
     if isinstance(value, dict):
@@ -1702,7 +1718,7 @@ def de_analysis_expert(
 - Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)
 - Method: {de_stats["method"]}
 - Genes tested: {_genes_tested_text(adata, de_stats)}
-- Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}
+- Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}{_no_variance_text(de_stats)}
 
 **Differential Expression Summary:**
 - Upregulated in {group2}: {de_stats["n_upregulated"]} genes
