@@ -26,6 +26,7 @@ from exactly ``<workspace_path>/config.toml``, so other settings in that file ne
 change it. ``none`` is not a hard stop: a per-agent ``1`` still turns the tool on.
 """
 
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -40,7 +41,8 @@ GLOBAL_MODES = ("default", "all", "none")
 SUPERVISOR_CODE_TOOL_DEFAULT = True
 
 # file -> (what it held, the warnings given for that): every graph build asks for
-# every agent, so each warning is given once. A file that changes is told again.
+# every agent, so each warning is given once. A file that changes, or goes, is told
+# again. Only a file that was warned about is kept, by a digest of its bytes.
 _told: dict = {}
 
 
@@ -95,20 +97,25 @@ def _workspace_layer(agent_name: str, workspace_path: Any) -> Optional[bool]:
         raw = path.read_bytes()
         data = tomllib.loads(raw.decode("utf-8-sig"))
     except FileNotFoundError:
+        _told.pop(str(path), None)
         return None
     except (OSError, ValueError) as error:
         _tell_once(
-            _told_for(path, str(error)),
+            path,
+            str(error),
             h(
                 "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
             ).format(file=path, error=error),
         )
         return False
-    said = _told_for(path, raw)
+    held = hashlib.blake2b(raw, digest_size=16).digest()
+    if _told.get(str(path), (held,))[0] != held:  # fixed or changed since told
+        del _told[str(path)]
     all_settings = data.get("agent_settings")
     if all_settings is not None and not isinstance(all_settings, dict):
         _tell_once(
-            said,
+            path,
+            held,
             h(
                 "{file}: agent_settings must be a table (found {kind}); the code tool is off for every agent until it is fixed."
             ).format(file=path, kind=type(all_settings).__name__),
@@ -121,7 +128,8 @@ def _workspace_layer(agent_name: str, workspace_path: Any) -> Optional[bool]:
         return None
     if not isinstance(settings, dict):
         _tell_once(
-            said,
+            path,
+            held,
             _not_a_bool(path, f"agent_settings.{agent_name}", settings, agent_name),
         )
         return False
@@ -129,25 +137,21 @@ def _workspace_layer(agent_name: str, workspace_path: Any) -> Optional[bool]:
     if value is None or isinstance(value, bool):
         return value
     _tell_once(
-        said,
+        path,
+        held,
         _not_a_bool(path, f"agent_settings.{agent_name}.code_tool", value, agent_name),
     )
     return False
 
 
-def _told_for(path: Path, held: Any) -> set:
-    """The warnings already given for ``path`` while it holds ``held``."""
-    before, said = _told.get(str(path), (None, set()))
+def _tell_once(path: Path, held: Any, message: str) -> None:
+    """Warn unless ``message`` was given while ``path`` held ``held``."""
+    before, said = _told.get(str(path), (held, set()))
     if before != held:
         said = set()
-        _told[str(path)] = (held, said)
-    return said
-
-
-def _tell_once(said: set, message: str) -> None:
     if message not in said:
-        said.add(message)
         logger.warning(message)
+    _told[str(path)] = (held, said | {message})
 
 
 def _not_a_bool(path: Path, key: str, value: Any, agent_name: str) -> str:

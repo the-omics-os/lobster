@@ -882,3 +882,19 @@ def test_a_told_file_is_remembered_by_a_digest_not_its_bytes(tmp_path, told):
 
     ((held, _said),) = switch._told.values()
     assert held != (ws / "config.toml").read_bytes() and len(held) == 16
+
+
+def test_a_file_broken_back_to_an_earlier_way_is_told_again(
+    tmp_path, warnings_seen, told
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for body in (
+        b"[agent_settings.supervisor\n",
+        b"\xff\xfe\x00",
+        b"[agent_settings.supervisor\n",
+    ):
+        (ws / "config.toml").write_bytes(body)
+        code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert len([w for w in warnings_seen if "code tool is off" in w]) == 3
