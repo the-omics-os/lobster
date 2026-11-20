@@ -633,6 +633,9 @@ def test_windows_init_leaves_the_reinstall_for_the_installer(
     from datetime import datetime, timedelta, timezone
 
     monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: True)
+    # On Windows uv is a full path, often with a space; the installer wants "uv".
+    spaced = r"C:\Users\First Last\.local\bin\uv.exe"
+    monkeypatch.setattr(uv_tool_env.shutil, "which", lambda _name: spaced)
     if ui_mode is None:
         assert _init().exit_code == 0
     else:
@@ -647,6 +650,7 @@ def test_windows_init_leaves_the_reinstall_for_the_installer(
     now = datetime.now(timezone.utc)
     assert now - timedelta(minutes=1) < created <= now
     assert "lobster-transcriptomics>=1.3.0" in pending["argv"]
+    assert pending["argv"][0] == "uv"
     assert _installer_accepts(pending["argv"]), pending["argv"]
 
 
