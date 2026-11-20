@@ -801,3 +801,26 @@ def test_another_agents_bad_value_leaves_this_agent_alone(tmp_path):
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
     assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is True
     assert code_tool_enabled("data_expert_agent", default=True, workspace_path=ws)
+
+
+# agent_settings that is not a table holds no agent's off-switch that can be
+# trusted: the tool is off for every agent, and one warning names the file.
+
+
+@pytest.mark.parametrize(
+    "line, kind", [("5", "int"), ('"off"', "str"), ("[1]", "list")]
+)
+def test_agent_settings_that_is_not_a_table_turns_the_tool_off_for_every_agent(
+    tmp_path, warnings_seen, told, line, kind
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text(f"agent_settings = {line}\n")
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
+    said = [w for w in warnings_seen if "agent_settings" in w]
+    assert len(said) == 1, warnings_seen
+    assert str(ws / "config.toml") in said[0] and f"(found {kind})" in said[0]
+    assert "every agent" in said[0]
