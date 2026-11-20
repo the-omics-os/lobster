@@ -1532,11 +1532,14 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Initialize DESeq2 dataset
             logger.info("Initializing DESeq2 dataset...")
+            # quiet: pyDESeq2 prints results tables to stdout, which
+            # `lobster query --json` keeps for its JSON document
             dds = DeseqDataSet(
                 counts=count_matrix_int,
                 metadata=aligned_metadata,
                 design=formula,
                 inference=inference,
+                quiet=True,
             )
 
             # Fit dispersion and log fold changes
@@ -1545,7 +1548,9 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Perform statistical testing
             logger.info(f"Running statistical tests for contrast: {contrast}")
-            ds = DeseqStats(dds, contrast=contrast, alpha=alpha, inference=inference)
+            ds = DeseqStats(
+                dds, contrast=contrast, alpha=alpha, inference=inference, quiet=True
+            )
             ds.summary()
 
             # Optional LFC shrinkage for better estimates
