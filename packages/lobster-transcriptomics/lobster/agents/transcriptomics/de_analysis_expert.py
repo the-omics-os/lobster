@@ -1496,35 +1496,17 @@ def de_analysis_expert(
             if group2 not in available_groups:
                 return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
 
-            # Validate the replicates of the groups fitted: deseq2 fits every
-            # group of the column (design ~groupby), the others only the two
+            # Validate the replicates of the two groups compared: deseq2 also
+            # fits the others (design ~groupby), but a short level there is
+            # fitted on its own and leaves the contrast unchanged
             compared = adata.obs[groupby].isin([group1, group2])
             replicate_validation = _validate_replicate_counts(
-                adata.obs if method == "deseq2" else adata.obs[compared],
-                groupby,
-                min_replicates=min_replicates,
+                adata.obs[compared], groupby, min_replicates=min_replicates
             )
 
             if not replicate_validation["valid"]:
                 error_msg = "; ".join(replicate_validation["errors"])
-                response = f"**Insufficient replicates**: {error_msg}\n\nMinimum {min_replicates} replicates per group required for stable variance estimation."
-                short = [
-                    f"'{group}'"
-                    for group, n in replicate_validation["group_counts"].items()
-                    # only deseq2 checked groups beyond the two compared
-                    if n < min_replicates and group not in (group1, group2)
-                ]
-                if short:
-                    its = "it is" if len(short) == 1 else "they are"
-                    them = "it" if len(short) == 1 else "them"
-                    count = "counts" if len(short) == 1 else "count"
-                    response += (
-                        f" deseq2 fits every group of '{groupby}' (design "
-                        f"~{groupby}), so {', '.join(short)} {count} although "
-                        f"{its} not compared; remove {them} first, or use "
-                        "wilcoxon or t_test."
-                    )
-                return response
+                return f"**Insufficient replicates**: {error_msg}\n\nMinimum {min_replicates} replicates per group required for stable variance estimation."
 
             # Get group counts for response
             group1_count = (adata.obs[groupby] == group1).sum()
