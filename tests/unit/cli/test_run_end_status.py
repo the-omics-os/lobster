@@ -814,6 +814,38 @@ def test_a_ctrl_c_registers_the_early_end(monkeypatch, exit_hooks):
     assert len(exit_hooks) == 1
 
 
+def test_a_ctrl_c_at_a_prompt_registers_the_early_end(monkeypatch, exit_hooks):
+    from click.exceptions import Abort
+
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    with pytest.raises(Abort):
+        with factory.recorded_run_status(_client("s")):
+            raise Abort
+    assert len(exit_hooks) == 1
+
+
+@pytest.mark.parametrize("code, registered", [(130, 1), (143, 1), (1, 0), (0, 0)])
+def test_an_exit_code_of_an_abort_registers_the_early_end(
+    monkeypatch, exit_hooks, code, registered
+):
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    with pytest.raises(typer.Exit):
+        with factory.recorded_run_status(_client("s")):
+            raise typer.Exit(code)
+    assert len(exit_hooks) == registered
+
+
+def test_an_exit_already_begun_registers_nothing_and_raises_nothing(monkeypatch):
+    def too_late(fn):
+        raise RuntimeError("can't register atexit after shutdown")
+
+    monkeypatch.setattr(threading, "_register_atexit", too_late)
+    monkeypatch.setattr(factory, "_ending_early", False, raising=False)
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    factory.end_run_when_exit_begins()
+    assert factory._ending_early is False
+
+
 def test_a_sigterm_registers_the_early_end(monkeypatch, exit_hooks, exit_later):
     monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
     with pytest.raises(SystemExit):
@@ -873,7 +905,10 @@ CTRL_C_CHILD = textwrap.dedent("""
             Catalog.ended += 1
             print("RUN", self.status, self.reason, flush=True)
     catalog = Catalog()
-    atexit.register(lambda: print("EXIT HOOKS RAN; ended", Catalog.ended, flush=True))
+    # a stdout no logging handler holds, not flushed: an exit that skips the flush
+    # loses the line
+    sys.stdout = open(sys.stdout.fileno(), "w", closefd=False)
+    atexit.register(lambda: print("EXIT HOOKS RAN; ended", Catalog.ended))
     pool = ThreadPoolExecutor(1)
     def tool(seconds):
         time.sleep(seconds)  # a call that answers late

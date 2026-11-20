@@ -289,6 +289,7 @@ class ThreadedCatalog:
         # used on the worker only.
         self._hold_handle: Any = None
         self._hold_count = 0
+        self._exit_lock = threading.Lock()
         self._worker = _Worker(name="lobster-catalog", on_exit=self._drop_hold)
         self._worker.submit(lambda: self._build(engine_factory))
         self._watchdog = threading.Timer(build_timeout, self._check_started)
@@ -653,14 +654,22 @@ class ThreadedCatalog:
         self._finish(status, timeout=self._timeout)
 
     def _at_exit(self) -> None:
+        self.end_at_exit()
+
+    def end_at_exit(self) -> None:
+        """End the run as the process exits: as the exit begins (a Ctrl-C or SIGTERM,
+        before the exit waits for a running tool), from the hard exit's timer, or from
+        atexit. A later call waits until the first has written the end; then the run
+        is closed and it ends nothing."""
         if self._forked:
             return
-        self._finish(
-            self._end_status,
-            reason=self._end_reason,
-            timeout=min(self._timeout, AT_EXIT_TIMEOUT_S),
-            wait_for_build=True,
-        )
+        with self._exit_lock:
+            self._finish(
+                self._end_status,
+                reason=self._end_reason,
+                timeout=min(self._timeout, AT_EXIT_TIMEOUT_S),
+                wait_for_build=True,
+            )
 
     def _forked_in_child(self) -> None:
         # Locks may have been held by threads that do not exist in the child.

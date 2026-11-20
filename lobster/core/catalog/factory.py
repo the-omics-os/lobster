@@ -397,9 +397,72 @@ def _exit_later(code: int) -> None:
     """
     from lobster.core.catalog import thread as catalog_thread
 
-    timer = threading.Timer(catalog_thread.AT_EXIT_TIMEOUT_S + 1, os._exit, (code,))
+    timer = threading.Timer(
+        catalog_thread.AT_EXIT_TIMEOUT_S + 1, _end_then_exit, (code,)
+    )
     timer.daemon = True
     timer.start()
+
+
+def _end_then_exit(code: int) -> None:
+    _end_run_now()  # the exit may not have begun: a thread still holds it
+    os._exit(code)
+
+
+_ending_early = False  # registered at most once per process
+
+
+def end_run_when_exit_begins() -> None:
+    """End the bound run as the exit begins, before Python waits for the threads
+    still running: a tool stuck in a call would keep the run open for its whole
+    length. The tool is not cut; the process still waits for it."""
+    global _ending_early
+    if _ending_early or _process_catalog is None:
+        return
+    try:
+        threading._register_atexit(_exit_begins)
+    except (AttributeError, RuntimeError):  # no such hook, or the exit already began
+        logger.debug("Catalog: run not ended early", exc_info=True)
+        return
+    _ending_early = True
+
+
+def _end_run_now() -> None:
+    bound = _process_catalog
+    end = getattr(None if bound is None else bound[1], "end_at_exit", None)
+    if callable(end):
+        end()
+
+
+def _exit_begins() -> None:
+    import signal
+
+    from lobster.i18n import h
+
+    _end_run_now()
+    text = h(
+        "Stopping without waiting for the running tool; a file it was writing may be incomplete."
+    )
+    try:
+        signal.signal(signal.SIGINT, lambda signum, frame: _stop_waiting(text))
+    except (ValueError, OSError):
+        logger.debug("Catalog: Ctrl-C at exit not handled", exc_info=True)
+
+
+def _stop_waiting(text: str) -> None:
+    """A Ctrl-C while the exit waits for a running tool: stop waiting, as Python's
+    own second Ctrl-C does, without its traceback."""
+    import atexit
+    import sys
+
+    print(text, file=sys.stderr, flush=True)
+    atexit._run_exitfuncs()
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+    os._exit(130)
 
 
 def _on_sigterm(signum: int, frame: Any) -> None:
@@ -416,6 +479,7 @@ def _on_sigterm(signum: int, frame: Any) -> None:
         return
     # A running turn is aborted; between a session's turns the last one stands.
     setter("aborted", None, "SIGTERM", if_unfinished=True)
+    end_run_when_exit_begins()
     _exit_later(143)
     # Exiting (unlike dying of the signal) lets the exit hook end the run.
     raise SystemExit(143)
@@ -451,10 +515,12 @@ def recorded_run_status(holder: Any, *, session: bool = False) -> Iterator[None]
         yield
     except KeyboardInterrupt:
         note_run_status(holder, "aborted", reason="Ctrl-C")
+        end_run_when_exit_begins()
         raise
     except BaseException as exc:
         if _is_click_abort(exc):  # Ctrl-C at a click prompt
             note_run_status(holder, "aborted", reason="Ctrl-C")
+            end_run_when_exit_begins()
             raise
         # typer.Exit carries exit_code, sys.exit code; any other error is its class.
         if isinstance(exc, SystemExit) or hasattr(exc, "exit_code"):
@@ -464,6 +530,7 @@ def recorded_run_status(holder: Any, *, session: bool = False) -> Iterator[None]
             elif code in _ABORT_EXIT_CODES:
                 reason = _ABORT_EXIT_CODES[code]
                 note_run_status(holder, "aborted", reason=reason, if_unset=True)
+                end_run_when_exit_begins()
             else:
                 reason = f"exit code {code}"
                 note_run_status(holder, "errored", reason=reason, if_unset=True)

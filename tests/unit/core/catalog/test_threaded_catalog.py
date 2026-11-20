@@ -754,3 +754,37 @@ def test_ending_at_exit_early_and_again_ends_the_run_once(
     assert [c for c in engine.calls if c[0] == "end_run"] == [
         ("end_run", ("aborted", None))
     ]
+
+
+def test_a_second_end_at_exit_waits_until_the_first_is_written(
+    make_catalog, engine, tmp_path
+):
+    # the hard exit's timer must not exit while the exit's own end is being written
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("aborted", reason="SIGTERM")
+    written = threading.Event()
+    engine.block["end_run"] = written
+    first = threading.Thread(target=catalog.end_at_exit)
+    first.start()
+    deadline = time.monotonic() + 5
+    while "end_run" not in engine.ops() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    second = threading.Thread(target=catalog.end_at_exit)
+    second.start()
+    second.join(0.5)
+    waited = second.is_alive()
+    written.set()
+    first.join(5)
+    second.join(5)
+    assert waited
+    assert engine.ops().count("end_run") == 1
+
+
+def test_a_forked_child_ends_no_run_at_exit(make_catalog, engine, tmp_path):
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("completed")
+    catalog._forked = True  # as after os.fork: the parent ends the run
+    catalog.end_at_exit()
+    assert "end_run" not in engine.ops()

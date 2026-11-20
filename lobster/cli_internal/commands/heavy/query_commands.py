@@ -404,7 +404,11 @@ def query_impl(
             interactive=False,
         )
 
-    from lobster.core.catalog.factory import note_run_status, recorded_run_status
+    from lobster.core.catalog.factory import (
+        end_run_when_exit_begins,
+        note_run_status,
+        recorded_run_status,
+    )
 
     with recorded_run_status(client):
         # Load session if found
@@ -547,6 +551,7 @@ def query_impl(
         if not result["success"]:
             if result.get("interrupted"):  # Ctrl-C while streaming
                 note_run_status(client, "aborted", reason="Ctrl-C")
+                end_run_when_exit_begins()
             raise typer.Exit(1)
 
 
