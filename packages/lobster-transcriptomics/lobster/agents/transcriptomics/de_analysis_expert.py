@@ -168,6 +168,7 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     passed = de_stats.get("pre_filter_gene_count") or 0
     without = de_stats.get("n_genes_without_pvalue", 0)
     no_pvalue = "a t-test gives none for a gene with the same value in every sample"
+    have = "has" if without == 1 else "have"
     if passed and without == passed:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a "
@@ -176,7 +177,7 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     elif without:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none can be "
-            f"reported: {without:,} have no p-value ({no_pvalue}) and the fold "
+            f"reported: {without:,} {have} no p-value ({no_pvalue}) and the fold "
             f"change of the other {passed - without:,} is not a number (one "
             "group's mean is below -1, as with centred or signed values)"
         )
@@ -192,9 +193,10 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
             f"no gene has a value above {floor} in at least 2 samples, so the "
             "expression pre-filter kept none"
         )
+    genes = "gene" if adata.n_vars == 1 else "genes"
     return (
         "**DE refused: no gene was tested.**\n\n"
-        f"Of {adata.n_vars:,} genes, {cause}. Wilcoxon and t-test expect counts "
+        f"Of {adata.n_vars:,} {genes}, {cause}. Wilcoxon and t-test expect counts "
         "or log-scale values. Use deseq2 on raw counts, or run on unscaled "
         "values. No result modality was stored."
     )
