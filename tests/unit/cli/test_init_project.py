@@ -235,7 +235,7 @@ def _wizard(monkeypatch, result):
     )
 
 
-def _init_impl(folder):
+def _init_impl(folder, **overrides):
     import typer
 
     from lobster.cli_internal.commands.heavy import init_commands
@@ -269,6 +269,7 @@ def _init_impl(folder):
         ui_mode="go",
         folder=folder,
     )
+    kwargs.update(overrides)
     with pytest.raises(typer.Exit) as exc:
         init_commands.init_impl(**kwargs)
     return exc.value.exit_code
