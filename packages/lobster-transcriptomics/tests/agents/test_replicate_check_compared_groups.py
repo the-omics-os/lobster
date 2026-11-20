@@ -2,8 +2,9 @@
 
 Wilcoxon and the t-test compare two groups only, so a third group with one
 sample refused a ctrl vs treat comparison. deseq2 fits every group of the
-column (design ~condition), so there a short third group still counts, and the
-refusal says why. One replicate reads "1 replicate", not "1 replicates".
+column (design ~condition), but a level it does not compare is fitted on its
+own and leaves the contrast unchanged, so it is not checked either. One
+replicate reads "1 replicate", not "1 replicates".
 """
 
 import pandas as pd
@@ -41,17 +42,13 @@ def test_a_short_compared_group_refuses_naming_only_it(tmp_path, monkeypatch, me
     assert "'other'" not in reply
 
 
-def test_deseq2_counts_a_short_group_it_fits(tmp_path, monkeypatch):
+def test_deseq2_does_not_count_a_short_group_it_does_not_compare(tmp_path, monkeypatch):
+    """deseq2 fits a 1-sample level exactly and the contrast is unchanged; the
+    minimum of 3 is for the groups compared."""
     _, reply = _run(tmp_path, monkeypatch, _groups(5, 1, 6), "deseq2", pseudobulk=True)
 
-    assert reply.startswith(
-        "**Insufficient replicates**: Group 'other' has only 1 replicate (minimum 3"
-    ), reply
-    assert (
-        "deseq2 fits every group of 'condition' (design ~condition), so 'other' "
-        "counts although it is not compared; remove it first, or use wilcoxon or "
-        "t_test." in reply
-    ), reply
+    assert "Insufficient replicates" not in reply, reply
+    assert "Genes tested" in reply or "Complete" in reply, reply
 
 
 def _rows(a, b):
