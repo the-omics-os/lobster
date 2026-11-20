@@ -202,3 +202,27 @@ def test_the_exported_code_runs_when_no_gene_has_a_p_value(
 
     assert out.n_vars == 0
     assert exported["padj"].isna().all()
+
+
+def test_a_count_of_one_reads_in_the_singular(tmp_path, monkeypatch):
+    adata = counts("survivor")
+    adata.X[:, 0] = 5  # the same value everywhere: no p-value
+    adata.X[:3, 1] = -5  # a fold change that is not a number
+    adata.X[3:, 1] = 10
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert (
+        "Of 2 genes, 2 passed the expression pre-filter, but none can be "
+        "reported: 1 has no p-value (a t-test gives none for a gene with the same "
+        "value in every sample) and the fold change of the other 1 is not a "
+        "number" in reply
+    ), reply
+
+
+def test_one_gene_reads_in_the_singular(tmp_path, monkeypatch):
+    adata = counts("all_zero")[:, :1].copy()
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert "Of 1 gene, no gene has a value above" in reply, reply
