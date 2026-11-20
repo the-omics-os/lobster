@@ -200,6 +200,24 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     )
 
 
+def _genes_tested_text(adata, de_stats) -> str:
+    """ "N of M (K below the expression threshold, J without a finite fold
+    change)": what a wilcoxon / t-test tested of the input's genes, and why the
+    others were not (the parts that are zero left out)."""
+    tested = de_stats["n_genes_tested"]
+    passed = de_stats.get("pre_filter_gene_count", tested)
+    untested = [
+        f"{count:,} {why}"
+        for count, why in (
+            (adata.n_vars - passed, "below the expression threshold"),
+            (passed - tested, "without a finite fold change"),
+        )
+        if count
+    ]
+    text = f"{tested:,} of {adata.n_vars:,}"
+    return f"{text} ({', '.join(untested)})" if untested else text
+
+
 def _plain(value: Any) -> Any:
     """Convert numpy scalars/containers into plain Python for IR literals."""
     if isinstance(value, dict):
@@ -1609,7 +1627,7 @@ def de_analysis_expert(
 **Analysis Results:**
 - Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)
 - Method: {de_stats["method"]}
-- Genes tested: {de_stats["n_genes_tested"]:,}
+- Genes tested: {_genes_tested_text(adata, de_stats)}
 - Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}
 
 **Differential Expression Summary:**
