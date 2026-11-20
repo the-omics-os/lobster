@@ -478,7 +478,7 @@ def _resolve_worker_agents(
     """Resolve which agents to include in the graph.
 
     Applies three filters in order:
-    1. enabled_agents param > config.enabled_agents > all discovered agents
+    1. enabled_agents param > config's list or preset > all discovered agents
     2. Auto-include child agents for enabled parents
     3. Tier-based agent_filter
 
@@ -500,13 +500,13 @@ def _resolve_worker_agents(
 
     # Resolve enabled agents: param > config > all
     # `is not None` (not truthiness) so enabled_agents=[] means "zero agents"
-    # config.enabled_agents uses truthiness because [] is its default (= no preference)
+    # the config's agents use truthiness because [] is their default (= no preference)
     if enabled_agents is not None:
         enabled_set = set(enabled_agents)
         logger.debug(f"Using enabled_agents param: {enabled_set}")
-    elif config and config.enabled_agents:
-        enabled_set = set(config.enabled_agents)
-        logger.debug(f"Using config.enabled_agents: {enabled_set}")
+    elif config and config.effective_agents():
+        enabled_set = set(config.effective_agents())
+        logger.debug(f"Using the config's agents: {enabled_set}")
     else:
         enabled_set = None  # All agents enabled
         logger.debug("No enabled_agents filter - using all available agents")
