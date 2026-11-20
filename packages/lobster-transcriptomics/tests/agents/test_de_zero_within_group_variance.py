@@ -19,8 +19,9 @@ from .test_de_genes_tested_line import _run, _stored_rows
 from .test_de_without_pvalue import FILTERS, _analysed_and_exported
 
 LINE = (
-    "{n} have the same value within each group: the t-test gives {them} no "
-    "usable p-value; check them with DESeq2 on counts."
+    "Of the genes tested, {n} have the same value in every sample of each group "
+    "(different between the groups): the t-test gives {them} no p-value; check "
+    "them with DESeq2 on counts."
 )
 
 
@@ -58,6 +59,7 @@ def test_a_gene_with_no_variance_within_either_group_is_kept_and_flagged(
     np.testing.assert_allclose(rows["log2FoldChange"], np.log2(41 / 11), rtol=1e-6)
     assert rows["pvalue"].isna().all()
     assert rows["padj"].isna().all()
+    assert rows["stat"].isna().all()  # not +-inf: a table sorted by it
     assert not set(split) & set(stats["significant_genes_list"])
     assert stats["n_zero_within_group_variance"] == 3
 
@@ -97,7 +99,7 @@ def test_the_exported_code_keeps_and_flags_them_too(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "n, text", [(3, ("3 genes", "them")), (1, ("1 gene", "it"))], ids=["3", "1"]
+    "n, text", [(3, ("3", "them")), (1, ("1", "it"))], ids=["3", "1"]
 )
 def test_the_reply_names_them(tmp_path, monkeypatch, n, text):
     _, reply = _run(tmp_path, monkeypatch, _split(_c2(), n), "t_test", False)
@@ -112,7 +114,7 @@ def test_the_reply_names_them(tmp_path, monkeypatch, n, text):
 def test_the_reply_says_nothing_when_no_gene_is_split_so(tmp_path, monkeypatch, method):
     _, reply = _run(tmp_path, monkeypatch, _c2(), method, False)
 
-    assert "the same value within each group" not in reply
+    assert "the same value in every sample of each group" not in reply
 
 
 @pytest.mark.parametrize("group", ["ctrl", "treat"])
