@@ -682,7 +682,7 @@ UNREADABLE = [
 
 @pytest.fixture
 def told(monkeypatch):
-    monkeypatch.setattr(switch, "_told_unreadable", set(), raising=False)
+    monkeypatch.setattr(switch, "_told_unreadable", {})
 
 
 @pytest.mark.parametrize("body", UNREADABLE)

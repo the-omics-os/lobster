@@ -38,8 +38,9 @@ GLOBAL_MODES = ("default", "all", "none")
 #: The supervisor has no AGENT_CONFIG; its code tool is on unless switched off.
 SUPERVISOR_CODE_TOOL_DEFAULT = True
 
-# (file, reason) already told: every agent of a graph asks for the same file.
-_told_unreadable: set = set()
+# file -> the reason already told: every agent of a graph asks for the same file.
+# A read that works forgets it, so a file broken again is told again.
+_told_unreadable: dict = {}
 
 
 def agent_env_var(agent_name: str) -> str:
@@ -104,6 +105,7 @@ def _workspace_layer(
     except (OSError, ValueError) as error:
         _tell_unreadable(path, error)
         return False
+    _told_unreadable.pop(str(path), None)
     all_settings = data.get("agent_settings")
     if all_settings is None:
         return None
@@ -124,10 +126,9 @@ def _workspace_layer(
 
 
 def _tell_unreadable(path: Path, error: Exception) -> None:
-    told = (str(path), str(error))
-    if told in _told_unreadable:
+    if _told_unreadable.get(str(path)) == str(error):
         return
-    _told_unreadable.add(told)
+    _told_unreadable[str(path)] = str(error)
     from lobster.i18n import h
 
     logger.warning(
