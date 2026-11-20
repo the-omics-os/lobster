@@ -36,6 +36,8 @@ from typing import (
     Protocol,
     Sequence,
     Tuple,
+    TypeGuard,
+    cast,
     runtime_checkable,
 )
 
@@ -328,7 +330,7 @@ def _is_hex(text: Any, length: int) -> bool:
     )
 
 
-def _valid_attempt_base(base: str) -> bool:
+def _valid_attempt_base(base: Any) -> TypeGuard[str]:
     """The attempt-base grammar the execution request accepts (``execution_attempt_base``)."""
     return isinstance(base, str) and base.count(":") == 1 and all(base.split(":"))
 
@@ -340,9 +342,12 @@ def _plan_shape_ok(planned: Any, count: Any) -> bool:
     if not (isinstance(planned, list) and planned and type(count) is int):
         return False
     indices = [p.get("index") if isinstance(p, dict) else None for p in planned]
-    if any(type(i) is not int or not 0 <= i < count for i in indices):
-        return False
-    return len(set(indices)) == len(indices) and indices == sorted(indices)
+    validated: list[int] = []
+    for index in indices:
+        if type(index) is not int or not 0 <= index < count:
+            return False
+        validated.append(index)
+    return len(set(validated)) == len(validated) and validated == sorted(validated)
 
 
 def _read_regular(path: Path) -> Optional[bytes]:
@@ -359,7 +364,7 @@ def _read_regular(path: Path) -> Optional[bytes]:
     try:
         if not _stat.S_ISREG(os.fstat(fd).st_mode):
             raise StorageError("unexpected entry type at a store path")
-        chunks = []
+        chunks: list[bytes] = []
         while True:
             chunk = os.read(fd, 1 << 20)
             if not chunk:
@@ -385,7 +390,7 @@ def _parse_marker(data: bytes, expected: Dict[str, str], hashes: Sequence[Any]) 
             "registered record is not valid JSON", details={"reason": "invalid_json"}
         ) from None
 
-    def _has_sha(key) -> bool:
+    def _has_sha(key: Optional[str]) -> bool:
         node = rec if key is None else rec.get(key)
         return isinstance(node, dict) and isinstance(node.get("sha256"), str)
 
@@ -785,7 +790,7 @@ class LocalFigureStore:
 
     def _assert_locked(self) -> None:
         """Destructive helpers run only inside a writer-lock hold."""
-        if not self._lock._is_owned():
+        if not self._lock._is_owned():  # type: ignore[attr-defined]  # CPython RLock ownership check
             raise StorageError("writer lock not held")
 
     def _verify_fence(self, path: Path, data: bytes) -> bool:
@@ -1064,7 +1069,7 @@ class LocalFigureStore:
             valid = False
         if not valid:
             raise StorageError("unrecognized claim")
-        return claim
+        return cast(Dict[str, str], claim)
 
     def _lstat_regular(self, path: Path) -> None:
         if not _stat.S_ISREG(self._lstat_mode(path)):
@@ -1305,7 +1310,9 @@ class LocalFigureStore:
             failed += 1
         # pass 1: which executions are releasable (read only, never through a link)
         releasable: Dict[str, Dict[str, Any]] = {}
-        for eid in sorted(e for e in execs if is_valid_id(e) and exec_dir_ok):
+        for eid in sorted(
+            e for e in execs if isinstance(e, str) and is_valid_id(e) and exec_dir_ok
+        ):
             try:
                 raw = self._read(exec_dir / f"{eid}.json")
                 if raw is None:
@@ -1381,6 +1388,7 @@ class LocalFigureStore:
         planned = execution.get("planned_candidates")
         if not (
             _valid_attempt_base(base)
+            and isinstance(planned, list)
             and _plan_shape_ok(planned, execution.get("candidate_count"))
         ):
             raise StorageError("malformed execution plan")
@@ -1569,6 +1577,8 @@ class LocalFigureStore:
                 )  # lost the race: defer to the winner
             else:
                 claim = {"execution_id": execution_id, "plan_digest": plan_digest}
+        if claim is None:
+            raise StorageError("execution claim disappeared")
         if self._execution_deleted(str(claim.get("execution_id"))):
             # An execution tombstone fences the ORIGINAL attempt. It may exist with no
             # revision claim (a figure never committed), so it stays generation_fenced and
@@ -1579,7 +1589,7 @@ class LocalFigureStore:
                 "same attempt, different execution plan",
                 details={"reason": "execution_plan_changed"},
             )
-        execution_id = claim["execution_id"]
+        execution_id = cast(str, claim["execution_id"])
         record_path = self.root / P.EXECUTIONS_DIR / f"{execution_id}.json"
         if self._read(record_path) is not None:  # a link is refused, never reused
             self._verify_execution_record(execution_id, plan_digest)
@@ -1747,7 +1757,22 @@ class LocalFigureStore:
             raise FigureNotFoundError(
                 "unknown execution", details={"reason": "execution_not_found"}
             )
-        return json.loads(raw)
+        return cast(Dict[str, Any], json.loads(raw))
+
+    def history(self, figure_id: str) -> Dict[str, Any]:
+        """Linked timeline over immutable revision ancestry, migrated on first access."""
+        from .history import Timeline
+
+        with self._lock:
+            return Timeline(self, figure_id).view()
+
+    def delete_revision(self, ref: str, generation: int) -> Dict[str, Any]:
+        from .history import Timeline
+
+        with self._lock:
+            return Timeline(self, FigureRef.parse(ref).figure_id).delete(
+                ref, generation
+            )
 
     # ----------------------------------------------------------------- commit
     def commit(
@@ -1861,9 +1886,10 @@ class LocalFigureStore:
             # Lost a race on the same attempt key: defer to the winner.
             if not candidate.parent_ref:
                 self._rmdir_quiet(self.root / figure_id)
-            return self._commit_claimed(
-                candidate, self._read_claim(claim_path), execution_id, digest
-            )
+            claim = self._read_claim(claim_path)
+            if claim is None:
+                raise StorageError("revision claim disappeared")
+            return self._commit_claimed(candidate, claim, execution_id, digest)
         return self._write_revision(
             candidate, ref, execution_id=execution_id, digest=digest
         )
@@ -1941,7 +1967,41 @@ class LocalFigureStore:
         # Inputs were normalized against the parent and checked in commit(), so the record
         # and the immutable descriptor agree on authoritative inputs.
         inputs = [edge.to_dict() for edge in candidate.inputs]
+        from .history import change_details
+
+        details = None
+        if candidate.parent_ref:
+            parent_bytes, before, before_config = self.read(candidate.parent_ref)
+            parent_metadata = json.loads(parent_bytes)
+            details = change_details(
+                json.loads(before), json.loads(candidate.figure_bytes)
+            )
+            old_attachments = (
+                (parent_metadata.get("source") or {}).get("declared") or {}
+            ).get("attachments", [])
+            new_attachments = (
+                candidate.source.declared.get("attachments", [])
+                if candidate.source
+                else []
+            )
+            attachment_diff = change_details(
+                {"attachments": old_attachments}, {"attachments": new_attachments}
+            )
+            details["attachments"] = attachment_diff["properties"]
+            details["config"] = change_details(
+                json.loads(before_config), json.loads(candidate.config_bytes)
+            )["properties"]
+            if attachment_diff["property_count"]:
+                details["summary"] += "; updated data attachments"
+            if details["config"]:
+                details["summary"] += "; changed plot configuration"
+        execution_record = self.read_execution(execution_id)
+        timeline_after = (execution_record.get("parameters") or {}).get(
+            "timeline_insert_after"
+        )
         record = {
+            "derived_from": candidate.parent_ref,
+            "timeline_insert_after": timeline_after,
             "schema": REVISION_SCHEMA,
             "figure_id": ref.figure_id,
             "revision_id": ref.revision_id,
@@ -1960,7 +2020,9 @@ class LocalFigureStore:
                 "effect": None,
                 "config_effect": None,
                 "unbound_traces": [],
-                "touches_data": "unknown",
+                "touches_data": details["touches_data"] if details else "unknown",
+                "details": details,
+                "summary": details["summary"] if details else "Original plot",
             },
             "inputs": inputs,
             "source": source_entry,
@@ -2018,6 +2080,17 @@ class LocalFigureStore:
         )
 
     def _result(self, candidate: Candidate, ref: FigureRef) -> CommitResult:
+        try:
+            self.history(ref.figure_id)
+        except (StorageError, OSError) as exc:
+            return self._pending(
+                candidate,
+                (
+                    exc
+                    if isinstance(exc, StorageError)
+                    else StorageError("History publication failed")
+                ),
+            )
         return CommitResult(
             candidate_index=candidate.candidate_index,
             status=STATUS_AVAILABLE,
@@ -2049,7 +2122,7 @@ class LocalFigureStore:
             return None
         claim = json.loads(raw)
         self._fsync(path.parent)
-        return claim
+        return cast(Dict[str, Any], claim)
 
     # ------------------------------------------------------------------ reads
     def _refuse_deleted(self, ref: FigureRef) -> None:
@@ -2208,7 +2281,9 @@ class LocalFigureStore:
             )
         return data
 
-    def _iter_records(self) -> Iterable[Dict[str, Any]]:
+    def _iter_records(
+        self, figure_id: Optional[str] = None
+    ) -> Iterable[Dict[str, Any]]:
         """Every registered revision record. Enumeration/read failures raise TYPED errors and
         a corrupt registered record raises IntegrityError: never skipped, never an empty or
         partial catalog presented as complete, never a fabricated pending item.
@@ -2217,12 +2292,17 @@ class LocalFigureStore:
         # Only REAL directories (lstat) are enumerated; a link in the catalog is never
         # followed or listed (a link is not an entry this store created).
         try:
-            fig_dirs = [
-                self.root / name
-                for name in self._listdir_real(self.root)
-                if name not in P.RESERVED_DIRS
-                and _stat.S_ISDIR(self._lstat_mode(self.root / name))
-            ]
+            if figure_id is not None:
+                FigureRef.parse(figure_id + "@r_aaaaaaaaaa")
+                directory = self.root / figure_id
+                fig_dirs = [directory] if self._require_real_dir(directory) else []
+            else:
+                fig_dirs = [
+                    self.root / name
+                    for name in self._listdir_real(self.root)
+                    if name not in P.RESERVED_DIRS
+                    and _stat.S_ISDIR(self._lstat_mode(self.root / name))
+                ]
         except StorageError:
             raise StorageError("catalog enumeration failed") from None
         out: List[Dict[str, Any]] = []

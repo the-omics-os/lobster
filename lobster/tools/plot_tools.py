@@ -101,7 +101,15 @@ def _load_data(data_json: str, data_file: str, workspace_path: Path):
 
 
 def _create_figure(
-    plot_type: str, df, x: str, y: str, z: str, color: str, size: str, title: str
+    plot_type: str,
+    df,
+    x: str,
+    y: str,
+    z: str,
+    color: str,
+    size: str,
+    title: str,
+    id_col: str | None = None,
 ):
     """Dispatch to Plotly Express. Returns Figure or error string."""
     import plotly.express as px
@@ -126,7 +134,16 @@ def _create_figure(
                 kwargs["size"] = size
             if len(df) > SAMPLE_THRESHOLD:
                 kwargs["render_mode"] = "webgl"
+            if id_col:
+                from lobster.core.figures.point_identity import identity_table
+
+                df, identity_field = identity_table(df, id_col)
+                kwargs["custom_data"] = [identity_field]
             fig = px.scatter(df, x=x, y=y, **kwargs)
+            if id_col:
+                from lobster.core.figures.point_identity import bind_point_ids
+
+                bind_point_ids(fig, id_col)
         elif plot_type == "line":
             fig = px.line(df, x=x, y=y, **kwargs)
         elif plot_type == "bar":
@@ -258,6 +275,31 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
     """
 
     @tool
+    def inspect_plot_data(data_file: str) -> str:
+        """Inspect a workspace table before plotting: columns, numeric columns and sample rows.
+
+        data_file is relative to the Lobster data workspace, e.g. data/points.csv.
+        Uses the same file root as create_interactive_plot; no AnnData is needed.
+        """
+        df = _load_data("", data_file, workspace_path)
+        if isinstance(df, str):
+            return df
+        from lobster.core.figures.point_identity import identity_candidates
+
+        candidates = identity_candidates(df)
+        return json.dumps(
+            {
+                "id_candidates": candidates,
+                "suggested_id_column": candidates[0] if len(candidates) == 1 else None,
+                "data_file": data_file,
+                "rows": len(df),
+                "columns": [str(c) for c in df.columns],
+                "numeric_columns": list(df.select_dtypes(include="number").columns),
+                "preview": json.loads(df.head(8).to_json(orient="records")),
+            }
+        )
+
+    @tool
     def create_interactive_plot(
         plot_type: str,
         data_json: str = "",
@@ -270,9 +312,14 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
         title: str = "Plot",
         x_label: str = "",
         y_label: str = "",
+        related_data_files: List[str] | None = None,
+        id_col: str | None = None,
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
     ) -> str:
-        """Create interactive Plotly plot from tabular data. Registers with canvas.
+        """Create AND save a managed interactive Plotly figure from a workspace table.
+
+        Use inspect_plot_data first to identify column names. The reply includes
+        the saved figure revision reference; no extra export or code step is needed.
 
         Args:
             plot_type: scatter, line, bar, histogram, box, or heatmap
@@ -283,9 +330,15 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
             z: Column for heatmap values.
             color: Column for color grouping.
             size: Column for marker size (scatter only).
+            id_col: Identity column for searchable scatter points. If omitted, a
+                single valid conventional ID column is selected automatically.
+                inspect_plot_data lists candidates; ask when several are plausible.
+                IDs must be nonblank and unique before sampling. Never use row numbers.
             title: Plot title.
             x_label: Custom x-axis label.
             y_label: Custom y-axis label.
+            related_data_files: Explicit supporting workspace tables to snapshot. Only
+                include files linked by this analysis or named by the user; never guess.
         """
         if plot_type not in VALID_PLOT_TYPES:
             return f"ERROR: plot_type must be one of {sorted(VALID_PLOT_TYPES)}"
@@ -296,6 +349,17 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
 
         if len(df) > MAX_ROWS:
             return f"ERROR: {len(df)} rows exceeds {MAX_ROWS} limit. Aggregate or filter first."
+        from lobster.core.figures.point_identity import resolve_identity_column
+
+        if id_col is not None and plot_type != "scatter":
+            return "ERROR: id_col is supported for scatter point plots only."
+        try:
+            id_col = (
+                resolve_identity_column(df, id_col) if plot_type == "scatter" else None
+            )
+        except ValueError as exc:
+            return f"ERROR: {exc}"
+        original_df = df.copy()
         sampled = False
         if len(df) > SAMPLE_THRESHOLD:
             if plot_type in ("line", "bar", "heatmap"):
@@ -304,7 +368,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
                 df = df.sample(n=SAMPLE_THRESHOLD, random_state=42)
             sampled = True
 
-        fig = _create_figure(plot_type, df, x, y, z, color, size, title)
+        fig = _create_figure(plot_type, df, x, y, z, color, size, title, id_col=id_col)
         if isinstance(fig, str):
             return fig
 
@@ -313,14 +377,121 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
         if y_label:
             fig.update_layout(yaxis_title=y_label)
 
+        from lobster.core.figures.data_view import record_column_roles
+
+        role_columns = {"x": x}
+        if plot_type != "histogram":
+            role_columns["y"] = y
+        if plot_type != "heatmap":
+            role_columns["color"] = color
+        if plot_type == "scatter":
+            role_columns["size"] = size
+            role_columns["id"] = id_col
+        if plot_type == "heatmap":
+            role_columns["z"] = z
+        roles = [
+            {"column": column, "role": role}
+            for role, column in role_columns.items()
+            if column and column in df.columns
+        ]
+        if roles:
+            operations = []
+            if plot_type in ("histogram", "box", "heatmap"):
+                operations.append(
+                    {
+                        "operation": plot_type,
+                        "description": "Display summarizes the supplied table.",
+                    }
+                )
+            record_column_roles(
+                fig,
+                roles,
+                transformations=operations,
+                selection={
+                    "input_rows": len(original_df),
+                    "plotted_rows": len(df),
+                    "sampled": sampled,
+                    "method": (
+                        (
+                            "first rows"
+                            if plot_type in ("line", "bar", "heatmap")
+                            else "random sample (seed 42)"
+                        )
+                        if sampled
+                        else "all supplied rows"
+                    ),
+                },
+            )
+
         plot_manager = getattr(data_manager, "plot_manager", None)
         if not plot_manager:
             return "ERROR: plot_manager not available on data_manager"
+
+        from lobster.core.figures.attachments import save_attachment
+        from lobster.core.figures.payload import source_to_bytes
+        from lobster.core.figures.records import SourcePayload
+
+        store = data_manager.figure_store
+        attachments = []
+        try:
+            attachments.append(
+                save_attachment(
+                    store,
+                    df.to_csv(index=False).encode(),
+                    label="plotted_data.csv",
+                    role="plotted_data",
+                    columns=list(map(str, df.columns)),
+                    description="Exact table supplied to the plotting operation after any sampling.",
+                    origin=data_file or "inline data",
+                )
+            )
+            if sampled:
+                attachments.append(
+                    save_attachment(
+                        store,
+                        original_df.to_csv(index=False).encode(),
+                        label="full_input.csv",
+                        role="related_data",
+                        columns=list(map(str, original_df.columns)),
+                        description="Full input table before plot sampling.",
+                        origin=data_file or "inline data",
+                    )
+                )
+            for relative in related_data_files or []:
+                path = _resolve_safe_path(workspace_path, relative)
+                if path.stat().st_size > MAX_FILE_BYTES:
+                    raise ValueError("Related data file exceeds 10 MB")
+                attachments.append(
+                    save_attachment(
+                        store,
+                        path.read_bytes(),
+                        label=path.name,
+                        role="related_data",
+                        origin=relative,
+                        description="Explicit supporting analysis artifact.",
+                    )
+                )
+            declared = {
+                "attachments": attachments,
+                "plot_type": plot_type,
+                "x": x,
+                "y": y,
+                "z": z,
+                "color": color,
+                "size": size,
+                "sampled": sampled,
+                "id_col": id_col,
+                "column_mapping": (fig.layout.meta or {}).get("lobster_data"),
+            }
+            retained_source = SourcePayload(source_to_bytes(df, declared), declared)
+        except (OSError, ValueError) as exc:
+            return f"ERROR: Could not retain plot data: {exc}"
 
         plot_id, stats, _ = plot_manager.add_plot(
             plot=fig,
             title=title,
             source="data_expert",
+            retained_source=retained_source,
             dataset_info={
                 "rows": len(df),
                 "columns": list(df.columns)[:20],
@@ -355,5 +526,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
 
     create_interactive_plot.metadata = {"categories": ["UTILITY"], "provenance": False}
     create_interactive_plot.tags = ["UTILITY"]
+    inspect_plot_data.metadata = {"categories": ["UTILITY"], "provenance": False}
+    inspect_plot_data.tags = ["UTILITY"]
 
-    return [create_interactive_plot]
+    return [create_interactive_plot, inspect_plot_data]

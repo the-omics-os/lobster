@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lobster · Plot studio</title><link rel="stylesheet" href="/editor.css">
+<script src="/plotly.js" defer></script><script src="/editor.js" defer></script>
+</head><body>
+<header class="app-bar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 5v14h14M8 14l4-5 4 3 3-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>Lobster</strong><span class="brand-divider" aria-hidden="true">/</span><span class="app-name">Plot studio</span></div>
+  <div class="app-actions">
+    <span id="draft-state" class="draft-state" data-state="saved">Saved</span>
+    <button id="reset" class="quiet" title="Discard unsaved changes"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3 8a7 7 0 1 1 1 7M3 3v5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Reset</button>
+    <button id="save" class="primary" disabled><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M10 13V3m-4 4 4-4 4 4M4 12v5h12v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Save revision</button>
+  </div>
+</header>
+<div class="document-bar">
+  <label class="document-title"><span>Figure title</span><input id="title" aria-label="Plot title" placeholder="Untitled figure" spellcheck="false"></label>
+  <div class="view-tabs" role="tablist" aria-label="Editor view">
+    <button id="figure-tab" role="tab" aria-selected="true" aria-controls="figure-view" tabindex="0">Figure</button>
+    <button id="data-tab" role="tab" aria-selected="false" aria-controls="data-view" tabindex="-1">Data</button>
+  </div>
+  <div class="document-actions"><label class="preset-field"><span>Style preset</span><select id="preset" aria-label="Style preset"><option>Original</option><option>Publication</option><option>Minimal</option><option>Presentation</option></select></label>
+  <button id="properties-toggle" class="quiet" aria-expanded="true" aria-controls="inspector"><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-6 1v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Properties</button></div>
+</div>
+<main id="figure-view" role="tabpanel" aria-labelledby="figure-tab">
+  <section class="canvas" aria-label="Figure workspace">
+    <div class="canvas-heading"><span>Figure preview</span><span id="figure-meta"></span></div>
+    <div class="plot-surface"><div id="plot" aria-label="Interactive Plotly figure"></div></div>
+    <div class="workspace-status"><span class="status-indicator" aria-hidden="true"></span><div id="status" role="status" aria-live="polite">Loading saved figure…</div></div>
+  </section>
+  <aside id="inspector" aria-label="Figure properties"><div class="inspector-heading"><h1>Properties</h1><p>Adjust the appearance of your figure.</p></div><div id="controls"></div></aside>
+</main>
+<section id="data-view" class="data-page" role="tabpanel" aria-labelledby="data-tab" hidden>
+  <div class="data-heading"><div><h1>Drawing source</h1><p>The saved table for this revision. Read only.</p></div><span id="data-count"></span></div>
+  <p id="data-notice" class="data-notice" role="status" aria-live="polite"></p>
+  <p id="data-operations" class="data-operations" hidden></p>
+  <div class="data-scroll" tabindex="0" aria-label="Read-only source data"><table id="data-table"><thead></thead><tbody></tbody></table></div>
+  <div class="data-pagination"><span id="data-range"></span><div><button id="data-previous" class="quiet" disabled>Previous</button><button id="data-next" class="quiet" disabled>Next</button></div></div>
+</section>
+<footer>
+  <div class="history-heading"><div><h2>Version history</h2><span id="revision-count"></span></div><div class="history-actions"><button id="refresh-history" class="quiet">Refresh</button><button id="delete-revision" class="quiet danger" disabled>Delete revision</button></div></div>
+  <nav id="history" aria-label="Figure revision history"></nav>
+  <section id="revision-changes" aria-label="Selected revision changes" hidden>
+    <h3>What changed</h3><p id="revision-change-text"></p>
+    <details id="revision-change-detail" hidden><summary>Changed properties</summary><ul id="revision-change-properties"></ul></details>
+  </section>
+</footer>
+</body></html>

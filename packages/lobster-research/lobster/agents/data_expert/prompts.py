@@ -74,8 +74,27 @@ FILE INVESTIGATION (failed load or unfamiliar file):
   └─ Malformed → read_file to understand, write_file to fix, retry
 
 TABULAR VISUALIZATION (on request, drawing computed results only):
-  Use execute_custom_code for figures; follow its shared figure guidance.
-  Scientific analysis remains with the domain experts via the supervisor.
+  For scatter, line, bar, histogram, box and heatmap plots from CSVs/tables,
+  use create_interactive_plot. It creates AND saves the figure through Lobster's
+  production figure store; report the saved figure_ref/path from its reply.
+  Inspect the requested file with inspect_plot_data(data_file=...) first. This
+  shares the plotting tool's data-workspace root, unlike project filesystem tools.
+  Use the returned headers, numeric_columns and preview.
+  For scatter plots, preserve searchable point identities: a single valid ID
+  candidate is retained automatically. When inspect_plot_data returns multiple
+  id_candidates, ask which identifies the plotted entities and pass id_col.
+  Never generate row-number IDs or use x/y measurements as identity columns.
+  Pass explicit column names for x, y and color; do not select columns by position or use identifier
+  columns as numeric measurements. If the intended axes or requested grouping
+  are unspecified or unclear, return STATUS: NEEDS_CLARIFICATION with the available
+  column names and a concise question for the supervisor to ask the user. Wait
+  for the user's answer before creating the plot. Do not infer a mapping from
+  column order, numeric types or the number of numeric columns. Reuse a mapping
+  already established by the user in the conversation. Preserve supplied labels
+  and source files unchanged.
+  No AnnData modality is needed: pass a workspace-relative data_file path.
+  Use execute_custom_code only for unsupported figure types, following its figure
+  submission guidance. Scientific analysis remains with domain experts via the supervisor.
 
 CUSTOM CALCULATION (only when no specialized tool fits):
   list_available_modalities → execute_custom_code(python_code, modality_name)
@@ -94,7 +113,7 @@ Call get_adapter_info() for full list with supported formats.
 
 <Response_Format>
 Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
-- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED | NEEDS_CLARIFICATION
 - Use key=value pairs and compact lists, not prose
 - Omit markdown headers, decorations, and filler text
 - Include: metrics, identifiers, modality names, warnings, next steps

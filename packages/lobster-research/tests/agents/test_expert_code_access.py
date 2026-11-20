@@ -166,7 +166,7 @@ def test_expert_factory_code_access(
     config, tools = _build(entry_value, tmp_path)
     code_tools = _code_tools(tools)
     if config.name == "data_expert_agent":
-        assert all(t.name != "create_interactive_plot" for t in tools)
+        assert sum(t.name == "create_interactive_plot" for t in tools) == 1
     if config.name in NEVER:
         assert not code_tools, "External-text research must not receive custom code"
     elif _expected(entry_name, mode):
