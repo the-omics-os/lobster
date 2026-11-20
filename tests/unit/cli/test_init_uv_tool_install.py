@@ -8,6 +8,7 @@ import importlib.util
 import re
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -682,3 +683,27 @@ def test_windows_agents_install_leaves_no_pending_install(
     )
 
     assert _pending() is None
+
+
+def test_picked_packages_under_uv_tool_are_left_for_the_one_reinstall(
+    tool_env, monkeypatch, capsys
+):
+    """Under uv tool, a direct install can only fail; the reinstall line adds them."""
+    from lobster.cli_internal.commands.light import agent_commands
+
+    direct = []
+    monkeypatch.setattr(
+        agent_commands, "_uv_pip_install", lambda pkg: direct.append(pkg) or (False, "")
+    )
+    monkeypatch.setattr(init_commands, "_get_installed_agents", lambda: {})
+    monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: k["default"])
+
+    selected, _ = init_commands._perform_agent_selection_interactive(Path("ws"))
+
+    assert direct == []
+    out = capsys.readouterr().out
+    assert "failed" not in out and "Installing" not in out
+    assert "research_agent" in selected and "transcriptomics_expert" in selected
+    command = init_commands._build_uv_tool_init_command(None, selected)
+    assert "lobster-research>=1.3.0" in command
+    assert "lobster-transcriptomics>=1.3.0" in command
