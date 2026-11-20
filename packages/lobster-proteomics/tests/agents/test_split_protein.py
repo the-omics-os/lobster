@@ -105,3 +105,43 @@ def test_the_reply_names_a_split_protein(tmp_path, split):
     )
     assert (line in reply) is split, reply
     assert ("the same value in every sample of each group" in reply) is split
+
+
+def test_a_split_protein_has_no_statistic():
+    with_split, _, _ = _run(_proteins(split=True), "t_test")
+
+    assert np.isnan(with_split["P49"]["statistic"])  # not +-inf
+
+
+@pytest.mark.parametrize("group", ["a", "b"])
+def test_one_value_in_one_group_only_keeps_its_p_value(group):
+    adata = _proteins(split=False)
+    adata.X[(adata.obs["group"] == group).to_numpy(), 49] = 7.0
+
+    with_flat, _, stats = _run(adata, "t_test")
+
+    assert np.isfinite(with_flat["P49"]["p_value"])
+    assert stats["n_zero_within_group_variance"] == 0
+
+
+def test_the_reply_counts_two_split_proteins(tmp_path):
+    adata = _proteins(split=True)
+    adata.X[:6, 48], adata.X[6:, 48] = 3.0, 8.0
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.store_modality("prot", adata)
+    reply = factory_tools(de_analysis_expert, DE, dm)[
+        "find_differential_proteins"
+    ].invoke(
+        {
+            "modality_name": "prot",
+            "group_column": "group",
+            "platform_type": "affinity",
+            "method": "t_test",
+        }
+    )
+
+    assert (
+        "- Of the proteins tested, 2 have the same value in every sample of each "
+        "group (different between the groups): the t-test gives them no p-value; "
+        "check them with limma_like or Mann-Whitney\n" in reply
+    ), reply
