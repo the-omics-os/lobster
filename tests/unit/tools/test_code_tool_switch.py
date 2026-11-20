@@ -671,3 +671,67 @@ def test_a_config_saved_with_a_bom_keeps_its_disable(tmp_path):
     (ws / "config.toml").write_bytes(b"\xef\xbb\xbf" + body.encode())
 
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+
+
+# A config.toml that exists but cannot be read may hold the user's code_tool =
+# false: the tool is off for every agent until the file is fixed, and one warning
+# names the file.
+
+UNREADABLE = [
+    pytest.param(b"\xff\xfe\x00garbage\x9c", id="garbage_bytes"),
+    pytest.param(b"[agent_settings.supervisor\ncode_tool = false\n", id="bad_toml"),
+    pytest.param(
+        "[agent_settings.supervisor]\ncode_tool = false\n".encode("utf-16"),
+        id="utf16",
+    ),
+]
+
+
+@pytest.fixture
+def told(monkeypatch):
+    monkeypatch.setattr(switch, "_told_unreadable", set(), raising=False)
+
+
+@pytest.mark.parametrize("body", UNREADABLE)
+def test_an_unreadable_config_turns_the_tool_off_for_every_agent(
+    tmp_path, warnings_seen, told, body
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_bytes(body)
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
+    said = [w for w in warnings_seen if "config.toml" in w]
+    assert len(said) == 1, warnings_seen
+    assert str(ws / "config.toml") in said[0] and "code tool is off" in said[0]
+
+
+def test_a_config_folder_in_place_of_the_file_turns_the_tool_off(
+    tmp_path, warnings_seen, told
+):
+    ws = tmp_path / "ws"
+    (ws / "config.toml").mkdir(parents=True)
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    assert any("code tool is off" in w for w in warnings_seen), warnings_seen
+
+
+def test_the_reason_the_file_could_not_be_read_is_named(tmp_path, warnings_seen, told):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text("[agent_settings.supervisor\n")
+
+    code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert "line 1" in " ".join(warnings_seen), warnings_seen
+
+
+def test_a_missing_config_keeps_the_defaults(tmp_path, warnings_seen, told):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is True
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
+    assert warnings_seen == []
