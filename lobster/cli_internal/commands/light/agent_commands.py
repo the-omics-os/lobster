@@ -448,7 +448,7 @@ def agents_list(
 
     # Load current config to check enabled status
     config = WorkspaceAgentConfig.load(workspace_path)
-    enabled_set = set(config.effective_agents())
+    enabled_set = _with_children(set(config.effective_agents()))
 
     # Get all installed agents (entry points only - no network)
     all_agents = component_registry.list_agents()
