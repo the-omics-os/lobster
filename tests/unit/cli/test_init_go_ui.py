@@ -297,6 +297,7 @@ def test_init_ctrl_c_in_go_wizard_cancels_without_fallback(monkeypatch, tmp_path
 def test_init_ctrl_c_after_go_wizard_is_not_reported_as_cancelled(
     monkeypatch, tmp_path
 ):
+    """Files may already be written: it says how to finish, not "cancelled"."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("LOBSTER_WORKSPACE", raising=False)
     monkeypatch.setattr(
@@ -321,6 +322,15 @@ def test_init_ctrl_c_after_go_wizard_is_not_reported_as_cancelled(
         _interrupted_after_wizard,
     )
 
-    with pytest.raises(KeyboardInterrupt):
-        _run_auto_init()
-    assert "cancelled" not in out.getvalue().lower()
+    try:
+        with pytest.raises(typer.Exit) as exc:
+            _run_auto_init()
+    except KeyboardInterrupt:  # would also stop pytest itself
+        pytest.fail("the Ctrl-C escaped init")
+    assert exc.value.exit_code == 1
+    said = " ".join(out.getvalue().split())
+    assert "cancelled" not in said.lower()
+    assert (
+        "Interrupted while saving the setup; run lobster init --force to finish it."
+        in said
+    )
