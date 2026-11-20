@@ -580,7 +580,10 @@ Next suggested step: Import quantification data with tximport for differential e
             ]
 
             # Add results to AnnData
-            adata_de.uns[f"de_results_{group1}_vs_{group2}"] = results_df.to_dict()
+            # the shape every DE result reader expects, as the DESeq2 path stores
+            adata_de.uns[f"de_results_{group1}_vs_{group2}"] = {
+                "results_df": results_df
+            }
 
             # Add results columns to adata_de.var for filtering
             for col in results_df.columns:
@@ -2177,7 +2180,7 @@ results_df = pd.DataFrame({
 }, index=adata_de.var_names)
 
 # Store results in AnnData
-adata_de.uns[{{ ('de_results_' ~ group1 ~ '_vs_' ~ group2) | repr }}] = results_df.to_dict()
+adata_de.uns[{{ ('de_results_' ~ group1 ~ '_vs_' ~ group2) | repr }}] = {'results_df': results_df}
 """
             library = "scipy"
             imports = [
