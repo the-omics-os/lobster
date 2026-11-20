@@ -38,6 +38,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 
 # === Heavy imports below ===
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -105,6 +106,33 @@ SUBCLUSTER_STATS_KEYS = (
     "execution_time_seconds",
     "cluster_sizes",
 )
+
+
+# Same stable gene-ID pattern as lobster/services/data_access/geo/parser.py.
+_GENE_ID = re.compile(r"(?:ENS[A-Z]*G\d+(?:\.\d+)?|[NX][MR]_\d+(?:\.\d+)?)$")
+
+
+def _bulk_genes_axis(df: pd.DataFrame):
+    """Return ("rows"|"columns", reason) for the axis of a count table that holds
+    genes, or (None, None) when neither gene IDs nor the shape settle it.
+
+    Gene IDs on one axis win. Shape alone decides only when the table cannot be
+    a targeted panel with more samples than genes: the larger axis is a whole
+    transcriptome (>= 10,000) or the smaller has too few labels to be genes (< 20).
+    """
+
+    def id_share(labels):
+        return np.mean([bool(_GENE_ID.match(str(label))) for label in labels])
+
+    rows, cols = id_share(df.index), id_share(df.columns)
+    if rows >= 0.9 and cols < 0.1:
+        return "rows", "Ensembl/RefSeq gene IDs"
+    if cols >= 0.9 and rows < 0.1:
+        return "columns", "Ensembl/RefSeq gene IDs"
+    larger, smaller = max(df.shape), min(df.shape)
+    if larger >= 2 * smaller and (larger >= 10_000 or smaller < 20):
+        return ("rows" if df.shape[0] > df.shape[1] else "columns"), "shape"
+    return None, None
 
 
 def _format_subcluster_sizes(sizes: Dict[str, int], indent: str = "  ") -> str:
@@ -1404,6 +1432,7 @@ Please check:
         file_path: str,
         source: str = "auto",
         gene_id_column: str = "auto",
+        genes_axis: str = "auto",
     ) -> str:
         """
         Import bulk RNA-seq count data from Salmon, kallisto, featureCounts, or CSV/TSV files.
@@ -1411,19 +1440,25 @@ Please check:
         Supports multiple input formats:
         - Salmon/kallisto: Directory of per-sample quantification files
         - featureCounts: Tab-delimited output (auto-detects # comment header)
-        - CSV/TSV: Generic count matrix (auto-transposes if genes > samples)
+        - CSV/TSV: Generic count matrix, either layout (genes found by gene IDs or shape)
 
         Args:
             modality_name: Name for the imported modality
             file_path: Path to file or directory containing count data
             source: Data source format ('salmon', 'kallisto', 'featurecounts', 'csv', 'auto')
             gene_id_column: Column containing gene IDs ('auto' for auto-detection)
+            genes_axis: CSV/TSV only: 'rows' or 'columns' if the genes are on that
+                axis of the file; 'auto' detects it and refuses when unsure
 
         Returns:
             Summary of imported data (samples, genes, source detected)
         """
         try:
             import anndata
+
+            if genes_axis not in ("auto", "rows", "columns"):
+                return "Error: genes_axis must be 'auto', 'rows' or 'columns'."
+            axis_used = axis_reason = None
 
             path = Path(file_path)
             if not path.exists():
@@ -1499,9 +1534,19 @@ Please check:
                 if gene_id_column != "auto" and gene_id_column in df.columns:
                     df = df.set_index(gene_id_column)
 
-                # Auto-transpose to samples x genes: bulk tables have far more genes
-                # than samples, so more rows than columns means genes are the rows
-                if df.shape[0] > df.shape[1]:
+                axis_used, axis_reason = genes_axis, "given"
+                if genes_axis == "auto":
+                    axis_used, axis_reason = _bulk_genes_axis(df)
+                if axis_used is None:
+                    return (
+                        f"Error: Cannot tell which axis of {path.name} holds the genes: "
+                        f"{df.shape[0]} rows x {df.shape[1]} columns, and Ensembl/RefSeq "
+                        "gene IDs do not mark one axis. A targeted panel with more "
+                        "samples than genes looks the same. Re-run import_bulk_counts "
+                        "with genes_axis='rows' or 'columns'."
+                    )
+                # AnnData wants samples x genes
+                if axis_used == "rows":
                     df = df.T
 
                 adata = anndata.AnnData(
@@ -1541,6 +1586,8 @@ Please check:
                     "file_path": file_path,
                     "source": detected_source,
                     "gene_id_column": gene_id_column,
+                    "genes_axis": genes_axis,
+                    "genes_axis_used": axis_used,
                 },
                 parameter_schema={},
             )
@@ -1554,18 +1601,24 @@ Please check:
                     "file_path": file_path,
                     "source": source,
                     "detected_source": detected_source,
+                    "genes_axis": genes_axis,
+                    "genes_axis_used": axis_used,
                 },
                 description=f"Imported bulk counts ({detected_source}): {adata.shape[0]} samples x {adata.shape[1]} genes",
                 ir=ir,
                 agent=agent_name,
             )
 
+            axis_line = (
+                f"- Genes axis: {axis_used} ({axis_reason})\n" if axis_reason else ""
+            )
             return (
                 f"Successfully imported bulk RNA-seq counts as '{modality_name}'!\n\n"
                 f"**Import Details:**\n"
                 f"- Source format: {detected_source}\n"
                 f"- Samples (obs): {adata.shape[0]}\n"
                 f"- Genes (var): {adata.shape[1]}\n"
+                f"{axis_line}"
                 f"- Raw counts stored in: adata.layers['counts']\n\n"
                 f"**Next steps**: merge_sample_metadata() if metadata available, "
                 f"then assess_bulk_sample_quality()."
