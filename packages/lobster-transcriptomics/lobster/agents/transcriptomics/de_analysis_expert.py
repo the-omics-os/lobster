@@ -174,7 +174,7 @@ def _unmodelled_covariates_text(obs, groupby) -> str:
 
 
 def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
-    """No gene was left to test: there is no DE result. Names the step that
+    """No gene was left to report: there is no DE result. Names the step that
     dropped them: the expression pre-filter, or a fold change that is not a
     number (the only post-filter left on: min_fold_change=1.0)."""
     if adata_de.n_vars:
@@ -183,8 +183,9 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     if passed:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a finite "
-            "fold change (the log2 of a zero or negative group mean, as with "
-            "centred or signed values), so none could be tested"
+            "fold change: the fold change log2((mean2 + 1) / (mean1 + 1)) is not "
+            "a number when one group's mean is below -1, as with centred or "
+            "signed values. So no result can be reported"
         )
     else:
         cause = (

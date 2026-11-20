@@ -181,6 +181,14 @@ def test_no_gene_tested_is_refused_with_its_cause(
     assert "Of 2,000 genes" in reply
     if case == "signed":
         assert FOLD_CHANGE in reply and PREFILTER not in reply, reply
+        assert (
+            "Of 2,000 genes, 2,000 passed the expression pre-filter, but none has "
+            "a finite fold change: the fold change log2((mean2 + 1) / (mean1 + 1)) "
+            "is not a number when one group's mean is below -1, as with centred or "
+            "signed values. So no result can be reported. Wilcoxon and t-test "
+            "expect counts or log-scale values. Use deseq2 on raw counts, or run "
+            "on unscaled values. No result modality was stored."
+        ) in reply, reply
     else:
         assert PREFILTER in reply and FOLD_CHANGE not in reply, reply
     assert "Complete" not in reply
