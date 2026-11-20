@@ -120,3 +120,15 @@ def test_a_listed_project_is_changed_as_before(ws, monkeypatch):
     config = WorkspaceAgentConfig.load(ws)
     assert set(config.enabled_agents) == {"research_agent"} | GENOMICS
     assert "explicit agents" not in _out()
+
+
+def test_a_change_that_changes_nothing_keeps_the_preset(ws, monkeypatch):
+    monkeypatch.setattr(agent_commands, "_uv_pip_install", lambda pkg: (True, ""))
+    monkeypatch.setattr(agent_commands, "_uv_pip_uninstall", lambda pkg: (True, ""))
+
+    agent_commands.agents_install("lobster-visualization", workspace=ws)  # in it
+    agent_commands.agents_uninstall("lobster-genomics", workspace=ws)  # not in it
+
+    config = WorkspaceAgentConfig.load(ws)
+    assert (config.preset, config.enabled_agents) == ("scrna-basic", [])
+    assert "explicit agents" not in _out()
