@@ -1,4 +1,4 @@
-"""Clearing exports in a folder that is not a Lobster project shows every file first."""
+"""Clearing in a folder that is not a Lobster project shows every file first."""
 
 import json
 from types import SimpleNamespace
@@ -7,6 +7,7 @@ import pytest
 from rich.console import Console
 
 from lobster.cli_internal.commands.light.metadata_commands import (
+    metadata_clear,
     metadata_clear_all,
     metadata_clear_exports,
 )
@@ -76,3 +77,58 @@ def test_clearing_all_with_no_exports_does_not_warn(tmp_path):
     (workspace / "metadata" / "samples.json").write_text("{}")
 
     assert WARNING not in _ask(metadata_clear_all, workspace)
+
+
+METADATA_WARNING = (
+    "This folder is not a Lobster project; "
+    "files in its metadata folder may be your own."
+)
+MINE = [f"mine_{i}.json" for i in range(3)]
+
+
+def _metadata(folder, project):
+    (folder / "metadata").mkdir(parents=True)
+    for name in MINE:
+        (folder / "metadata" / name).write_text("{}")
+    if project:
+        (folder / "project.json").write_text(json.dumps({"name": "study"}))
+    return folder
+
+
+@pytest.mark.parametrize("clear", [metadata_clear, metadata_clear_all])
+def test_a_plain_folder_names_every_metadata_file_and_warns(tmp_path, clear):
+    workspace = _metadata(tmp_path / "docs", project=False)
+
+    shown = _ask(clear, workspace)
+
+    assert METADATA_WARNING in shown
+    assert all(name in shown for name in MINE)
+    assert sorted(p.name for p in (workspace / "metadata").iterdir()) == MINE
+
+
+@pytest.mark.parametrize("clear", [metadata_clear, metadata_clear_all])
+def test_metadata_in_a_project_is_cleared_as_before(tmp_path, clear):
+    workspace = _metadata(tmp_path / "study" / ".lobster_workspace", project=True)
+
+    shown = _ask(clear, workspace)
+
+    assert METADATA_WARNING not in shown
+    assert not any(name in shown for name in MINE)
+
+
+def test_a_plain_folder_with_no_metadata_files_does_not_warn(tmp_path):
+    workspace = _workspace(tmp_path / "docs", project=False)
+    console = Console(record=True, width=300)
+    output = ConsoleOutputAdapter(console)
+    output.confirm = lambda question: False
+    client = SimpleNamespace(
+        data_manager=SimpleNamespace(
+            workspace_path=str(workspace),
+            metadata_store={"GSE1": {}},  # something to clear
+            current_metadata={},
+        )
+    )
+
+    metadata_clear(client, output)
+
+    assert METADATA_WARNING not in " ".join(console.export_text().split())
