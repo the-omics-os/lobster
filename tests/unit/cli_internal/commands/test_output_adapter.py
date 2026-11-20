@@ -330,3 +330,42 @@ def test_console_output_adapter_preserves_literal_brackets_in_table_cells():
 
     assert "/queue clear [download|all]" in out
     assert "/metadata clear [exports|all]" in out
+
+
+def _list_events(items, **kwargs):
+    events = []
+    adapter = ProtocolOutputAdapter(
+        lambda msg_type, payload: events.append({"type": msg_type, "payload": payload})
+    )
+    adapter.render_blocks([list_block(items, **kwargs)])
+    return events
+
+
+def test_a_long_list_reaches_the_go_tui_in_parts_of_at_most_1000_lines():
+    items = [f"file_{n}.csv" for n in range(1, 2501)]
+
+    events = _list_events(items, title="Files", ordered=True)
+
+    assert events[0] == {"type": "text", "payload": {"content": "Files\n"}}
+    parts = [event["payload"]["content"] for event in events[1:]]
+    assert {event["type"] for event in events} == {"text"}
+    assert [part.count("\n") for part in parts] == [1000, 1000, 500]
+    assert "".join(parts) == "".join(f"{n}. file_{n}.csv\n" for n in range(1, 2501))
+
+
+def test_no_message_of_a_very_long_list_overflows_the_go_tui_reader():
+    from lobster.ui.bridge.protocol import ProtocolMessage
+
+    go_reader_limit = 4 * 1024 * 1024  # bufio.Scanner buffer in protocol/handler.go
+    items = [
+        f"sample_{n:06d}_é_filtered_feature_bc_matrix.h5ad" for n in range(150_000)
+    ]
+
+    events = _list_events(items)
+
+    lines = [
+        ProtocolMessage(type=event["type"], payload=event["payload"]).to_json_line()
+        for event in events
+    ]
+    assert max(len(line.encode()) for line in lines) < go_reader_limit
+    assert sum(event["payload"]["content"].count("\n") for event in events) == 150_000
