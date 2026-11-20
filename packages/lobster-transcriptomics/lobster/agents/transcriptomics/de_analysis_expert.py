@@ -173,28 +173,6 @@ def _unmodelled_covariates_text(obs, groupby) -> str:
     )
 
 
-def _empty_bulk_de_refusal(adata_de, de_stats):
-    """An empty filtered table is not a successful biological DE result."""
-    if adata_de.n_vars:
-        return None
-    filters = de_stats["filtering_params"]
-    before = de_stats["pre_filter_gene_count"]
-    after = de_stats["post_filter_gene_count"]
-    return (
-        "**DE refused: no genes remain after filtering.**\n\n"
-        f"Genes after marker-style post-hoc filters: {before} -> {after}. "
-        f"All {before} genes were removed by the combined filters: "
-        f"min_fold_change={filters['min_fold_change']}, "
-        f"min_pct_expressed={filters['min_pct_expressed']}, "
-        f"max_out_pct_expressed={filters['max_out_pct_expressed']}.\n"
-        "These require sufficient fold change and expression in group1, and cap "
-        "the fraction of group2 samples with expression > 1. The out-group cap "
-        "is a marker-style filter and can remove genes expressed across bulk samples.\n\n"
-        "This is not a zero-DE biological result. Use run_de_with_formula for "
-        "bulk DE without these marker-style post-hoc filters. No result modality was stored."
-    )
-
-
 def _plain(value: Any) -> Any:
     """Convert numpy scalars/containers into plain Python for IR literals."""
     if isinstance(value, dict):
@@ -1529,16 +1507,13 @@ def de_analysis_expert(
                 internal_method = method
                 # The service's marker-style post-filters (out-group expression
                 # cap, min fraction, min fold change) remove genes expressed in
-                # every bulk sample: off for bulk, so every gene is tested.
-                bulk_filters = (
-                    {}
-                    if is_pseudobulk
-                    else {
-                        "min_fold_change": 1.0,
-                        "min_pct_expressed": 0.0,
-                        "max_out_pct_expressed": 1.0,
-                    }
-                )
+                # every bulk sample: off on every path here (samples, pseudobulk,
+                # a prepared design), so every gene is tested and reported.
+                bulk_filters = {
+                    "min_fold_change": 1.0,
+                    "min_pct_expressed": 0.0,
+                    "max_out_pct_expressed": 1.0,
+                }
 
                 adata_de, de_stats, ir = (
                     bulk_rnaseq_service.run_differential_expression_analysis(
@@ -1551,9 +1526,6 @@ def de_analysis_expert(
                     )
                 )
 
-                refusal = _empty_bulk_de_refusal(adata_de, de_stats)
-                if refusal:
-                    return refusal
                 adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
                 ir = _with_current_de_ir(ir, de_stats["de_results_key"])
                 # Save as new modality (name derived and checked before the analysis)
