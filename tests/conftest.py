@@ -1314,7 +1314,8 @@ def isolated_config_dir(request, tmp_path_factory, monkeypatch):
     """No test writes the user's own config folder (the project list first of
     all: every init_project registers its folder there). A test that sets its own
     CONFIG_DIR still does so after this one. A real_api test keeps the user's
-    folder: it may need the provider set there."""
+    folder: it may need the provider set there. The session guard still runs,
+    so a real_api test that writes the user's config fails the run."""
     if request.node.get_closest_marker("real_api"):
         return
     from lobster.config import global_config
@@ -1325,8 +1326,11 @@ def isolated_config_dir(request, tmp_path_factory, monkeypatch):
 
 
 def _user_files(folder: Path) -> dict:
-    """Size and change time of every file below ``folder``. A folder that is
-    missing or empty holds none: importing lobster.cli makes ~/.lobster empty."""
+    """Size, modification and status-change times, and inode of every file below
+    ``folder``. A process can set the modification time back but not the
+    status-change time; the inode tells a replaced file where that time is
+    counted in whole seconds. A folder that is missing or empty holds none:
+    importing lobster.cli makes ~/.lobster empty."""
     found = {}
     for root, _dirs, names in os.walk(folder):
         for name in names:
@@ -1335,7 +1339,12 @@ def _user_files(folder: Path) -> dict:
             except OSError:
                 continue
             key = os.path.relpath(os.path.join(root, name), folder)
-            found[key] = (stat.st_size, stat.st_mtime_ns)
+            found[key] = (
+                stat.st_size,
+                stat.st_mtime_ns,
+                stat.st_ctime_ns,
+                stat.st_ino,
+            )
     return found
 
 
@@ -1354,7 +1363,9 @@ def pytest_sessionstart(session):
 def pytest_sessionfinish(session, exitstatus):
     """Fail the run when it changed a file in the user's own Lobster folders.
 
-    A lobster command run by hand during the tests changes them too."""
+    A lobster command run by hand during the tests changes them too: a lobster
+    session in another terminal that writes its history fails the run. The
+    message names the file."""
     for folder, before in getattr(session.config, "_user_files_before", {}).items():
         after = _user_files(folder)
         changed = sorted(
