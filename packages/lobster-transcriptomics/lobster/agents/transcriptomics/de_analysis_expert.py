@@ -178,15 +178,16 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
         cause = (
             f"{passed:,} passed the expression pre-filter, but none can be "
             f"reported: {without:,} {have} no p-value ({no_pvalue}) and the fold "
-            f"change of the other {passed - without:,} is not a number (one "
-            "group's mean is below -1, as with centred or signed values)"
+            f"change of the other {passed - without:,} is not a number (a missing "
+            "value, or one group's mean below -1, as with centred or signed values)"
         )
     elif passed:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a fold "
             "change that is a number: the fold change log2((mean2 + 1) / "
-            "(mean1 + 1)) is not a number when one group's mean is below -1, as "
-            "with centred or signed values. So no result can be reported"
+            "(mean1 + 1)) is not a number when a gene has a missing value, or when "
+            "one group's mean is below -1, as with centred or signed values. So no "
+            "result can be reported"
         )
     else:
         cause = (

@@ -154,8 +154,8 @@ def test_a_refusal_for_both_reasons_counts_each(tmp_path, monkeypatch):
         "Of 500 genes, 500 passed the expression pre-filter, but none can be "
         "reported: 200 have no p-value (a t-test gives none for a gene with the "
         "same value in every sample) and the fold change of the other 300 is not "
-        "a number (one group's mean is below -1, as with centred or signed "
-        "values)." in reply
+        "a number (a missing value, or one group's mean below -1, as with centred "
+        "or signed values)." in reply
     ), reply
 
 

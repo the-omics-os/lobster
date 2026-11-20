@@ -185,8 +185,9 @@ def test_no_gene_tested_is_refused_with_its_cause(
             "Of 2,000 genes, 2,000 passed the expression pre-filter, but none has "
             "a fold change that is a number: the fold change "
             "log2((mean2 + 1) / (mean1 + 1)) "
-            "is not a number when one group's mean is below -1, as with centred or "
-            "signed values. So no result can be reported. Wilcoxon and t-test "
+            "is not a number when a gene has a missing value, or when one group's "
+            "mean is below -1, as with centred or signed values. So no result can "
+            "be reported. Wilcoxon and t-test "
             "expect counts or log-scale values. Use deseq2 on raw counts, or run "
             "on unscaled values. No result modality was stored."
         ) in reply, reply
