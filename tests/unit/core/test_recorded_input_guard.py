@@ -102,9 +102,11 @@ def test_a_file_never_loaded_can_be_saved_again(tmp_path):
 def test_the_legacy_store_auto_save_is_refused(ws):
     dm = DataManagerV2(workspace_path=ws)
     before = _sha(dm.data_dir / "x.h5ad")
+    loaded = dm.get_modality("x")
     with pytest.raises(RecordedInputError):
         dm.store_modality(name="x", adata=_adata(shift=3.0), auto_save=True)
     assert _sha(dm.data_dir / "x.h5ad") == before
+    assert dm.get_modality("x") is loaded  # memory unchanged too
 
 
 def _resumed_with_snapshot(tmp_path, snapshot_shift=5.0):
@@ -486,3 +488,35 @@ def test_another_file_differing_only_in_case_is_not_the_loaded_one(ws):
     dm.save_modality("X", "X.h5ad")
     assert dm.recorded_input("X.h5ad") is None
     assert _sha(dm.data_dir / "x.h5ad") == before
+
+
+def test_ml_splits_refused_leave_memory_provenance_and_files(ws):
+    """create_ml_splits into a split name whose file this session loaded
+    (x_test.h5ad from a first session) is refused before anything changes:
+    no split stored, the input modality not annotated, no step logged."""
+    ml = pytest.importorskip("lobster.agents.machine_learning.machine_learning_expert")
+    from lobster.testing.provenance_replay import factory_tools
+
+    rng = np.random.default_rng(4)
+    adata = ad.AnnData(
+        X=rng.random((20, 5)).astype(np.float32),
+        obs=pd.DataFrame(index=[f"s{i}" for i in range(20)]),
+        var=pd.DataFrame(index=[f"g{i}" for i in range(5)]),
+    )
+    adata.write_h5ad(ws / "data" / "x.h5ad")
+    adata[:4].copy().write_h5ad(ws / "data" / "x_test.h5ad")
+    dm = DataManagerV2(workspace_path=ws)
+    modalities = sorted(dm.list_modalities())
+    shas = {p.name: _sha(p) for p in (ws / "data").glob("*.h5ad")}
+    obs, uns = list(dm.get_modality("x").obs.columns), set(dm.get_modality("x").uns)
+    activities = len(dm.provenance.activities)
+    tools = factory_tools(ml.machine_learning_expert, ml.__name__, dm)
+
+    reply = tools["create_ml_splits"].invoke({"modality_name": "x"})
+
+    assert "data/x_test.h5ad is a file this session loaded" in reply, reply
+    assert sorted(dm.list_modalities()) == modalities
+    assert list(dm.get_modality("x").obs.columns) == obs
+    assert set(dm.get_modality("x").uns) == uns
+    assert len(dm.provenance.activities) == activities
+    assert {p.name: _sha(p) for p in (ws / "data").glob("*.h5ad")} == shas
