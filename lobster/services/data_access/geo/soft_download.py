@@ -9,11 +9,14 @@ which fails in many network environments.
 import gzip
 import os
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import zlib
 from pathlib import Path
 from typing import Optional
 
+from lobster.services.data_access.geo.downloader import _idle_timeout_s
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -77,6 +80,20 @@ def _valid_soft_file(path: Path, geo_id: str) -> bool:
         return False
 
 
+_ATTEMPTS = 3
+
+
+def _is_ssl_failure(error: Exception) -> bool:
+    return "CERTIFICATE_VERIFY_FAILED" in str(error) or "SSL" in str(error)
+
+
+def _worth_retrying(error: Exception) -> bool:
+    """A slow or filtered route fails transiently; a missing file or bad certificate does not."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code >= 500
+    return not _is_ssl_failure(error)
+
+
 def pre_download_soft_file(
     geo_id: str,
     cache_dir: Path,
@@ -114,20 +131,37 @@ def pre_download_soft_file(
 
         logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
         ssl_context = create_ssl_context()
-        with urllib.request.urlopen(soft_url, context=ssl_context) as response:
-            with tempfile.NamedTemporaryFile(
-                mode="wb", dir=cache_dir, prefix=f".{geo_id}_soft_", delete=False
-            ) as temporary:
-                temporary_path = Path(temporary.name)
-                temporary.write(response.read())
-        if not _valid_soft_file(temporary_path, geo_id):
-            raise ValueError("Downloaded SOFT file is incomplete or invalid")
+        for attempt in range(1, _ATTEMPTS + 1):
+            try:
+                # the timeout bounds each socket wait, not the whole transfer
+                with urllib.request.urlopen(
+                    soft_url, context=ssl_context, timeout=_idle_timeout_s()
+                ) as response:
+                    with tempfile.NamedTemporaryFile(
+                        mode="wb",
+                        dir=cache_dir,
+                        prefix=f".{geo_id}_soft_",
+                        delete=False,
+                    ) as temporary:
+                        temporary_path = Path(temporary.name)
+                        temporary.write(response.read())
+                if not _valid_soft_file(temporary_path, geo_id):
+                    raise ValueError("Downloaded SOFT file is incomplete or invalid")
+                break
+            except Exception as e:
+                if attempt == _ATTEMPTS or not _worth_retrying(e):
+                    raise
+                logger.debug(
+                    f"Pre-download attempt {attempt} for {geo_id} failed: {e}; retrying"
+                )
+                if temporary_path is not None:
+                    temporary_path.unlink(missing_ok=True)
+                time.sleep(2 ** (attempt - 1))
         os.replace(temporary_path, soft_file_path)
         logger.debug(f"Successfully pre-downloaded SOFT file to {soft_file_path}")
         return soft_file_path
     except Exception as e:
-        error_str = str(e)
-        if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
+        if _is_ssl_failure(e):
             handle_ssl_error(e, soft_url, logger)
             raise Exception(
                 "SSL certificate verification failed when downloading SOFT file. "
