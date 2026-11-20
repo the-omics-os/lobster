@@ -37,4 +37,7 @@ def test_the_exported_bioactivity_cell_runs(monkeypatch, target):
 
     assert scope["activities"] == [{"activity_id": 1}]
     assert sent["molecule_chembl_id"] == "CHEMBL25"
-    assert sent.get("target_chembl_id") == target
+    if target:
+        assert sent["target_chembl_id"] == target
+    else:
+        assert "target_chembl_id" not in sent
