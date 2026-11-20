@@ -923,7 +923,10 @@ def test_the_first_ctrl_c_ends_the_run_from_a_thread_and_arms_the_second(
     with pytest.raises(KeyboardInterrupt):
         with factory.recorded_run_status(client):
             first_press = sigint[-1]
-            first_press(signal.SIGINT, None)  # the press, where Python calls it
+            try:
+                first_press(signal.SIGINT, None)  # the press, where Python calls it
+            finally:
+                stop_now = sigint[-1]  # while the command still runs
 
     assert WAITING in " ".join(capsys.readouterr().err.split())
     assert (
@@ -933,7 +936,6 @@ def test_the_first_ctrl_c_ends_the_run_from_a_thread_and_arms_the_second(
     assert thread.daemon
     thread.run()
     assert ended == ["aborted"]
-    stop_now = sigint[-1]
     assert stop_now not in (first_press, signal.default_int_handler, signal.SIG_DFL)
     monkeypatch.setattr(factory, "_stop_waiting", lambda text: ended.append(text))
     stop_now(signal.SIGINT, None)
@@ -951,6 +953,41 @@ def test_a_command_that_goes_on_after_the_first_ctrl_c_is_still_aborted(
         except KeyboardInterrupt:
             pass  # a step that swallows it; the command ends normally
     assert client.catalog.end == ("aborted", "Ctrl-C")
+    # a caller that goes on gets Python's own Ctrl-C back, not a hard exit
+    assert sigint[-1] is signal.default_int_handler
+
+
+class _ReenteredStderr:
+    """stderr written to from a signal handler while the thread was writing it."""
+
+    def write(self, text):
+        raise RuntimeError("reentrant call inside <_io.BufferedWriter name='<stderr>'>")
+
+    def flush(self):
+        pass
+
+
+def test_the_first_ctrl_c_goes_on_when_its_line_cannot_be_written(
+    monkeypatch, sigint, started
+):
+    client = _client()
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), client.catalog))
+    with pytest.raises(KeyboardInterrupt):
+        with factory.recorded_run_status(client):
+            monkeypatch.setattr(sys, "stderr", _ReenteredStderr())
+            sigint[-1](signal.SIGINT, None)
+    assert len(started) == 1
+
+
+def test_the_stop_now_exits_when_its_line_cannot_be_written(monkeypatch, sigint):
+    import atexit
+
+    exits = []
+    monkeypatch.setattr(atexit, "_run_exitfuncs", lambda: None)
+    monkeypatch.setattr(factory.os, "_exit", exits.append)
+    monkeypatch.setattr(sys, "stderr", _ReenteredStderr())
+    factory._stop_waiting("bye")
+    assert exits == [130]
 
 
 def test_without_a_press_the_ctrl_c_handler_is_put_back(monkeypatch, sigint):
