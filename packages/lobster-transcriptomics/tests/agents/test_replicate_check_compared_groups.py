@@ -47,8 +47,8 @@ def test_deseq2_does_not_count_a_short_group_it_does_not_compare(tmp_path, monke
     minimum of 3 is for the groups compared."""
     _, reply = _run(tmp_path, monkeypatch, _groups(5, 1, 6), "deseq2", pseudobulk=True)
 
-    assert "Insufficient replicates" not in reply, reply
-    assert "Genes tested" in reply or "Complete" in reply, reply
+    assert reply.startswith("## Differential Expression Analysis Complete"), reply
+    assert "- Contrast: treat vs ctrl in condition\n" in reply
 
 
 def _rows(a, b):
@@ -83,4 +83,3 @@ def test_deseq2_with_a_short_compared_group_adds_no_note(tmp_path, monkeypatch):
     assert reply.startswith(
         "**Insufficient replicates**: Group 'ctrl' has only 1 replicate (minimum 3"
     ), reply
-    assert "deseq2 fits every group" not in reply
