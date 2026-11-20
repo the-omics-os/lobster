@@ -2083,6 +2083,7 @@
   "Replay report: {path}": "重放报告：{path}",
   "Replay files: {path}": "重放文件：{path}",
   "The notebook stopped with {error_type}: {error}": "notebook 因 {error_type} 而停止：{error}",
+  "The notebook stopped: {reason}": "notebook 已停止：{reason}",
   "The notebook wrote no .h5ad file.": "notebook 没有写出 .h5ad 文件。",
   "{name}: the session has no saved file to compare it with.": "{name}：会话中没有可与之比较的已保存文件。",
   "{name}: could not be read for the comparison ({error}).": "{name}：无法读取以进行比较（{error}）。",
