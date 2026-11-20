@@ -95,10 +95,13 @@ def test_no_gene_left_is_refused_whichever_statsmodels(
     assert "expression pre-filter kept none" in reply
 
 
-def test_a_gene_without_a_p_value_leaves_the_others_tested(tmp_path, monkeypatch):
+@pytest.mark.parametrize("method", ["t_test", "wilcoxon"])
+def test_a_gene_without_a_p_value_leaves_the_others_tested(
+    tmp_path, monkeypatch, method
+):
     adata = _constant(_c2(), 1)
 
-    dm, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=False)
+    dm, reply = _run(tmp_path, monkeypatch, adata, method, pseudobulk=False)
 
     assert "Complete" in reply, reply
     assert _tested_line(reply) == (
@@ -107,14 +110,6 @@ def test_a_gene_without_a_p_value_leaves_the_others_tested(tmp_path, monkeypatch
     assert _stored_rows(dm) == (1999, 1999)
     (result,) = [m for m in dm.list_modalities() if m != "bulk"]
     assert np.isfinite(dm.get_modality(result).var["padj"]).all()
-
-
-def test_wilcoxon_tests_a_gene_with_the_same_value_everywhere(tmp_path, monkeypatch):
-    adata = _constant(_c2(), 1)
-
-    dm, reply = _run(tmp_path, monkeypatch, adata, "wilcoxon", pseudobulk=False)
-
-    assert _tested_line(reply) == "- Genes tested: 2,000 of 2,000"
 
 
 def test_a_missing_value_drops_only_its_gene(tmp_path, monkeypatch):
@@ -196,8 +191,8 @@ def test_the_exported_code_adjusts_as_the_analysis_does(tmp_path, monkeypatch, m
 
     out, exported = _analysed_and_exported(tmp_path, monkeypatch, adata, method)
 
-    # a wilcoxon gives the constant gene p = 1; a t-test gives it none
-    assert out.n_vars == (1999 if method == "wilcoxon" else 1998)
+    # neither test gives the constant gene a p-value
+    assert out.n_vars == 1998
     replayed = exported["padj"].dropna()
     assert len(replayed) == out.n_vars
     np.testing.assert_allclose(
