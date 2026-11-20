@@ -217,7 +217,7 @@ def test_a_gene_off_in_group1_and_on_in_group2_is_tested(
     dm, reply = _invoke(tmp_path, monkeypatch, adata, method, False, pseudobulk)
     result_name = re.search(r"New modality created\*\*: '([^']+)'", reply).group(1)
     result = dm.get_modality(result_name)
-    table = pd.DataFrame(result.uns[result.uns["de_current_results_key"]])
+    table = result.uns[result.uns["de_current_results_key"]]["results_df"]
     off_on = {f"GENE{i:04d}" for i in range(10)}
     assert _number(reply, "Genes tested") == 20 == result.n_vars
     assert off_on <= set(result.var_names)

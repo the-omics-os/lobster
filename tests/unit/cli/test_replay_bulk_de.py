@@ -268,9 +268,8 @@ def test_a_rank_or_t_test_notebook_replays_to_match(
         source_text = "".join(cell["source"])
         if "de_current_results_key" in source_text and cell["cell_type"] == "code":
             cell["source"] = source_text + (
-                "\npadj = adata.uns[adata.uns['de_current_results_key']]['padj']"
-                "\ngene = next(iter(padj))"
-                "\npadj[gene] = padj[gene] + 1e-12\n"
+                "\ntable = adata.uns[adata.uns['de_current_results_key']]['results_df']"
+                "\ntable.iloc[0, table.columns.get_loc('padj')] += 1e-12\n"
             )
             break
     else:
