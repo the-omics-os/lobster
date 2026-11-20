@@ -123,16 +123,31 @@ def test_single_cell_markers_keep_their_filters(tmp_path):
     assert "Out-group expression fraction < 0.5" in reply
 
 
-@pytest.mark.parametrize("save", [False, True])
-@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
-def test_no_gene_tested_is_refused_with_its_cause(tmp_path, monkeypatch, method, save):
-    """Every value <= 1 (c2 / 1e4): the expression pre-filter keeps no gene. That is
-    no DE result: refused, naming the pre-filter, nothing stored or saved."""
-    monkeypatch.chdir(tmp_path)
+PREFILTER = "no gene has a value above 1.0 in at least 2 samples"
+FOLD_CHANGE = "none has a finite fold change"
+
+
+def _no_gene_case(case):
+    """12 samples x 2,000 genes that leave no gene to test, for one cause."""
     adata = _c2()
-    adata.X = adata.X / 1e4
+    rng = np.random.default_rng(3)
+    if case == "fractional":  # every value <= 1: the expression pre-filter
+        adata.X = adata.X / 1e4
+    elif case == "all_zero":
+        adata.X = np.zeros_like(adata.X)
+    else:  # signed: ctrl ~N(-3), treat ~N(+3); passes the pre-filter, log2 of a
+        # negative mean is not a number
+        adata.X = np.vstack(
+            [rng.normal(-3, 1, (6, 2000)), rng.normal(3, 1, (6, 2000))]
+        ).astype(np.float32)
     adata.layers["counts"] = adata.X.copy()
-    adata.uns["is_pseudobulk"] = True
+    return adata
+
+
+def _invoke(tmp_path, monkeypatch, adata, method, save, pseudobulk):
+    monkeypatch.chdir(tmp_path)
+    if pseudobulk:
+        adata.uns["is_pseudobulk"] = True
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     dm.store_modality("bulk", adata)
     tools = factory_tools(de_analysis_expert, DE, dm)
@@ -146,9 +161,56 @@ def test_no_gene_tested_is_refused_with_its_cause(tmp_path, monkeypatch, method,
             "save_result": save,
         }
     )
+    return dm, reply
+
+
+@pytest.mark.parametrize("pseudobulk", [False, True], ids=["plain", "pseudobulk"])
+@pytest.mark.parametrize("save", [False, True])
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+@pytest.mark.parametrize("case", ["fractional", "all_zero", "signed"])
+def test_no_gene_tested_is_refused_with_its_cause(
+    tmp_path, monkeypatch, case, method, save, pseudobulk
+):
+    """No gene left to test is no DE result: refused, naming the step that
+    dropped them (the expression pre-filter, or a fold change that is not a
+    number), with nothing stored or saved."""
+    dm, reply = _invoke(
+        tmp_path, monkeypatch, _no_gene_case(case), method, save, pseudobulk
+    )
     assert reply.startswith("**DE refused: no gene was tested.**"), reply
-    assert "no gene has a value above 1.0 in at least 2 samples" in reply
-    assert "2,000 genes" in reply
+    assert "Of 2,000 genes" in reply
+    if case == "signed":
+        assert FOLD_CHANGE in reply and PREFILTER not in reply, reply
+    else:
+        assert PREFILTER in reply and FOLD_CHANGE not in reply, reply
     assert "Complete" not in reply
     assert dm.list_modalities() == ["bulk"]
     assert not list(dm.data_dir.glob("*.h5ad"))
+
+
+@pytest.mark.parametrize("pseudobulk", [False, True], ids=["plain", "pseudobulk"])
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+def test_a_gene_off_in_group1_and_on_in_group2_is_tested(
+    tmp_path, monkeypatch, method, pseudobulk
+):
+    """Genes at 0 in every ctrl sample and high in treat are the clearest DE;
+    no filter on group1 expression may drop them."""
+    rng = np.random.default_rng(11)
+    x = rng.negative_binomial(5, 5 / 105, size=(12, 20)).astype(np.float32)
+    x[:6, :10] = 0
+    x[6:, :10] = rng.poisson(200, size=(6, 10))
+    adata = ad.AnnData(
+        X=x,
+        obs=pd.DataFrame({"condition": ["ctrl"] * 6 + ["treat"] * 6}, index=SAMPLES),
+        var=pd.DataFrame(index=[f"GENE{i:04d}" for i in range(20)]),
+    )
+    adata.layers["counts"] = adata.X.copy()
+    dm, reply = _invoke(tmp_path, monkeypatch, adata, method, False, pseudobulk)
+    result_name = re.search(r"New modality created\*\*: '([^']+)'", reply).group(1)
+    result = dm.get_modality(result_name)
+    table = pd.DataFrame(result.uns[result.uns["de_current_results_key"]])
+    off_on = {f"GENE{i:04d}" for i in range(10)}
+    assert _number(reply, "Genes tested") == 20 == result.n_vars
+    assert off_on <= set(result.var_names)
+    assert set(table.index[table["padj"] < 0.05]) == off_on
+    assert _number(reply, "Significant genes") == 10

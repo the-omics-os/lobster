@@ -25,7 +25,9 @@ METHODS = ["wilcoxon", "t_test"]
 
 
 def counts(kind):
-    if kind == "bulk_all_expressed":
+    if kind == "all_zero":
+        values = np.zeros((6, 50), dtype=np.float32)
+    elif kind == "bulk_all_expressed":
         rng = np.random.default_rng(7)
         values = rng.negative_binomial(5, 0.05, size=(500, 6))
         values[:25, 3:] *= 6
@@ -119,6 +121,25 @@ def test_genes_with_no_significant_hits_still_complete(tmp_path, monkeypatch, me
     log.assert_called_once()
     assert dm.get_modality("bulk_de_ctrl_vs_treat").n_vars == 2
     assert "de_current_results_key" in dm.get_modality("bulk_de_ctrl_vs_treat").uns
+    np.testing.assert_array_equal(dm.get_modality("bulk").X, original.X)
+
+
+@pytest.mark.parametrize("method", METHODS)
+@pytest.mark.parametrize("save", [False, True])
+def test_no_gene_left_to_test_is_refused_without_side_effects(
+    tmp_path, monkeypatch, method, save
+):
+    dm, original, response, (output, _, _), store, save_call, log = invoke(
+        tmp_path, monkeypatch, method, "all_zero", save
+    )
+    assert output.n_vars == 0
+    assert response.startswith("**DE refused: no gene was tested.**"), response
+    assert "Analysis Complete" not in response
+    store.assert_not_called()
+    save_call.assert_not_called()
+    log.assert_not_called()
+    assert dm.list_modalities() == ["bulk"]
+    assert not list(dm.data_dir.glob("*.h5ad"))
     np.testing.assert_array_equal(dm.get_modality("bulk").X, original.X)
 
 
