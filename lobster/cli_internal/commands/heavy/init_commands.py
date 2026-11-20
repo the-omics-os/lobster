@@ -180,12 +180,22 @@ def _packages_of(agents) -> list[str]:
     ]
 
 
+def _agents_flag_list(agents_flag: Optional[str]) -> list[str]:
+    """The agents named in ``--agents a,b``, canonical and in order."""
+    return _normalize_selected_agents(
+        [a.strip() for a in (agents_flag or "").split(",") if a.strip()]
+    )
+
+
 def _starting_packages(
-    workspace_path: Optional[Path], preset: Optional[str] = None
+    workspace_path: Optional[Path],
+    preset: Optional[str] = None,
+    agents: Optional[list[str]] = None,
 ) -> Optional[list[str]]:
     """The packages an init picker starts from; None: the defaults.
 
-    ``--preset`` first, then the experts the workspace has saved (`init --force`).
+    ``--preset`` first, then ``--agents``, then the experts the workspace has
+    saved (`init --force`).
     """
     from lobster.config.agent_presets import expand_preset
     from lobster.config.workspace_agent_config import (
@@ -195,6 +205,8 @@ def _starting_packages(
 
     if preset:
         return _packages_of(expand_preset(preset) or []) or None
+    if agents:
+        return _packages_of(agents) or None
     if workspace_path is None or not (workspace_path / CONFIG_FILE_NAME).is_file():
         return None
     saved = WorkspaceAgentConfig.load(workspace_path)
@@ -224,6 +236,24 @@ def _kept_preset(preset: Optional[str], agents: list[str]) -> Optional[str]:
     return None
 
 
+def _kept_choice(
+    preset: Optional[str], agents: Optional[list[str]], picked: list[str]
+) -> tuple[list[str], Optional[str]]:
+    """The experts and preset to save after a picker seeded by the flags.
+
+    ``--preset`` wins over ``--agents``. The ``--agents`` list is saved as given
+    when the picked packages are its own; otherwise the picked experts are.
+    """
+    if preset:
+        return picked, _kept_preset(preset, picked)
+    if not agents or not picked:
+        return picked, None
+    if set(_packages_of(picked)) == set(_packages_of(agents)):
+        return agents, None
+    console.print(h("[dim]--agents is replaced by the packages you picked.[/dim]"))
+    return picked, None
+
+
 def _check_preset_or_exit(preset_flag: str, out) -> None:
     from lobster.config.agent_presets import is_valid_preset
 
@@ -240,7 +270,9 @@ def _check_preset_or_exit(preset_flag: str, out) -> None:
 
 
 def _prompt_manual_agent_selection(
-    workspace_path: Path, preset: Optional[str] = None
+    workspace_path: Path,
+    preset: Optional[str] = None,
+    flag_agents: Optional[list[str]] = None,
 ) -> list[str]:
     """Interactive agent package selection. Returns list of selected agent names."""
     from rich import box
@@ -293,7 +325,10 @@ def _prompt_manual_agent_selection(
     console.print(h("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]"))
     console.print(h("[dim]Already installed packages will be skipped[/dim]"))
 
-    ticked = _starting_packages(workspace_path, preset) or DEFAULT_AGENT_PACKAGES
+    ticked = (
+        _starting_packages(workspace_path, preset, flag_agents)
+        or DEFAULT_AGENT_PACKAGES
+    )
     default = ",".join(
         str(i)
         for i, (name, *_) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
@@ -786,7 +821,11 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
 
 
 def _perform_agent_selection_interactive(
-    workspace_path: Path, *, skip_extras: bool = False, preset: Optional[str] = None
+    workspace_path: Path,
+    *,
+    skip_extras: bool = False,
+    preset: Optional[str] = None,
+    agents: Optional[str] = None,
 ) -> tuple[list[str], str]:
     """Handle interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
@@ -797,7 +836,8 @@ def _perform_agent_selection_interactive(
     console.print(h("Select which agents to enable for your workspace:"))
     console.print()
 
-    selected = _prompt_manual_agent_selection(workspace_path, preset)
+    flag_agents = _agents_flag_list(agents)
+    selected = _prompt_manual_agent_selection(workspace_path, preset, flag_agents)
 
     if selected:
         if skip_extras:
@@ -808,7 +848,7 @@ def _perform_agent_selection_interactive(
             h("\n[green]v[/green] {len} agent(s) configured").format(len=len(selected))
         )
 
-    return selected, _kept_preset(preset, selected)
+    return _kept_choice(preset, flag_agents, selected)
 
 
 _SMART_STD_AGENT_DISPLAY = {
@@ -1385,10 +1425,12 @@ def _postprocess_tui_init_result(
     global_config: bool,
     skip_extras: bool,
     preset: Optional[str] = None,
+    agents: Optional[list[str]] = None,
 ) -> Dict[str, Any]:
     """Normalize, persist, and complete a Go/questionary init result.
 
-    ``preset`` (``--preset``) is recorded when the picked packages are its own.
+    ``preset`` (``--preset``) or ``agents`` (``--agents``) is recorded when the
+    picked packages are its own.
     """
     from lobster.core.uv_tool_env import is_uv_tool_env
     from lobster.ui.bridge.init_adapter import apply_tui_init_result
@@ -1427,8 +1469,9 @@ def _postprocess_tui_init_result(
             normalized_agents = _check_and_prompt_install_packages(
                 normalized_agents, workspace_path
             )
-    normalized_result["agents"] = normalized_agents
-    normalized_result["preset"] = _kept_preset(preset, normalized_agents)
+    normalized_result["agents"], normalized_result["preset"] = _kept_choice(
+        preset, agents, normalized_agents
+    )
 
     try:
         apply_tui_init_result(
@@ -3689,8 +3732,11 @@ def init_impl(
 
         _tui_handled = False
         # Agents are saved in the workspace even with --global.
+        _flag_agents = _agents_flag_list(agents)
         _saved_packages = _starting_packages(
-            _resolve_workspace_or_exit(create=False, workspace=init_ws), preset
+            _resolve_workspace_or_exit(create=False, workspace=init_ws),
+            preset,
+            _flag_agents,
         )
 
         # ---- Try Go TUI ----
@@ -3730,6 +3776,7 @@ def init_impl(
                             global_config=global_config,
                             skip_extras=skip_extras,
                             preset=preset,
+                            agents=_flag_agents,
                         )
 
                         _print_init_summary(
@@ -3820,6 +3867,7 @@ def init_impl(
                     global_config=global_config,
                     skip_extras=skip_extras,
                     preset=preset,
+                    agents=_flag_agents,
                 )
 
                 _print_init_summary(
@@ -4316,7 +4364,7 @@ def init_impl(
         # Step 4 — Agent selection                                            #
         # ================================================================== #
         selected_agents, preset_name = _perform_agent_selection_interactive(
-            workspace_path, skip_extras=skip_extras, preset=preset
+            workspace_path, skip_extras=skip_extras, preset=preset, agents=agents
         )
         if selected_agents:
             _save_agent_config(selected_agents, workspace_path, preset_name)

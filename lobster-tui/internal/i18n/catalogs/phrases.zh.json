@@ -769,6 +769,7 @@
   "[dim]Contacting Omics-OS service for agent suggestions...[/dim]": "[dim]正在连接 Omics-OS 服务，获取智能体推荐...[/dim]",
   "[yellow]⚠️  Preset includes agents not published on public PyPI; skipping for this install surface: {join}[/yellow]": "[yellow]⚠️  预设包含未在公开 PyPI 发布的智能体，本次安装将跳过：{join}[/yellow]",
   "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]": "[dim]预设 '{preset_name}' 将改为保存为明确列出的智能体。[/dim]",
+  "[dim]--agents is replaced by the packages you picked.[/dim]": "[dim]--agents 已被你勾选的软件包替换。[/dim]",
   "\n[green]v[/green] {len} agent(s) configured": "\n[green]v[/green] 已配置 {len} 个智能体",
   "  [yellow]⚠ Install manually: {_vector_search_install_command}[/yellow]": "  [yellow]⚠ 请手动安装：{_vector_search_install_command}[/yellow]",
   "tightened permissions on {path} to 0600": "已将 {path} 的权限收紧为 0600",

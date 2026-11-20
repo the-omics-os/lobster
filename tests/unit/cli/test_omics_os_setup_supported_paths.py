@@ -730,7 +730,7 @@ def test_classic_skip_extras_keeps_agent_selection_and_prints_later_command(
     monkeypatch.setattr(
         init_commands,
         "_prompt_manual_agent_selection",
-        lambda path, preset=None: selected,
+        lambda path, *_: selected,
     )
 
     def forbidden(*args, **kwargs):
