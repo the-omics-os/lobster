@@ -273,3 +273,31 @@ def test_a_turn_ends_as_its_caller_says_after_a_press(monkeypatch):
     factory.note_run_status(holder, "completed")  # the turn went on to the end
 
     assert seen == ["aborted", "completed"]
+
+
+def test_a_turn_does_not_hang_on_a_press_whose_note_never_ends(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from lobster.core.catalog import factory
+
+    stuck = threading.Event()
+
+    class Catalog:
+        def set_end_status(self, status, session_id=None, reason=None, **only):
+            if threading.current_thread().name == "lobster-ctrl-c":
+                stuck.wait()
+
+    holder = SimpleNamespace(catalog=Catalog())
+    handlers = [signal.default_int_handler]
+    monkeypatch.setattr(signal, "getsignal", lambda sig: handlers[-1])
+    monkeypatch.setattr(signal, "signal", lambda sig, handler: handlers.append(handler))
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), holder.catalog))
+    began = time.monotonic()
+    try:
+        with factory.ctrl_c_ends_the_turn(holder):
+            with pytest.raises(KeyboardInterrupt):
+                handlers[-1](signal.SIGINT, None)
+        assert time.monotonic() - began < 1.5
+    finally:
+        stuck.set()
