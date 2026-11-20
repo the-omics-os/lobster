@@ -126,6 +126,7 @@ def test_the_de_reply_counts_the_tests_without_a_p_value(tmp_path, flat):
         "sample compared); left out of the FDR correction\n"
     )
     assert (line in reply) is flat, reply
+    assert ("Tests without a p-value" in reply) is flat, reply
     assert "- Significant proteins: 0\n" not in reply, reply
 
 
@@ -142,3 +143,35 @@ def test_the_correlation_reply_counts_the_tests_without_a_p_value(tmp_path, flat
     assert (line in reply) is flat, reply
     assert "- Significant correlations: 0\n" not in reply, reply
     assert "nan" not in reply, reply
+
+
+@pytest.fixture
+def statsmodels_0_14(monkeypatch):
+    """The corrections as statsmodels 0.14 has them: an empty list divides by zero."""
+    import statsmodels.stats.multitest as multitest
+
+    for name in ("fdrcorrection", "multipletests"):
+        real = getattr(multitest, name)
+
+        def refuse_empty(pvals, *args, _real=real, **kwargs):
+            if len(pvals) == 0:
+                raise ZeroDivisionError("float division by zero")
+            return _real(pvals, *args, **kwargs)
+
+        monkeypatch.setattr(multitest, name, refuse_empty)
+
+
+def test_a_flat_target_gives_no_p_value_and_no_error(statsmodels_0_14):
+    adata = _proteins(flat=False)
+    adata.obs["dose"] = 1.0
+
+    out, stats, _ = ProteomicsDifferentialService().perform_correlation_analysis(
+        adata, target_column="dose"
+    )
+
+    assert stats["n_tests_without_pvalue"] == 50
+    assert stats["n_significant_results"] == 0
+    assert stats["median_abs_correlation"] == 0.0
+    assert stats["max_abs_correlation"] == 0.0
+    results = out.uns["correlation_analysis"]["results"]
+    assert all(np.isnan(r["p_adjusted"]) for r in results)
