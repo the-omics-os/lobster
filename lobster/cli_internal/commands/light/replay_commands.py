@@ -398,6 +398,28 @@ def _read_h5ad(path: Path):
     return adata
 
 
+# A custom-code cell exported before 1.3.0 b7 sets WORKSPACE to the session's
+# workspace as a literal path; from b7 on it is the injected ``workspace_path``.
+_LITERAL_WORKSPACE = re.compile(r"^WORKSPACE = Path\((?!workspace_path\))", re.M)
+
+
+def _reads_session_workspace(notebook: Path) -> bool:
+    """A code cell of the notebook points WORKSPACE at a literal path."""
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    for cell in cells:
+        if not isinstance(cell, dict) or cell.get("cell_type") != "code":
+            continue
+        source = cell.get("source", "")
+        if isinstance(source, list):
+            source = "".join(source)
+        if isinstance(source, str) and _LITERAL_WORKSPACE.search(source):
+            return True
+    return False
+
+
 def _manifest(notebook: Path) -> Dict[str, Any]:
     """The ``data_integrity_manifest`` of the export record, as written.
 
@@ -763,7 +785,8 @@ def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
     The SHA-256 of every file under ``data/`` and ``exports/``, of every
     ``.h5ad``/``.h5mu`` anywhere in the workspace outside ``.lamindb/`` and
     ``skip`` (this run's folder), and of ``files``; the size and modification
-    time of every other file there, outside ``replays/`` (other runs' folders).
+    time, change time and inode of every other file there, outside ``replays/``
+    (other runs' folders).
     """
     root = workspace.resolve()
     skipped = skip.resolve()
@@ -799,7 +822,10 @@ def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
             st = path.stat()
         except OSError:  # gone since the walk: compared as missing
             continue
-        hashes[str(path)] = f"stat:{st.st_size}:{st.st_mtime_ns}"
+        # the change time and inode catch a rewrite that puts the mtime back
+        hashes[str(path)] = (
+            f"stat:{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}:{st.st_ino}"
+        )
     for path in sorted(paths):
         try:
             hashes[str(path)] = _sha256(path)
@@ -1010,6 +1036,33 @@ def verify_notebook(
     base_policy = user_policy or _default_policy([])
     if refusal is not None:
         return refused(base_policy, refusal, anchor["name"])
+    if _reads_session_workspace(notebook):
+        # its code reads (and writes) the session's own files: never run
+        return finish(
+            report(
+                base_policy,
+                verification_status=VerificationStatus.NOT_RUN,
+                preflight=Preflight.REFUSED,
+                execution=Execution.NOT_RUN,
+                verdict=Verdict.REFUSED,
+                refusal=Refusal(
+                    (
+                        # re-exporting a migrated session renders the same cell
+                        h(
+                            "A custom-code cell was recorded before 1.3.0 and "
+                            "reads the session's workspace; the notebook was not run."
+                        )
+                        if isinstance(_manifest(notebook).get("migrated"), dict)
+                        else h(
+                            "A custom-code cell was exported before 1.3.0 final and "
+                            "reads the session's workspace. Re-export the notebook."
+                        )
+                    ),
+                    None,
+                    RefusalOrigin.PRODUCT,
+                ),
+            )
+        )
     outputs = replay_dir.resolve() / f"{OUTPUT_PREFIX}"
     executed = replay_dir.resolve() / "executed.ipynb"
     from lobster.core.notebooks.executor import NotebookExecutor

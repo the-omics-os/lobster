@@ -509,9 +509,7 @@ def _as_exported_before_b7(dm, notebook, tmp_path):
 @pytest.mark.parametrize(
     "tamper", [False, True], ids=["as-exported", "upstream-edited"]
 )
-def test_a_custom_cell_exported_before_b7_is_not_compared(
-    tmp_path, monkeypatch, tamper
-):
+def test_a_custom_cell_exported_before_b7_is_refused(tmp_path, monkeypatch, tamper):
     """Its code reads the session's own saved files through the literal path: a
     MATCH (or a MISMATCH that hides what it read) could never be said of it."""
     dm, source, notebook = _session(tmp_path, monkeypatch, THROUGH_WORKSPACE)
@@ -519,8 +517,34 @@ def test_a_custom_cell_exported_before_b7_is_not_compared(
         notebook = _tamper_step_a(notebook, tmp_path)
     old = _as_exported_before_b7(dm, notebook, tmp_path)
     out = _replay(dm, old, source)
-    assert out["verdict"] == "NOT_COMPARED", out
-    assert (
+    assert out["verdict"] == "REFUSED", out
+    assert out["report"]["refusal"]["reason"] == (
         "A custom-code cell was exported before 1.3.0 final and reads the session's "
-        "workspace; the notebook was not run. Re-export the notebook."
-    ) in out["notes"], out["notes"]
+        "workspace. Re-export the notebook."
+    ), out
+
+
+def test_a_migrated_session_with_a_custom_cell_is_refused_without_re_export(
+    tmp_path, monkeypatch
+):
+    """A migrated session renders its custom cell as recorded: re-exporting gives
+    the same cell, so the reason does not ask for it."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, THROUGH_WORKSPACE)
+    old = json.loads(_as_exported_before_b7(dm, notebook, tmp_path).read_text())
+    for cell in old["cells"]:
+        text = "".join(cell["source"])
+        if cell["cell_type"] == "markdown" and "data_integrity_manifest" in text:
+            cell["source"] = text.replace(
+                '"data_integrity_manifest": {',
+                '"data_integrity_manifest": {"migrated": {"from": "test"}, ',
+                1,
+            )
+            assert cell["source"] != text
+    migrated = tmp_path / "migrated.ipynb"
+    migrated.write_text(json.dumps(old))
+    out = _replay(dm, migrated, source)
+    assert out["verdict"] == "REFUSED", out
+    assert out["report"]["refusal"]["reason"] == (
+        "A custom-code cell was recorded before 1.3.0 and reads the session's "
+        "workspace; the notebook was not run."
+    ), out
