@@ -17,8 +17,9 @@ Resolution for one agent (first match wins):
 
 An invalid value logs a warning and only that layer is ignored. A ``config.toml`` that
 exists but cannot be read may hold the user's ``code_tool = false``: the tool is then off
-for every agent (the env layers still apply) and one warning names the file. The inputs
-are only the
+for every agent (the env layers still apply) and one warning names the file. So is an
+agent's setting that is there but is not true or false (``code_tool = "false"``): the
+tool is off for that agent. The inputs are only the
 process environment, the agent's own workspace ``config.toml`` and the declared default;
 no user-level or global configuration is read. The workspace setting is read on its own
 from exactly ``<workspace_path>/config.toml``, so other settings in that file never
@@ -116,13 +117,13 @@ def _workspace_layer(
     if settings is None:
         return None
     if not isinstance(settings, dict):
-        ignore(f"agent_settings.{agent_name} is not a table")
-        return None
+        _tell_not_a_bool(path, f"agent_settings.{agent_name}", settings, agent_name)
+        return False
     value = settings.get("code_tool")
     if value is None or isinstance(value, bool):
         return value
-    ignore("expected true or false")
-    return None
+    _tell_not_a_bool(path, f"agent_settings.{agent_name}.code_tool", value, agent_name)
+    return False
 
 
 def _tell_unreadable(path: Path, error: Exception) -> None:
@@ -135,6 +136,16 @@ def _tell_unreadable(path: Path, error: Exception) -> None:
         h(
             "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
         ).format(file=path, error=error)
+    )
+
+
+def _tell_not_a_bool(path: Path, key: str, value: Any, agent_name: str) -> None:
+    from lobster.i18n import h
+
+    logger.warning(
+        h(
+            "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed."
+        ).format(file=path, key=key, kind=type(value).__name__, agent=agent_name)
     )
 
 

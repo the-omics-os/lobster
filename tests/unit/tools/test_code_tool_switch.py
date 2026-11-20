@@ -135,12 +135,12 @@ def test_invalid_global_env_warns_and_falls_through(
 
 
 @pytest.mark.parametrize("line", ['"true"', '"false"', "1", "0", "1.0", '"yes"'])
-def test_non_boolean_config_value_drops_only_that_setting(
+def test_non_boolean_config_value_turns_the_tool_off_and_keeps_the_rest(
     tmp_path, warnings_seen, line
 ):
     ws = _workspace(tmp_path, line=line, extra='temperature = 0.5\nmodel = "m"\n')
     for default in (True, False):
-        assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is default
+        assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is False
     settings = WorkspaceAgentConfig.load(ws).agent_settings[AGENT]
     assert settings.code_tool is None
     assert settings.temperature == 0.5 and settings.model == "m"
@@ -308,24 +308,10 @@ def test_the_switch_does_not_depend_on_the_whole_config_loading(tmp_path, monkey
     assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
 
 
-@pytest.mark.parametrize("default", [True, False])
-@pytest.mark.parametrize("line", ['"false"', "0", '"no"', "[]", "{ on = true }"])
-def test_an_invalid_value_warns_with_the_agent_and_its_default(
-    tmp_path, warnings_seen, default, line
-):
-    ws = _workspace(tmp_path, line=line)
-    assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is default
-    mine = [w for w in warnings_seen if AGENT in w]
-    assert len(mine) == 1, warnings_seen
-    assert "code_tool" in mine[0] and ("on" if default else "off") in mine[0]
-    assert "default" in mine[0]
-
-
 @pytest.mark.parametrize(
     "body",
     [
         pytest.param("agent_settings = 5\n", id="agent_settings_not_a_table"),
-        pytest.param(f'[agent_settings]\n{AGENT} = "on"\n', id="agent_not_a_table"),
     ],
 )
 def test_an_unusable_config_warns_and_falls_through(tmp_path, warnings_seen, body):
@@ -801,6 +787,7 @@ def test_an_agent_entry_that_is_not_a_table_turns_it_off(tmp_path, warnings_seen
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
     said = [w for w in warnings_seen if "agent_settings.supervisor " in w]
     assert len(said) == 1 and "(found str)" in said[0], warnings_seen
+    assert "off for supervisor" in said[0]
 
 
 def test_another_agents_bad_value_leaves_this_agent_alone(tmp_path):
