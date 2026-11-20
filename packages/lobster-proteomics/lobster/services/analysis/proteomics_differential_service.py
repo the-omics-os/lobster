@@ -32,8 +32,13 @@ class ProteomicsDifferentialError(Exception):
 
 
 def _n_without_pvalue(results: List[Dict[str, Any]]) -> int:
-    """The tests that gave no p-value (left out of the correction)."""
-    return sum(1 for r in results if np.isnan(r["p_value"]))
+    """The tests that gave no p-value (left out of the correction), but for a
+    flagged split protein: it is tested, and counted apart."""
+    return sum(
+        1
+        for r in results
+        if np.isnan(r["p_value"]) and not r.get("zero_within_group_variance")
+    )
 
 
 class ProteomicsDifferentialService:
@@ -425,6 +430,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "proteins_processed": adata_de.n_vars,
                     "analysis_type": "differential_expression",
                     "n_tests_without_pvalue": _n_without_pvalue(de_results),
+                    "n_zero_within_group_variance": sum(
+                        1 for r in de_results if r.get("zero_within_group_variance")
+                    ),
                 }
             )
 
@@ -829,6 +837,17 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     g1_clean, g2_clean, test_method
                 )
 
+            # One value in each group, different between them: a t-test has no
+            # variance to test against (t = inf, p = 0). No p-value, flagged.
+            split = (
+                test_method not in ("mann_whitney", "limma_like")
+                and np.ptp(g1_clean) == 0
+                and np.ptp(g2_clean) == 0
+                and g1_clean[0] != g2_clean[0]
+            )
+            if test_result is not None and split:
+                test_result["statistic"] = test_result["p_value"] = float("nan")
+
             if test_result is not None:
                 # Calculate effect sizes and additional metrics
                 effect_metrics = self._calculate_effect_metrics(g1_clean, g2_clean)
@@ -847,6 +866,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "std_group2": float(np.std(g2_clean, ddof=1)),
                     **test_result,
                     **effect_metrics,
+                    "zero_within_group_variance": bool(split),
                 }
 
                 results.append(result)

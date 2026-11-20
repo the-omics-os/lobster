@@ -71,6 +71,20 @@ def _without_pvalue_text(stats: dict, why: str) -> str:
     return f"- Tests without a p-value: {n:,} ({why}); left out of the FDR correction\n"
 
 
+def _split_text(stats: dict) -> str:
+    """The reply line naming the t-test proteins with one value in each group,
+    different between them (they have no p-value), or "" if there is none."""
+    n = stats.get("n_zero_within_group_variance", 0)
+    if not n:
+        return ""
+    have, them = ("has", "it") if n == 1 else ("have", "them")
+    return (
+        f"- Of the proteins tested, {n:,} {have} the same value in every sample of "
+        f"each group (different between the groups): the t-test gives {them} no "
+        f"p-value; check {them} with limma_like or Mann-Whitney\n"
+    )
+
+
 def de_analysis_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
@@ -308,6 +322,7 @@ def de_analysis_expert(
             response += _without_pvalue_text(
                 de_stats, "a protein with the same value in every sample compared"
             )
+            response += _split_text(de_stats)
             response += (
                 f"- Significant proteins: {de_stats.get('n_significant_proteins', 0)}\n"
             )
