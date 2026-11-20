@@ -226,3 +226,30 @@ def test_one_gene_reads_in_the_singular(tmp_path, monkeypatch):
     _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
 
     assert "Of 1 gene, no gene has a value above" in reply, reply
+
+
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+def test_a_refusal_for_missing_values_names_them(tmp_path, monkeypatch, method):
+    adata = counts("bulk_all_expressed")
+    adata.X[0, :] = np.nan  # one sample has no values
+
+    _, reply = _run(tmp_path, monkeypatch, adata, method, pseudobulk=True)
+
+    assert reply.startswith("**DE refused: no gene was tested.**"), reply
+    assert (
+        "the fold change log2((mean2 + 1) / (mean1 + 1)) is not a number when a "
+        "gene has a missing value, or when one group's mean is below -1" in reply
+    ), reply
+
+
+def test_a_refusal_for_both_reasons_names_missing_values(tmp_path, monkeypatch):
+    adata = counts("bulk_all_expressed")
+    adata.X[:, :200] = 5  # no p-value
+    adata.X[0, 200:] = np.nan  # the other 300: a missing value
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert (
+        "the fold change of the other 300 is not a number (a missing value, or "
+        "one group's mean below -1, as with centred or signed values)" in reply
+    ), reply
