@@ -753,3 +753,21 @@ def test_interactive_skip_extras_under_uv_tool_prints_one_install_line(
     [line] = _install_later(out)
     assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in line
     assert "--with 'lobster-transcriptomics>=1.3.0'" in line
+
+
+@pytest.mark.parametrize("ui_mode", [None, "go", "auto", "classic"])
+def test_skip_extras_under_uv_tool_says_the_next_step_after_install_later(
+    tool_env, monkeypatch, capsys, ui_mode
+):
+    if ui_mode is None:
+        out = _init("--skip-extras").output
+    else:
+        out = _run_interactive(
+            monkeypatch, capsys, ui_mode, skip_extras=True, lamin=True
+        )
+
+    lines = out.splitlines()
+    [install] = [i for i, line in enumerate(lines) if "Install later:" in line]
+    nexts = [i for i, line in enumerate(lines) if "lobster chat" in line]
+    assert len(nexts) == 1, out
+    assert install < nexts[0], out
