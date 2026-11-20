@@ -1,0 +1,275 @@
+"""A custom-code cell replays on the notebook's own results, never the session's files.
+
+In the session, custom code that reads ``data/<modality>.h5ad`` gets a copy of the
+modality in memory (the alias of ``_detect_required_modalities``). The exported cell
+had no alias and set ``WORKSPACE`` to the session's workspace, so a replay either
+failed on a relative path (the cwd is the replay folder) or read the session's
+saved file through ``WORKSPACE``: a step after it then matched whatever the steps
+before it computed. ``OUTPUT_DIR`` also pointed into the session's ``exports/``,
+which a replay overwrote unseen.
+
+Each session here is native: load ``x``, ``filter_and_normalize`` (saves
+``x_filtered_normalized``), the custom cell on that modality, then
+``filter_and_normalize`` on it (saves ``x_filtered_normalized_filtered_normalized``).
+Skipped without the transcriptomics package or a Jupyter kernel.
+"""
+
+import asyncio
+import json
+import re
+import shutil
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from tests.unit.cli.test_replay_commands import app, needs_kernel, runner
+
+te = pytest.importorskip("lobster.agents.transcriptomics.transcriptomics_expert")
+
+import anndata as ad  # noqa: E402
+
+from lobster.core.runtime.data_manager import DataManagerV2  # noqa: E402
+from lobster.services.execution.custom_code_execution_service import (  # noqa: E402
+    CustomCodeExecutionService,
+)
+from lobster.testing.provenance_replay import factory_tools  # noqa: E402
+from lobster.tools.custom_code_tool import create_execute_custom_code_tool  # noqa: E402
+
+pytestmark = [pytest.mark.unit, needs_kernel]
+
+STEP_A = "x_filtered_normalized"
+STEP_C = "x_filtered_normalized_filtered_normalized"
+PERMISSIVE = {
+    "min_genes_per_cell": 1,
+    "min_cells_per_gene": 1,
+    "max_genes_per_cell": 100000,
+    "max_mito_percent": 100,
+}
+
+
+def _x(name="c"):
+    rng = np.random.default_rng(3)
+    return ad.AnnData(
+        X=rng.poisson(3, (60, 120)).astype(np.float32),
+        obs=pd.DataFrame(index=[f"{name}{i}" for i in range(60)]),
+        var=pd.DataFrame(index=[f"G{i}" for i in range(120)]),
+    )
+
+
+def _custom(dm, code, modality_name=STEP_A):
+    tool = create_execute_custom_code_tool(
+        dm, CustomCodeExecutionService(dm), agent_name="transcriptomics_expert"
+    )
+    call = {
+        "args": {
+            "python_code": code,
+            "modality_name": modality_name,
+            "persist": True,
+            "load_workspace_files": False,
+            "description": "custom step",
+        },
+        "id": "call_1",
+        "name": tool.name,
+        "type": "tool_call",
+    }
+    reply = json.loads(asyncio.run(tool.ainvoke(call)).content)
+    assert reply["success"], reply
+
+
+def _session(tmp_path, monkeypatch, code, extra=None):
+    """The native session; returns (data manager, input file, notebook)."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "in" / "x.h5ad"
+    source.parent.mkdir()
+    _x().write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("x", str(source), adapter="transcriptomics_single_cell")
+    if extra:
+        extra(dm)
+    tools = factory_tools(te.transcriptomics_expert, te.__name__, dm)
+    tools["filter_and_normalize"].invoke({"modality_name": "x", **PERMISSIVE})
+    _custom(dm, code)
+    tools["filter_and_normalize"].invoke({"modality_name": STEP_A, **PERMISSIVE})
+    notebook = dm.export_notebook("custom", "custom", filter_strategy="replay")
+    return dm, source, notebook
+
+
+def _replay(dm, notebook, source):
+    result = runner.invoke(
+        app,
+        ["--verify", str(notebook), "--input", str(source),
+         "-w", str(dm.workspace_path), "--json"],
+    )  # fmt: skip
+    return json.loads(result.stdout)
+
+
+def _diffs(out):
+    return [d for slot in out["report"]["slots"] for d in slot.get("diffs", [])]
+
+
+def _tamper_step_a(notebook, tmp_path):
+    """A copy of the notebook whose first normalization uses another target sum."""
+    cells = json.loads(notebook.read_text())
+    for cell in cells["cells"]:
+        source = "".join(cell["source"])
+        if cell["cell_type"] == "code" and "normalize_total" in source:
+            cell["source"] = re.sub(r"target_sum=[0-9.e+]+", "target_sum=7", source)
+            break
+    tampered = tmp_path / "tampered.ipynb"
+    tampered.write_text(json.dumps(cells))
+    return tampered
+
+
+RELATIVE = (
+    "import scanpy as sc\n"
+    f"m = sc.read_h5ad('data/{STEP_A}.h5ad')\n"
+    "adata.obs['total'] = np.asarray(m.X.sum(axis=1)).ravel()\n"
+)
+THROUGH_WORKSPACE = (
+    "import anndata\n"
+    f"adata = anndata.read_h5ad(WORKSPACE / 'data' / '{STEP_A}.h5ad')\n"
+)
+
+
+def test_a_relative_data_path_replays_to_match(tmp_path, monkeypatch):
+    """The shape an agent writes: sc.read_h5ad('data/<modality>.h5ad')."""
+    dm, source, notebook = _session(
+        tmp_path, monkeypatch, "import numpy as np\n" + RELATIVE
+    )
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] == "MATCH", out
+
+
+@pytest.mark.parametrize(
+    "code", [RELATIVE, THROUGH_WORKSPACE], ids=["relative", "workspace"]
+)
+def test_a_step_after_the_custom_cell_is_recomputed_not_read(
+    tmp_path, monkeypatch, code
+):
+    """With the step before the custom cell changed, the step after it differs too:
+    the cell read the notebook's result, not the session's saved file."""
+    dm, source, notebook = _session(
+        tmp_path, monkeypatch, "import numpy as np\n" + code
+    )
+    out = _replay(dm, _tamper_step_a(notebook, tmp_path), source)
+    assert out["verdict"] == "MISMATCH", out
+    diffs = _diffs(out)
+    assert any(f"files/{STEP_A}.h5ad/" in d for d in diffs), diffs
+    assert any(f"files/{STEP_C}.h5ad/" in d for d in diffs), diffs
+
+
+def _append_to_custom_cell(notebook, code, tmp_path, name="edited.ipynb"):
+    """A copy of the notebook with ``code`` added to the custom cell (code a user
+    could put there; the session never ran it)."""
+    cells = json.loads(notebook.read_text())
+    for cell in cells["cells"]:
+        if cell["cell_type"] == "code" and "# User code" in "".join(cell["source"]):
+            cell["source"] = "".join(cell["source"]) + "\n" + code
+    edited = tmp_path / name
+    edited.write_text(json.dumps(cells))
+    return edited
+
+
+def test_the_sessions_saved_file_is_never_read(tmp_path, monkeypatch):
+    """A typed path to the session's saved file reads the notebook's result: with
+    the step before changed, the step after the custom cell differs too."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    typed = str(dm.data_dir / f"{STEP_A}.h5ad")
+    edited = _append_to_custom_cell(
+        _tamper_step_a(notebook, tmp_path),
+        f"import anndata\nadata = anndata.read_h5ad({typed!r})\n",
+        tmp_path,
+    )
+    out = _replay(dm, edited, source)
+    assert out["verdict"] == "MISMATCH", out
+    assert any(f"files/{STEP_C}.h5ad/" in d for d in _diffs(out)), _diffs(out)
+
+
+def test_a_read_of_another_file_of_the_session_is_refused(tmp_path, monkeypatch):
+    """Any other file in the session's workspace is never read: the replay stops
+    and names it."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    other = dm.data_dir / "earlier.h5ad"
+    _x("e").write_h5ad(other)
+    edited = _append_to_custom_cell(
+        notebook, f"import anndata\ne = anndata.read_h5ad({str(other)!r})\n", tmp_path
+    )
+    out = _replay(dm, edited, source)
+    assert out["verdict"] == "NOTEBOOK_FAILED", out
+    notes = " ".join(out["notes"])
+    assert "reads data/earlier.h5ad of the session's workspace" in notes, notes
+
+
+def test_the_bound_input_is_what_a_custom_cell_reads_for_it(tmp_path, monkeypatch):
+    """The loaded input read by name reads the file given with --input (a copy in
+    another folder), never the path the session loaded it from."""
+    code = (
+        "import numpy as np, scanpy as sc\n"
+        "raw = sc.read_h5ad('data/x.h5ad')\n"
+        "adata.obs['raw_total'] = np.asarray(raw[adata.obs_names].X.sum(axis=1)).ravel()\n"
+    )
+    dm, source, notebook = _session(tmp_path, monkeypatch, code)
+    copy = tmp_path / "elsewhere" / "x.h5ad"
+    copy.parent.mkdir()
+    shutil.copy(source, copy)
+    source.unlink()
+    out = _replay(dm, notebook, copy)
+    assert out["verdict"] == "MATCH", out
+
+
+def test_a_name_the_notebook_does_not_compute_is_named(tmp_path, monkeypatch):
+    """A modality the session loaded besides the input: the cell cannot read a
+    recomputed copy, so the replay says which name, never a raw traceback and
+    never the session's file."""
+    ref = tmp_path / "ref.h5ad"
+    _x("r").write_h5ad(ref)
+    code = (
+        "import numpy as np, scanpy as sc\n"
+        "r = sc.read_h5ad('data/ref.h5ad')\n"
+        "adata.uns['ref_cells'] = int(r.n_obs)\n"
+    )
+
+    def load_ref(dm):
+        dm.load_modality("ref", str(ref), adapter="transcriptomics_single_cell")
+
+    dm, source, notebook = _session(tmp_path, monkeypatch, code, extra=load_ref)
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] in ("NOT_COMPARED", "NOTEBOOK_FAILED"), out
+    notes = " ".join(out["notes"])
+    assert "custom code reads 'ref'" in notes, notes
+    assert "Traceback" not in notes, notes
+
+
+def test_the_replay_writes_no_file_into_the_sessions_exports(tmp_path, monkeypatch):
+    """OUTPUT_DIR is the replay's folder: the session's exports/ is untouched."""
+    code = (
+        "import pandas as pd\n"
+        "pd.DataFrame({'n': [adata.n_obs]}).to_csv(OUTPUT_DIR / 'markers.csv')\n"
+    )
+    dm, source, notebook = _session(tmp_path, monkeypatch, code)
+    exports = dm.workspace_path / "exports"
+    (exports / "markers.csv").write_text("SESSION\n")
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] == "MATCH", out
+    assert (exports / "markers.csv").read_text() == "SESSION\n"
+    assert sorted(p.name for p in exports.iterdir()) == ["markers.csv"]
+
+
+def test_a_write_into_the_sessions_exports_is_refused(tmp_path, monkeypatch):
+    """Custom code writing the session's exports/ by a typed path is detected."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    exports = dm.workspace_path / "exports"
+    exports.mkdir(exist_ok=True)
+    (exports / "markers.csv").write_text("SESSION\n")
+    cells = json.loads(notebook.read_text())
+    for cell in cells["cells"]:
+        if cell["cell_type"] == "code" and "result = 1" in "".join(cell["source"]):
+            cell["source"] = (
+                "".join(cell["source"])
+                + f"\nopen({str(exports / 'markers.csv')!r}, 'w').write('REPLAY')\n"
+            )
+    notebook.write_text(json.dumps(cells))
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] == "REFUSED", out
+    assert "exports/markers.csv" in json.dumps(out), out
