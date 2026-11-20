@@ -310,3 +310,86 @@ def test_an_import_refused_leaves_the_loaded_modality_and_provenance(ws):
     assert dm.get_modality("x").shape == loaded.shape
     np.testing.assert_array_equal(dm.get_modality("x").X, loaded.X)
     assert len(dm.provenance.activities) == activities
+
+
+def _log_proteins(n_samples=12, n_proteins=40, prefix="P"):
+    rng = np.random.default_rng(3)
+    return ad.AnnData(
+        X=rng.normal(20.0, 1.0, (n_samples, n_proteins)).astype(np.float32),
+        obs=pd.DataFrame(index=[f"s{i}" for i in range(n_samples)]),
+        var=pd.DataFrame(index=[f"{prefix}{i}" for i in range(n_proteins)]),
+    )
+
+
+def _batched():
+    adata = _log_proteins()
+    adata.obs["batch"] = ["b1"] * 6 + ["b2"] * 6
+    return {"x": adata}
+
+
+def _peptides():
+    adata = _log_proteins(n_proteins=60, prefix="pep")
+    adata.var["protein_id"] = [f"P{i // 3}" for i in range(60)]
+    return {"x": adata}
+
+
+def _ptm_sites():
+    proteins = _log_proteins(prefix="GENE")
+    sites = _log_proteins(n_proteins=30, prefix="GENE")
+    sites.var_names = [f"GENE{i}_S{i + 10}" for i in range(30)]
+    return {"x": sites, "prot": proteins}
+
+
+def _bridged():
+    adata = _log_proteins()
+    adata.obs["plate_id"] = ["p1"] * 6 + ["p2"] * 6
+    adata.obs["is_bridge"] = [i % 6 < 2 for i in range(12)]
+    return {"x": adata}
+
+
+# tool -> (modalities in data/, arguments, derived result name)
+SAVED_TO = {
+    "correct_batch_effects": (_batched, {"modality_name": "x"}, "x_batch_corrected"),
+    "summarize_peptide_to_protein": (
+        _peptides,
+        {"modality_name": "x"},
+        "x_protein_rollup",
+    ),
+    "normalize_ptm_to_protein": (
+        _ptm_sites,
+        {"ptm_modality_name": "x", "protein_modality_name": "prot"},
+        "x_ptm_normalized",
+    ),
+    "normalize_bridge_samples": (
+        _bridged,
+        {"modality_name": "x"},
+        "x_bridge_normalized",
+    ),
+}
+
+
+@pytest.mark.parametrize("tool", list(SAVED_TO))
+def test_the_reply_names_the_file_saved_and_the_modality_stored(tmp_path, tool):
+    """In a resumed session whose data/ holds <x>_<step>.h5ad, the result is
+    <x>_<step>_2: the reply's "Saved to" names that file, which exists, and the
+    stored modality has that name (it named the loaded file)."""
+    proteomics = pytest.importorskip("lobster.agents.proteomics.proteomics_expert")
+    from lobster.testing.provenance_replay import factory_tools
+
+    data, args, result = SAVED_TO[tool]
+    folder = tmp_path / "ws" / "data"
+    folder.mkdir(parents=True)
+    for name, adata in data().items():
+        adata.write_h5ad(folder / f"{name}.h5ad")
+    data()["x"].write_h5ad(folder / f"{result}.h5ad")  # a first session's result
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    before = _sha(folder / f"{result}.h5ad")
+    tools = factory_tools(proteomics.proteomics_expert, proteomics.__name__, dm)
+
+    reply = tools[tool].invoke(args)
+
+    saved = [line for line in reply.splitlines() if "Saved to" in line]
+    assert saved == [f"**Saved to:** {result}_2.h5ad"], reply
+    assert (folder / f"{result}_2.h5ad").is_file()
+    assert f"{result}_2" in dm.list_modalities()
+    assert _sha(folder / f"{result}.h5ad") == before
