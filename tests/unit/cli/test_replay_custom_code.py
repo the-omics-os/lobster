@@ -453,3 +453,74 @@ def test_a_write_to_another_file_of_the_session_is_refused(tmp_path, monkeypatch
         "session is using this workspace, close it and run the replay again; "
         "otherwise the notebook wrote there."
     ), out
+
+
+def test_a_same_size_rewrite_with_its_time_put_back_is_refused(tmp_path, monkeypatch):
+    """Size and modification time alone miss a rewrite of the same size whose
+    time is set back; the change time and the file's inode do not."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    (dm.workspace_path / "notes.txt").write_text("SESSION\n")
+    write = (
+        "import os\n"
+        "_p = '../../notes.txt'\n"
+        "_st = os.stat(_p)\n"
+        "open(_p, 'w').write('REPLAY!\\n')\n"
+        "os.utime(_p, ns=(_st.st_atime_ns, _st.st_mtime_ns))\n"
+    )
+    out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
+    assert out["verdict"] == "REFUSED", out
+    assert out["report"]["refusal"]["reason"].startswith("notes.txt in the workspace")
+
+
+def test_the_session_file_changed_during_the_run_says_what_to_do(tmp_path, monkeypatch):
+    """``.session.json`` is the session's own file: a change to it is told as a
+    change while the notebook ran, not as the notebook changing what it reads."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    session_file = dm.workspace_path / ".session.json"
+    if not session_file.exists():
+        session_file.write_text("{}")
+    write = "open('../../.session.json', 'a').write(' ')\n"
+    out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
+    assert out["verdict"] == "REFUSED", out
+    assert out["report"]["refusal"]["reason"].startswith(
+        ".session.json in the workspace changed while the notebook ran."
+    ), out
+
+
+def _as_exported_before_b7(dm, notebook, tmp_path):
+    """The notebook as an export before 1.3.0 b7 wrote it: the custom cell is the
+    recorded code template, with the session's workspace as a literal path."""
+    from lobster.core.provenance.analysis_ir import AnalysisStep
+
+    activity = next(
+        a for a in dm.provenance.activities if a["type"] == "execute_custom_code"
+    )
+    old = AnalysisStep.from_dict(activity["ir"]).render()
+    assert f"WORKSPACE = Path({str(dm.workspace_path)!r})" in old
+    cells = json.loads(notebook.read_text())
+    for cell in cells["cells"]:
+        if cell["cell_type"] == "code" and "_lobster_reads(" in "".join(cell["source"]):
+            cell["source"] = old
+    edited = tmp_path / "before_b7.ipynb"
+    edited.write_text(json.dumps(cells))
+    return edited
+
+
+@pytest.mark.parametrize(
+    "tamper", [False, True], ids=["as-exported", "upstream-edited"]
+)
+def test_a_custom_cell_exported_before_b7_is_not_compared(
+    tmp_path, monkeypatch, tamper
+):
+    """Its code reads the session's own saved files through the literal path: a
+    MATCH (or a MISMATCH that hides what it read) could never be said of it."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, THROUGH_WORKSPACE)
+    if tamper:
+        notebook = _tamper_step_a(notebook, tmp_path)
+    old = _as_exported_before_b7(dm, notebook, tmp_path)
+    out = _replay(dm, old, source)
+    assert out["verdict"] == "NOT_COMPARED", out
+    assert (
+        "A custom-code cell was exported before 1.3.0 final and reads the session's "
+        "workspace; the notebook was not run. Re-export the notebook."
+    ) in out["notes"], out["notes"]
