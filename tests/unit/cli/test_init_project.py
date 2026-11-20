@@ -679,20 +679,19 @@ def test_agents_are_written_and_uninstalled_ones_are_reported(dirs, installed):
     result = run_plain(
         str(dirs / "study"),
         "--agents",
-        "research_agent, genomics_expert, not_an_expert",
+        "research_agent, genomics_expert, data_expert_agent",
     )
     assert result.exit_code == 0, result.output
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
     config = WorkspaceAgentConfig.load(dirs / "study" / ".lobster_workspace")
-    assert config.enabled_agents == ["research_agent"]
+    assert config.enabled_agents == ["research_agent", "data_expert_agent"]
     text = " ".join(result.output.split())
-    assert "experts: research_agent (1 of 3 experts set)" in text
+    assert "experts: research_agent, data_expert_agent (2 of 3 experts set)" in text
     assert (
         f"genomics_expert: not installed; run {LOBSTER} agents install lobster-genomics"
         in text
     )
-    assert "not_an_expert: unknown expert" in text
 
 
 def test_no_installed_expert_in_the_list_changes_nothing(dirs, installed):

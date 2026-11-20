@@ -3,11 +3,14 @@ and experts of the same package that the list leaves off."""
 
 import pytest
 
-from tests.unit.cli.test_init_project import (  # noqa: F401  (fixture)
+from tests.unit.cli.test_init_project import (  # noqa: F401  (fixtures)
     KEY,
     _init_impl,
     _wizard,
     dirs,
+    global_setup,
+    installed,
+    run_plain,
 )
 
 pytestmark = pytest.mark.unit
@@ -186,4 +189,54 @@ def test_the_child_agents_match_the_installed_experts():
                 children = tuple(agents[name].child_agents or ())
                 assert CHILD_AGENTS.get(name, ()) == children, name
                 checked += 1
-    assert checked
+    if not checked:
+        pytest.skip("no catalog agent package installed")
+
+
+# -- a host's call: init <folder> with no terminal ----------------------------
+
+
+def _plain(*args):
+    result = run_plain(*args)
+    return result.exit_code, " ".join(result.output.split())
+
+
+def test_a_host_call_with_agents_next_to_a_preset_says_it_is_ignored(
+    dirs, installed  # noqa: F811
+):
+    global_setup()
+    code, text = _plain(
+        str(dirs / "study"), "--preset", "scrna-basic", "--agents", "research_agent"
+    )
+
+    assert IGNORED in text
+
+
+def test_a_host_call_with_an_unknown_expert_changes_nothing(
+    dirs, installed  # noqa: F811
+):
+    global_setup()
+    code, text = _plain(
+        str(dirs / "study"), "--agents", "research_agent,transcriptomic_expert"
+    )
+
+    assert code == 1
+    assert UNKNOWN.format(names="transcriptomic_expert") in text
+    assert not (dirs / "study").exists()
+
+
+def test_a_host_call_names_an_expert_its_list_leaves_off(dirs, installed):  # noqa: F811
+    global_setup()
+    code, text = _plain(str(dirs / "study"), "--agents", "research_agent")
+
+    assert code == 0, text
+    assert LEFT_OFF.format(names="data_expert_agent") in text
+
+
+def test_a_host_call_with_a_preset_names_nothing_left_off(
+    dirs, installed  # noqa: F811
+):
+    global_setup()
+    code, text = _plain(str(dirs / "study"), "--preset", "scrna-basic")
+
+    assert "leaves out" not in text
