@@ -2290,6 +2290,7 @@ def _init_without_terminal(
             2,
             "✗ bad_argument: --auto-agents needs a terminal; pass --agents or --preset. Nothing was changed.",
         )
+    _check_agents_flag(agents, preset)
     requested: List[str] = []
     preset_name = None
     if isinstance(preset, str) and preset:
@@ -2314,6 +2315,7 @@ def _init_without_terminal(
                 1,
                 "✗ bad_argument: --agents names no expert. Nothing was changed.",
             )
+        _say_left_out(requested)
     installed_names = set(_get_installed_agents())
     written = [a for a in requested if a in installed_names]
     left_out = [a for a in requested if a not in installed_names]
