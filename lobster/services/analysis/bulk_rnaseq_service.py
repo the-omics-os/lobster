@@ -558,7 +558,9 @@ Next suggested step: Import quantification data with tximport for differential e
                 ).sum()
             )
             n_zero_within_group_variance = int(flagged.sum())
-            complete = results_df.drop(columns=["pvalue", "padj"]).notna().all(axis=1)
+            complete = (
+                results_df.drop(columns=["stat", "pvalue", "padj"]).notna().all(axis=1)
+            )
             results_df = results_df[
                 results_df.notna().all(axis=1) | (flagged & complete)
             ]
@@ -1064,6 +1066,7 @@ Next suggested step: Import quantification data with tximport for differential e
             & (group1_mean != group2_mean)
         )
         p_values[no_variance] = np.nan
+        t_stats[no_variance] = np.nan  # not +-inf: it would top a table sorted by it
 
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)

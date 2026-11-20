@@ -229,13 +229,11 @@ def _no_variance_text(de_stats) -> str:
     n = de_stats.get("n_zero_within_group_variance", 0)
     if not n:
         return ""
-    if n == 1:
-        genes, have, them = "1 gene", "has", "it"
-    else:
-        genes, have, them = f"{n:,} genes", "have", "them"
+    have, them = ("has", "it") if n == 1 else ("have", "them")
     return (
-        f"\n- {genes} {have} the same value within each group: the t-test gives "
-        f"{them} no usable p-value; check {them} with DESeq2 on counts."
+        f"\n- Of the genes tested, {n:,} {have} the same value in every sample of "
+        f"each group (different between the groups): the t-test gives {them} no "
+        f"p-value; check {them} with DESeq2 on counts."
     )
 
 
