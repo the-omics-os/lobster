@@ -248,6 +248,18 @@ def test_a_host_call_with_a_preset_names_nothing_left_off(
     assert "leaves out" not in text
 
 
+def test_a_host_call_with_a_preset_ignores_an_unknown_expert(
+    dirs, installed  # noqa: F811
+):
+    global_setup()
+    code, text = _plain(
+        str(dirs / "study"), "--preset", "scrna-basic", "--agents", "no_such_expert"
+    )
+
+    assert code == 0, text
+    assert IGNORED in text and "bad_argument" not in text
+
+
 def test_every_expert_init_can_name_has_a_package_to_install():
     # init tells how to install an expert it names; it has no other line for one
     from lobster.config.agent_presets import AGENT_PRESETS, expand_preset

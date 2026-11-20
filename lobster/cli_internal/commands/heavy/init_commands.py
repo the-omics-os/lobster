@@ -197,10 +197,7 @@ def _check_agents_flag(agents: Optional[str], preset: Optional[str]) -> None:
             h("[yellow]--agents is ignored because --preset is given.[/yellow]")
         )
         return
-    known = {a for _, _, provided, _, _ in _CATALOG for a in provided}
-    unknown = [a for a in _agents_flag_list(agents) if a not in known]
-    if unknown:  # an expert from a package of the user's own
-        unknown = [a for a in unknown if a not in _get_installed_agents()]
+    unknown = _unknown_agents(agents)
     if unknown:
         console.print(
             h(
@@ -209,6 +206,14 @@ def _check_agents_flag(agents: Optional[str], preset: Optional[str]) -> None:
             soft_wrap=True,
         )
         raise typer.Exit(1)
+
+
+def _unknown_agents(agents: str) -> list[str]:
+    known = {a for _, _, provided, _, _ in _CATALOG for a in provided}
+    unknown = [a for a in _agents_flag_list(agents) if a not in known]
+    if unknown:  # an expert from a package of the user's own
+        unknown = [a for a in unknown if a not in _get_installed_agents()]
+    return unknown
 
 
 def _say_left_out(agents: list[str]) -> None:
@@ -2290,7 +2295,14 @@ def _init_without_terminal(
             2,
             "✗ bad_argument: --auto-agents needs a terminal; pass --agents or --preset. Nothing was changed.",
         )
-    _check_agents_flag(agents, preset)
+    unknown = _unknown_agents(agents) if agents and not preset else []
+    if unknown:
+        refuse(
+            1,
+            f"✗ bad_argument: --agents names an unknown expert: {', '.join(unknown)}. "
+            f"Nothing was changed; {cmd('agents', 'list')} shows the experts.",
+        )
+    _check_agents_flag(agents, preset)  # says --agents next to --preset is ignored
     requested: List[str] = []
     preset_name = None
     if isinstance(preset, str) and preset:
@@ -2322,12 +2334,10 @@ def _init_without_terminal(
 
     def left_out_lines() -> List[str]:
         lines = []
-        for name in left_out:
-            package = AGENT_TO_PACKAGE.get(name)
+        for name in left_out:  # unknown names were refused: each has a package
+            package = AGENT_TO_PACKAGE[name]
             lines.append(
                 f"{name}: not installed; run {cmd('agents', 'install', package)}"
-                if package
-                else f"{name}: unknown expert"
             )
         return lines
 

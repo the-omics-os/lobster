@@ -75,6 +75,8 @@ _QUIT_TIMEOUT_S = 5.0
 def _end_session(ftp: ftplib.FTP) -> None:
     """QUIT, waiting only briefly on a control connection a stall left silent; the
     session ending badly never fails the attempt or the file it fetched."""
+    if ftp.sock is None:  # already closed: nothing to end
+        return
     try:
         ftp.sock.settimeout(_QUIT_TIMEOUT_S)
         ftp.quit()
