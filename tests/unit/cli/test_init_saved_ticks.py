@@ -287,3 +287,89 @@ def test_interactive_init_refuses_an_unknown_preset(ws, monkeypatch, ui_mode):
         init_impl(**_init_kwargs(ui_mode=ui_mode, preset="scrna-everything"))
     assert exc_info.value.exit_code == 1
     assert "Invalid preset: scrna-everything" in init_commands.console.file.getvalue()
+
+
+# --- an interactive --agents starts every picker; the list is recorded --------
+
+FLAG = "genomics_expert,research_agent"
+FLAG_PACKAGES = ["lobster-research", "lobster-genomics"]
+FLAG_PICKED = ["research_agent", "data_expert_agent"] + [
+    "genomics_expert",
+    "variant_analysis_expert",
+]
+REPLACED = "--agents is replaced by the packages you picked."
+
+
+@pytest.mark.parametrize(
+    "answer, saved",
+    [(None, ["genomics_expert", "research_agent"]), ("1", None)],
+    ids=["kept", "unticked"],
+)
+def test_classic_picker_starts_from_the_agents_flag(ws, monkeypatch, answer, saved):
+    asked = []
+
+    def ask(prompt, default):
+        asked.append(default)
+        return answer or default
+
+    monkeypatch.setattr(init_commands.Prompt, "ask", ask)
+    monkeypatch.setattr(init_commands, "_get_installed_agents", lambda: {})
+    monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: True)
+    selected, preset = init_commands._perform_agent_selection_interactive(
+        ws, skip_extras=True, agents=FLAG
+    )
+    assert asked == ["1,4"]
+    assert preset is None
+    out = init_commands.console.file.getvalue()
+    assert (REPLACED in out) is (saved is None)
+    assert selected == (saved or ["research_agent", "data_expert_agent"])
+
+
+def _drive(ws, monkeypatch, ui_mode, picked, **flags):
+    (ws.parent / ".env").write_text("OLLAMA_BASE_URL=http://localhost:11434\n")
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    seen = {}
+
+    def picker(*_args, agent_packages=None, **_kwargs):
+        seen["packages"] = agent_packages
+        return {"provider": "ollama", "agents": list(picked), "cancelled": False}
+
+    monkeypatch.setattr(
+        "lobster.ui.bridge.binary_finder.find_tui_binary",
+        lambda: "/fake/lobster-tui" if ui_mode == "go" else None,
+    )
+    monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.run_init_wizard", picker)
+    monkeypatch.setattr(
+        "lobster.ui.bridge.questionary_fallback.run_questionary_init", picker
+    )
+    monkeypatch.setattr(init_commands, "_ask_language", lambda **_: None)
+    with pytest.raises(typer.Exit) as exc_info:
+        init_impl(**_init_kwargs(ui_mode=ui_mode, **flags))
+    assert exc_info.value.exit_code == 0
+    return seen["packages"]
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto"])
+@pytest.mark.parametrize(
+    "picked, saved",
+    [(FLAG_PICKED, ["genomics_expert", "research_agent"]), (FLAG_PICKED[:2], None)],
+    ids=["kept", "unticked"],
+)
+def test_init_agents_flag_starts_the_picker_and_is_recorded(
+    ws, monkeypatch, ui_mode, picked, saved
+):
+    assert _drive(ws, monkeypatch, ui_mode, picked, agents=FLAG) == FLAG_PACKAGES
+    config = WorkspaceAgentConfig.load(ws)
+    assert config.preset is None
+    assert config.enabled_agents == (saved or picked)
+    out = init_commands.console.file.getvalue()
+    assert (REPLACED in out) is (saved is None)
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto"])
+def test_preset_wins_over_the_agents_flag(ws, monkeypatch, ui_mode):
+    packages = _drive(
+        ws, monkeypatch, ui_mode, SCRNA_FULL_AGENTS, preset="scrna-full", agents=FLAG
+    )
+    assert packages == SCRNA_FULL
+    assert WorkspaceAgentConfig.load(ws).preset == "scrna-full"
