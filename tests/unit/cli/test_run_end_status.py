@@ -922,7 +922,8 @@ def test_the_first_ctrl_c_ends_the_run_from_a_thread_and_arms_the_second(
     monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
     with pytest.raises(KeyboardInterrupt):
         with factory.recorded_run_status(client):
-            sigint[-1](signal.SIGINT, None)  # the press, where Python calls it
+            first_press = sigint[-1]
+            first_press(signal.SIGINT, None)  # the press, where Python calls it
 
     assert WAITING in " ".join(capsys.readouterr().err.split())
     assert (
@@ -933,7 +934,7 @@ def test_the_first_ctrl_c_ends_the_run_from_a_thread_and_arms_the_second(
     thread.run()
     assert ended == ["aborted"]
     stop_now = sigint[-1]
-    assert stop_now not in (signal.default_int_handler, signal.SIG_DFL)
+    assert stop_now not in (first_press, signal.default_int_handler, signal.SIG_DFL)
     monkeypatch.setattr(factory, "_stop_waiting", lambda text: ended.append(text))
     stop_now(signal.SIGINT, None)
     assert ended[-1] == STOPPING

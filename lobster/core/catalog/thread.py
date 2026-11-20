@@ -289,7 +289,7 @@ class ThreadedCatalog:
         # used on the worker only.
         self._hold_handle: Any = None
         self._hold_count = 0
-        self._exit_lock = threading.Lock()
+        self._exit_lock = threading.RLock()  # a Ctrl-C handler may re-enter
         self._worker = _Worker(name="lobster-catalog", on_exit=self._drop_hold)
         self._worker.submit(lambda: self._build(engine_factory))
         self._watchdog = threading.Timer(build_timeout, self._check_started)

@@ -25,7 +25,7 @@ import json
 import logging
 import os
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -405,8 +405,10 @@ def _exit_later(code: int) -> None:
 
 
 def _end_then_exit(code: int) -> None:
-    _end_run_now()  # the exit may not have begun: a thread still holds it
-    os._exit(code)
+    try:
+        _end_run_now()  # the exit may not have begun: a thread still holds it
+    finally:
+        os._exit(code)
 
 
 _ending_early = False  # registered at most once per process
@@ -434,17 +436,24 @@ def _end_run_now() -> None:
         end()
 
 
-def _exit_begins() -> None:
-    import signal
-
+def _stop_now_text() -> str:
     from lobster.i18n import h
 
-    _end_run_now()
-    text = h(
+    return h(
         "Stopping without waiting for the running tool; a file it was writing may be incomplete."
     )
+
+
+def _exit_begins() -> None:
+    import atexit
+    import signal
+
+    _end_run_now()
+    text = _stop_now_text()
     try:
         signal.signal(signal.SIGINT, lambda signum, frame: _stop_waiting(text))
+        # the wait for threads ends where the atexit hooks begin: Ctrl-C is Python's
+        atexit.register(signal.signal, signal.SIGINT, signal.default_int_handler)
     except (ValueError, OSError):
         logger.debug("Catalog: Ctrl-C at exit not handled", exc_info=True)
 
@@ -453,8 +462,10 @@ def _stop_waiting(text: str) -> None:
     """A Ctrl-C while the exit waits for a running tool: stop waiting, as Python's
     own second Ctrl-C does, without its traceback."""
     import atexit
+    import signal
     import sys
 
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # the exit hooks run once
     print(text, file=sys.stderr, flush=True)
     atexit._run_exitfuncs()
     for stream in (sys.stdout, sys.stderr):
@@ -502,6 +513,60 @@ def abort_runs_on_sigterm() -> None:
 
 
 @contextmanager
+def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
+    """In a one-shot command, the first Ctrl-C ends the run at once and the second
+    stops without waiting: a graph waits for its running tools before a Ctrl-C
+    reaches the command, so the run cannot wait for the command to end it.
+
+    Yields the presses seen; armed only on the main thread, with a bound run and
+    Python's own Ctrl-C handler in place.
+    """
+    import signal
+    import sys
+
+    pressed: list = []
+    try:
+        armed = (
+            _process_catalog is not None
+            and threading.current_thread() is threading.main_thread()
+            and signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        )
+    except (ValueError, OSError, AttributeError):
+        armed = False
+    if not armed:
+        yield pressed
+        return
+    from lobster.i18n import h
+
+    waiting = h(
+        "Stopping: waiting for the running step to finish; press Ctrl+C again to stop now."
+    )
+    stop_now = _stop_now_text()
+
+    def first_press(signum: int, frame: Any) -> None:
+        pressed.append(signum)
+        signal.signal(signal.SIGINT, lambda s, f: _stop_waiting(stop_now))
+        # not here: the handler may run while this thread holds the catalog's lock
+        threading.Thread(
+            target=_abort_now, args=(holder,), name="lobster-ctrl-c", daemon=True
+        ).start()
+        print(waiting, file=sys.stderr, flush=True)
+        signal.default_int_handler(signum, frame)
+
+    signal.signal(signal.SIGINT, first_press)
+    try:
+        yield pressed
+    finally:
+        if not pressed:
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
+def _abort_now(holder: Any) -> None:
+    note_run_status(holder, "aborted", reason="Ctrl-C")
+    _end_run_now()
+
+
+@contextmanager
 def recorded_run_status(holder: Any, *, session: bool = False) -> Iterator[None]:
     """Note how the run of ``holder`` ended, on every way out of the block.
 
@@ -511,6 +576,17 @@ def recorded_run_status(holder: Any, *, session: bool = False) -> Iterator[None]
     always says how the run ended. For a chat (``session``) that ends normally,
     the status its last turn noted stands, and a turn cut short stays open.
     """
+    with nullcontext([]) if session else _ctrl_c_ends_the_run(holder) as pressed:
+        try:
+            with _noted_run_status(holder, session=session):
+                yield
+        finally:
+            if pressed:  # however the command went on, a Ctrl-C ended it
+                note_run_status(holder, "aborted", reason="Ctrl-C")
+
+
+@contextmanager
+def _noted_run_status(holder: Any, *, session: bool) -> Iterator[None]:
     try:
         yield
     except KeyboardInterrupt:
