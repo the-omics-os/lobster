@@ -441,6 +441,11 @@ class ProvenanceTracker:
     #: pass the name they stored under one of these keys; the service layer is untouched.
     _OUTPUT_PARAM_KEYS = ("result_modality_name", "output_modality_name", "result_name")
 
+    #: A step that writes several modalities as one object (deseq2: its input, which
+    #: gets the results, and the copy it saves) names them all under this key; the
+    #: output placeholder then stands for each of them.
+    _OUTPUT_LIST_KEY = "result_modality_names"
+
     def _resolve_entities(
         self,
         names: Optional[List[str]],
@@ -458,17 +463,28 @@ class ProvenanceTracker:
         """
         resolved: List[Dict[str, Any]] = []
         params = parameters or {}
-        substitute = None
+        substitutes: List[str] = []
         for key in param_keys or self._ENTITY_PARAM_KEYS:
             value = params.get(key)
             if isinstance(value, str) and value:
-                substitute = value
+                substitutes = [value]
                 break
+        many = params.get(self._OUTPUT_LIST_KEY)
+        if (
+            param_keys is self._OUTPUT_PARAM_KEYS
+            and isinstance(many, list)
+            and many
+            and all(isinstance(value, str) and value for value in many)
+        ):
+            substitutes = list(many)
 
         for name in names or []:
             text = str(name)
-            if text in self._PLACEHOLDER_ENTITIES and substitute:
-                resolved.append({"name": substitute, "resolved": True, "ir_name": text})
+            if text in self._PLACEHOLDER_ENTITIES and substitutes:
+                resolved.extend(
+                    {"name": value, "resolved": True, "ir_name": text}
+                    for value in substitutes
+                )
             elif text in self._PLACEHOLDER_ENTITIES:
                 resolved.append({"name": text, "resolved": False})
             else:

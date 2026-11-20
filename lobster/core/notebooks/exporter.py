@@ -1642,6 +1642,17 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 return str(entry["name"]) if entry.get("name") else None
         return None
 
+    @staticmethod
+    def _adata_names(entries: Any) -> List[str]:
+        """Every modality an activity wrote as ``adata`` (one object holds them all)."""
+        return [
+            str(entry["name"])
+            for entry in entries or []
+            if isinstance(entry, dict)
+            and entry.get("ir_name") == "adata"
+            and entry.get("name")
+        ]
+
     @classmethod
     def _reads_data_unnamed(cls, activity: Dict[str, Any], ir: AnalysisStep) -> bool:
         """The step reads ``adata`` but its record does not name the modality."""
@@ -1727,7 +1738,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         stops on a read of it.
         """
         custom = custom or {}
-        held: Optional[str] = None  # the modality adata holds
+        held: set = set()  # the modalities adata holds
         made_at: Dict[str, int] = {}  # where adata last became each modality
         saved_made_at: Dict[str, int] = {}  # the same, custom steps left out
         keep: Dict[int, List[str]] = {}
@@ -1756,29 +1767,33 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 
         for position, activity in enumerate(steps):
             if position in custom:
-                source, result = custom[position][0], None
+                source, results = custom[position][0], []
             else:
                 source = cls._adata_name(activity.get("inputs"))
-                result = cls._adata_name(activity.get("outputs"))
-            if held is None and source:  # the first step that says what it read
-                held, made_at[source] = source, position - 1
+                results = cls._adata_names(activity.get("outputs"))
+            if not held and source:  # the first step that says what it read
+                held, made_at[source] = {source}, position - 1
                 saved_made_at[source] = position - 1
                 loaded = source
-            if source and source != held and source in made_at:
+            if source and source not in held and source in made_at:
                 keep_at(made_at[source], source)
-                rebind[position] = held = source
-            elif position in custom and source and source != held and latest(source):
+                rebind[position] = source
+                held = {source}
+            elif (
+                position in custom and source and source not in held and latest(source)
+            ):
                 where, var = latest(source)
                 keep_at(where, source, var)
-                rebind[position] = held = source
+                rebind[position] = source
+                held = {source}
             if position in custom:
-                if source and source != held:  # not computed by this notebook
+                if source and source not in held:  # not computed by this notebook
                     plans[-1][source] = "missing"
                 plan = plans[position] = {}
                 for name in custom[position][1]:
                     if name == loaded and made_at.get(name) == -1:
                         plan[name] = "input"
-                    elif name == held:
+                    elif name in held:
                         plan[name] = "adata"
                     elif latest(name):
                         where, var = latest(name)
@@ -1786,26 +1801,30 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                         plan[name] = "kept"
                     else:
                         plan[name] = "missing"
-                if held:  # read by a path the code builds: served at no cost
-                    plan.setdefault(held, "adata")
+                for name in sorted(held):  # read by a path the code builds: free
+                    plan.setdefault(name, "adata")
                 if loaded and made_at.get(loaded) == -1:
                     plan.setdefault(loaded, "input")
                 written_back = custom[position][2]
                 if written_back:
                     made_at[written_back] = saved_made_at[written_back] = position
                     self_kept.add(written_back)
-            elif position not in custom:
+            else:
                 named = cls._named_result(activity, source)
                 if named:
                     named_at[named] = (position, cls._result_var(activity))
-            if result:
-                self_kept.discard(result)
-                held, made_at[result] = result, position
-                if position not in custom:
-                    # shortcut: a save is placed after the last non-custom step
-                    # that made the name; a session that saved a name a custom
-                    # step changed after that save would differ.
-                    saved_made_at[result] = position
+            if results:
+                # A step may write several modalities (its input in place and a
+                # saved copy): adata is each of them after it.
+                held = set(results)
+                for result in results:
+                    self_kept.discard(result)
+                    made_at[result] = position
+                    if position not in custom:
+                        # shortcut: a save is placed after the last non-custom
+                        # step that made the name; a session that saved a name a
+                        # custom step changed after that save would differ.
+                        saved_made_at[result] = position
         save_at: Dict[int, List[str]] = {}
         for name in saved:
             if name in saved_made_at:

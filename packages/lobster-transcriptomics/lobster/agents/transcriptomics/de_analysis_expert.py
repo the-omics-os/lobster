@@ -513,7 +513,9 @@ def _rank_test_ir(
     """IR for a wilcoxon / t-test DE run: the same service call the tool made.
 
     The result modality replaces ``adata``, so the save cell writes what the
-    session stored (results in uns, genes the filters kept).
+    session stored (results in uns, genes the filters kept). The step reads and
+    writes ``adata`` by name: the export starts a later step on the input modality
+    from a kept copy, not from this result.
     """
     return AnalysisStep(
         operation="lobster.bulk_rnaseq.differential_expression",
@@ -543,6 +545,8 @@ def _rank_test_ir(
             "filters": dict(filters),
         },
         parameter_schema={},
+        input_entities=["adata"],
+        output_entities=["adata"],
     )
 
 
@@ -1515,6 +1519,8 @@ def de_analysis_expert(
                         "results_key": f"de_results_{contrast_name}",
                     },
                     parameter_schema={},
+                    input_entities=["adata"],
+                    output_entities=["adata"],
                     code_template=(
                         _BULK_SERVICE_SETUP
                         + "results_df, de_stats = bulk_service.run_pydeseq2_from_pseudobulk(\n"
@@ -1557,6 +1563,10 @@ def de_analysis_expert(
                         "shrink_lfc": shrink_lfc,
                         "count_layer": count_layer,
                         "count_source": count_source,
+                        # the results go into the input; a save also makes a copy:
+                        # the export binds this step's adata to both
+                        "result_modality_names": [modality_name]
+                        + ([de_modality_name] if save_result else []),
                     },
                     description=(
                         f"pyDESeq2 analysis: {analysis_stats['n_significant_genes']} significant genes found; "
@@ -1657,6 +1667,9 @@ def de_analysis_expert(
                         "group1": group1,
                         "group2": group2,
                         "method": internal_method,
+                        # the export binds this step's adata to it (a later step
+                        # on modality_name starts from a kept copy)
+                        "result_modality_name": de_modality_name,
                     },
                     description=f"DE analysis: {de_stats['n_significant_genes']} significant genes found",
                     ir=ir,
