@@ -1,0 +1,107 @@
+"""A protein with one value in each group, different between them, no longer tops
+a t-test result.
+
+Its within-group variance is zero, so a t-test (Student, Welch, or the one an
+ANOVA or Kruskal-Wallis pairwise comparison reduces to) gives t = inf and p = 0:
+the protein was significant with an adjusted p-value of 0. It is now kept with
+its fold change, its p-value is not a number, it is flagged, the correction
+leaves it out, and the reply names it.
+"""
+
+import anndata as ad
+import numpy as np
+import pandas as pd
+import pytest
+
+from lobster.agents.proteomics.de_analysis_expert import de_analysis_expert
+from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.services.analysis.proteomics_differential_service import (
+    ProteomicsDifferentialService,
+)
+from lobster.testing.provenance_replay import factory_tools
+
+DE = "lobster.agents.proteomics.de_analysis_expert"
+T_TESTS = ["t_test", "welch_t_test", "anova"]
+
+
+def _proteins(split):
+    """12 samples (6 a, 6 b), 50 proteins, P0-P4 higher in b; with ``split``, P49
+    holds 5.0 in every a sample and 9.0 in every b one."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(10, 1, (12, 50))
+    x[6:, :5] += 4
+    if split:
+        x[:6, 49], x[6:, 49] = 5.0, 9.0
+    obs = pd.DataFrame(
+        {"group": ["a"] * 6 + ["b"] * 6}, index=[f"s{i}" for i in range(12)]
+    )
+    return ad.AnnData(x, obs=obs, var=pd.DataFrame(index=[f"P{i}" for i in range(50)]))
+
+
+def _run(adata, method):
+    out, stats, _ = ProteomicsDifferentialService().perform_differential_expression(
+        adata, group_column="group", test_method=method
+    )
+    de = out.uns["differential_expression"]
+    return {r["protein"]: r for r in de["all_results"]}, de, stats
+
+
+@pytest.mark.parametrize("method", T_TESTS)
+def test_a_split_protein_is_kept_flagged_and_left_out_of_the_correction(method):
+    with_split, de, stats = _run(_proteins(split=True), method)
+    without, _, stats_without = _run(_proteins(split=False)[:, :49].copy(), method)
+
+    split = with_split.pop("P49")
+    assert np.isnan(split["p_value"]) and np.isnan(split["p_adjusted"])
+    assert split["zero_within_group_variance"] is True
+    assert np.isfinite(split["log2_fold_change"]) and split["log2_fold_change"] != 0
+    assert "P49" not in {r["protein"] for r in de["significant_results"]}
+    for protein, result in without.items():
+        assert with_split[protein]["p_adjusted"] == pytest.approx(result["p_adjusted"])
+        assert with_split[protein]["zero_within_group_variance"] is False
+    assert stats["n_zero_within_group_variance"] == 1
+    assert stats["n_tests_without_pvalue"] == 0  # tested; the line above explains it
+    assert stats["n_significant_proteins"] == stats_without["n_significant_proteins"]
+
+
+def test_mann_whitney_gives_a_split_protein_its_p_value():
+    with_split, _, stats = _run(_proteins(split=True), "mann_whitney")
+
+    assert np.isfinite(with_split["P49"]["p_value"])
+    assert stats["n_zero_within_group_variance"] == 0
+
+
+@pytest.mark.parametrize("value", [5.0, 5.1], ids=["integer", "non_integer"])
+def test_one_value_in_both_groups_is_not_split(value):
+    adata = _proteins(split=False)
+    adata = adata[:10].copy()  # 6 a and 4 b: float means of one value can differ
+    adata.X[:, 49] = value
+
+    with_flat, _, stats = _run(adata, "t_test")
+
+    assert with_flat["P49"]["zero_within_group_variance"] is False
+    assert stats["n_zero_within_group_variance"] == 0
+
+
+@pytest.mark.parametrize("split", [True, False])
+def test_the_reply_names_a_split_protein(tmp_path, split):
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.store_modality("prot", _proteins(split))
+    reply = factory_tools(de_analysis_expert, DE, dm)[
+        "find_differential_proteins"
+    ].invoke(
+        {
+            "modality_name": "prot",
+            "group_column": "group",
+            "platform_type": "affinity",
+            "method": "t_test",
+        }
+    )
+
+    line = (
+        "- Of the proteins tested, 1 has the same value in every sample of each "
+        "group (different between the groups): the t-test gives it no p-value; "
+        "check it with limma_like or Mann-Whitney\n"
+    )
+    assert (line in reply) is split, reply
+    assert ("the same value in every sample of each group" in reply) is split
