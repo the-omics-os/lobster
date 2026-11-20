@@ -413,3 +413,39 @@ def test_a_changed_copy_of_the_input_is_refused(tmp_path, monkeypatch):
     changed.write_h5ad(copy)
     out = _replay(dm, notebook, copy)
     assert out["verdict"] == "REFUSED", out
+
+
+def test_the_kernel_environment_never_names_the_sessions_workspace(
+    tmp_path, monkeypatch
+):
+    """LOBSTER_WORKSPACE, PWD, OLDPWD and PYTHONPATH the replay process carries
+    are not the session's workspace in the kernel, so a DataManagerV2() opened
+    there without a path cannot reach (or autosave into) it."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    ws = str(dm.workspace_path.resolve())
+    for name in ("LOBSTER_WORKSPACE", "PWD", "OLDPWD", "PYTHONPATH"):
+        monkeypatch.setenv(name, ws)
+    check = (
+        "import os, sys\n"
+        "from pathlib import Path as _P\n"
+        f"_ws = {ws!r}\n"
+        "_seen = [n for n in ('LOBSTER_WORKSPACE', 'PWD', 'OLDPWD', 'PYTHONPATH') "
+        "if _ws in os.environ.get(n, '').split(os.pathsep)]\n"
+        "assert not _seen, f'kernel env names the session workspace: {_seen}'\n"
+        "assert _ws not in [str(_P(p).resolve()) for p in sys.path if p], 'sys.path'\n"
+        "from lobster.core.runtime.data_manager import DataManagerV2 as _DM\n"
+        "assert str(_DM().workspace_path.resolve()) != _ws, 'DataManagerV2()'\n"
+    )
+    out = _replay(dm, _add_to_custom_code(notebook, check, tmp_path), source)
+    assert out["verdict"] == "MATCH", out
+
+
+def test_a_write_to_another_file_of_the_session_is_refused(tmp_path, monkeypatch):
+    """A file outside data/ and exports/ the notebook writes in the session's
+    workspace (here through ../.. from the replay folder) is counted."""
+    dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
+    (dm.workspace_path / "notes.txt").write_text("SESSION\n")
+    write = "open('../../notes.txt', 'w').write('REPLAY')\n"
+    out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
+    assert out["verdict"] == "REFUSED", out
+    assert "notes.txt" in json.dumps(out["report"]["refusal"]), out
