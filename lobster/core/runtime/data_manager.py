@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import tempfile
 import threading
 import time
@@ -903,6 +904,11 @@ class DataManagerV2:
         # Files this session loaded (resolved path -> modality): never saved over,
         # since a replay and the session's record start from them.
         self._recorded_inputs: Dict[Path, str] = {}
+        # Indexes of the same files, so a lookup is O(1): by (st_dev, st_ino) at
+        # load time, and by the casefolded path; a path's own index keys.
+        self._recorded_ids: Dict[Tuple[int, int], Path] = {}
+        self._recorded_folded: Dict[str, Path] = {}
+        self._recorded_keys: Dict[Path, Tuple[Tuple[int, int], str]] = {}
 
         # Workspace restoration attributes
         self.session_file = self.workspace_path / ".session.json"
@@ -2167,13 +2173,47 @@ class DataManagerV2:
         """Remember a file this session loaded, by resolved path."""
         try:
             resolved = Path(path).resolve()
+            st = os.stat(resolved)
         except (OSError, RuntimeError, TypeError):
             return
-        if resolved.is_file():  # the latest name it was loaded under
-            for recorded in list(self._recorded_inputs):
-                if _same_file(recorded, resolved):  # another spelling of it
-                    del self._recorded_inputs[recorded]
-            self._recorded_inputs[resolved] = name
+        if not stat.S_ISREG(st.st_mode):
+            return
+        known = self._recorded_match(resolved, st)
+        if known is not None:  # another spelling of it: the latest name wins
+            self._forget_input(known)
+        file_id = (st.st_dev, st.st_ino)
+        folded = str(resolved).casefold()
+        self._recorded_inputs[resolved] = name
+        self._recorded_ids[file_id] = resolved
+        self._recorded_folded[folded] = resolved
+        self._recorded_keys[resolved] = (file_id, folded)
+
+    def _forget_input(self, recorded: Path) -> None:
+        file_id, folded = self._recorded_keys.pop(recorded)
+        del self._recorded_inputs[recorded]
+        if self._recorded_ids.get(file_id) == recorded:
+            del self._recorded_ids[file_id]
+        if self._recorded_folded.get(folded) == recorded:
+            del self._recorded_folded[folded]
+
+    def _recorded_match(
+        self, resolved: Path, st: Optional[os.stat_result]
+    ) -> Optional[Path]:
+        """The recorded path that is the file at ``resolved`` (``st``: its stat,
+        None when it does not exist), or None. A few stats, never a scan."""
+        if resolved in self._recorded_inputs:
+            return resolved
+        if st is not None:
+            recorded = self._recorded_ids.get((st.st_dev, st.st_ino))
+            if recorded is not None:  # a hard link, or another spelling
+                return recorded
+        recorded = self._recorded_folded.get(str(resolved).casefold())
+        if recorded is None:
+            return None
+        if st is None:  # gone: matched by its path, letter case aside, if the
+            return None if recorded.exists() else recorded  # loaded file is gone too
+        # the loaded file rewritten since (a new inode): one file, by letter case
+        return recorded if _same_file(resolved, recorded) else None
 
     def recorded_input(self, path: Union[str, Path]) -> Optional[str]:
         """The modality a file this session loaded was loaded as, or None.
@@ -2192,13 +2232,12 @@ class DataManagerV2:
             return None
         if resolved in self._recorded_inputs:
             return self._recorded_inputs[resolved]
-        for recorded, name in self._recorded_inputs.items():
-            if recorded.exists():
-                if _same_file(target, recorded):
-                    return name
-            elif str(recorded).casefold() == str(resolved).casefold():
-                return name
-        return None
+        try:
+            st: Optional[os.stat_result] = os.stat(resolved)
+        except OSError:
+            st = None
+        recorded = self._recorded_match(resolved, st)
+        return None if recorded is None else self._recorded_inputs[recorded]
 
     def assert_save_target(
         self, name: str, path: Union[str, Path, None] = None

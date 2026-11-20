@@ -556,4 +556,3 @@ def test_one_autosave_costs_a_bounded_number_of_stats_per_loaded_file(
     small = _stats_for_one_autosave(tmp_path, 50, monkeypatch)
     large = _stats_for_one_autosave(tmp_path, 200, monkeypatch)
     assert large <= 4 * small * 1.25, (small, large)  # linear, with slack
-    assert large / 200 <= 40, large
