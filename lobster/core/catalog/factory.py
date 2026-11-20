@@ -458,6 +458,16 @@ def _exit_begins() -> None:
         logger.debug("Catalog: Ctrl-C at exit not handled", exc_info=True)
 
 
+def _say(text: str) -> None:
+    """A line from a signal handler; the interrupted thread may be writing stderr."""
+    import sys
+
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except (RuntimeError, OSError):
+        pass
+
+
 def _stop_waiting(text: str) -> None:
     """A Ctrl-C while the exit waits for a running tool: stop waiting, as Python's
     own second Ctrl-C does, without its traceback."""
@@ -466,7 +476,7 @@ def _stop_waiting(text: str) -> None:
     import sys
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the exit hooks run once
-    print(text, file=sys.stderr, flush=True)
+    _say(text)
     atexit._run_exitfuncs()
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -522,7 +532,6 @@ def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
     Python's own Ctrl-C handler in place.
     """
     import signal
-    import sys
 
     pressed: list = []
     try:
@@ -550,15 +559,14 @@ def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
         threading.Thread(
             target=_abort_now, args=(holder,), name="lobster-ctrl-c", daemon=True
         ).start()
-        print(waiting, file=sys.stderr, flush=True)
+        _say(waiting)
         signal.default_int_handler(signum, frame)
 
     signal.signal(signal.SIGINT, first_press)
     try:
         yield pressed
-    finally:
-        if not pressed:
-            signal.signal(signal.SIGINT, signal.default_int_handler)
+    finally:  # a caller that goes on after a press must not keep the hard exit
+        signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
 def _abort_now(holder: Any) -> None:

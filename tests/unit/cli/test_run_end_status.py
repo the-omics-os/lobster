@@ -960,8 +960,10 @@ def test_a_command_that_goes_on_after_the_first_ctrl_c_is_still_aborted(
 class _ReenteredStderr:
     """stderr written to from a signal handler while the thread was writing it."""
 
+    error = RuntimeError("reentrant call inside <_io.BufferedWriter name='<stderr>'>")
+
     def write(self, text):
-        raise RuntimeError("reentrant call inside <_io.BufferedWriter name='<stderr>'>")
+        raise self.error
 
     def flush(self):
         pass
@@ -979,13 +981,18 @@ def test_the_first_ctrl_c_goes_on_when_its_line_cannot_be_written(
     assert len(started) == 1
 
 
-def test_the_stop_now_exits_when_its_line_cannot_be_written(monkeypatch, sigint):
+@pytest.mark.parametrize(
+    "error", [_ReenteredStderr.error, BrokenPipeError(32, "Broken pipe")]
+)
+def test_the_stop_now_exits_when_its_line_cannot_be_written(monkeypatch, sigint, error):
     import atexit
 
     exits = []
     monkeypatch.setattr(atexit, "_run_exitfuncs", lambda: None)
     monkeypatch.setattr(factory.os, "_exit", exits.append)
-    monkeypatch.setattr(sys, "stderr", _ReenteredStderr())
+    stderr = _ReenteredStderr()
+    stderr.error = error
+    monkeypatch.setattr(sys, "stderr", stderr)
     factory._stop_waiting("bye")
     assert exits == [130]
 
