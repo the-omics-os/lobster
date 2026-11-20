@@ -2170,21 +2170,35 @@ class DataManagerV2:
         except (OSError, RuntimeError, TypeError):
             return
         if resolved.is_file():  # the latest name it was loaded under
+            for recorded in list(self._recorded_inputs):
+                if _same_file(recorded, resolved):  # another spelling of it
+                    del self._recorded_inputs[recorded]
             self._recorded_inputs[resolved] = name
 
     def recorded_input(self, path: Union[str, Path]) -> Optional[str]:
         """The modality a file this session loaded was loaded as, or None.
 
         ``path`` is spelled as for ``save_modality`` (relative to data_dir, or
-        absolute); links and '..' are resolved, so any spelling of the file counts.
+        absolute). Any spelling of the file counts: links, '..', and letter case
+        on a case-insensitive volume (compared as one file on disk). A loaded file
+        no longer on disk is matched by its path, letter case aside.
         """
         target = Path(path)
         if not target.is_absolute():
             target = self.data_dir / target
         try:
-            return self._recorded_inputs.get(target.resolve())
+            resolved = target.resolve()
         except (OSError, RuntimeError):
             return None
+        if resolved in self._recorded_inputs:
+            return self._recorded_inputs[resolved]
+        for recorded, name in self._recorded_inputs.items():
+            if recorded.exists():
+                if _same_file(target, recorded):
+                    return name
+            elif str(recorded).casefold() == str(resolved).casefold():
+                return name
+        return None
 
     def assert_save_target(
         self, name: str, path: Union[str, Path, None] = None
