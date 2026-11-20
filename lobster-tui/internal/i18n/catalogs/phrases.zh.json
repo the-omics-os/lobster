@@ -2243,5 +2243,6 @@
   "[yellow]Interrupted while saving the setup; run lobster init --force to finish it.[/yellow]": "[yellow]保存设置时被中断；请运行 lobster init --force 完成设置。[/yellow]",
   "[yellow]--agents is ignored because --preset is given.[/yellow]": "[yellow]已指定 --preset，因此忽略 --agents。[/yellow]",
   "[red]--agents names an unknown expert: {names}. Nothing was changed; lobster agents list shows the experts.[/red]": "[red]--agents 指定了未知的专家：{names}。未做任何更改；运行 lobster agents list 可查看所有专家。[/red]",
-  "[yellow]--agents leaves out {names} from the same package, so they stay off; add them to --agents to turn them on.[/yellow]": "[yellow]--agents 未包含同一软件包中的 {names}，它们将保持关闭；如需启用，请将其加入 --agents。[/yellow]"
+  "[yellow]--agents leaves out {names} from the same package, so they stay off; add them to --agents to turn them on.[/yellow]": "[yellow]--agents 未包含同一软件包中的 {names}，它们将保持关闭；如需启用，请将其加入 --agents。[/yellow]",
+  "[dim]All installed agents run here: no choice is saved for this project.[/dim]": "[dim]此项目未保存选择，因此所有已安装的智能体都会运行。[/dim]"
 }

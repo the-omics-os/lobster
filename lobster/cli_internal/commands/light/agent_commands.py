@@ -449,6 +449,7 @@ def agents_list(
     # Load current config to check enabled status
     config = WorkspaceAgentConfig.load(workspace_path)
     enabled_set = _with_children(set(config.effective_agents()))
+    all_run = not enabled_set  # nothing saved: the graph runs every installed agent
 
     # Get all installed agents (entry points only - no network)
     all_agents = component_registry.list_agents()
@@ -483,11 +484,17 @@ def agents_list(
         package = getattr(agent_config, "package_name", None) or "lobster-ai"
 
         # Check if enabled
-        enabled = "[green]v[/green]" if name in enabled_set else ""
+        enabled = "[green]v[/green]" if all_run or name in enabled_set else ""
 
         table.add_row(name, package, tier, enabled)
 
     console.print(table)
+    if all_run:
+        console.print(
+            h(
+                "[dim]All installed agents run here: no choice is saved for this project.[/dim]"
+            )
+        )
     console.print(
         h("\n[dim]{count} agents installed[/dim]").format(count=len(all_agents))
     )
