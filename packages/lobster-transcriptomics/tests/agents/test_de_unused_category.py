@@ -86,3 +86,22 @@ def test_the_design_tools_do_not_count_an_unused_level(tmp_path, monkeypatch, to
 
     assert "'other'" not in reply, reply
     assert "0 replicate" not in reply, reply
+
+
+def test_the_fit_leaves_the_callers_metadata_alone(tmp_path, monkeypatch):
+    from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+
+    monkeypatch.chdir(tmp_path)
+    adata = _with_unused_level()
+    metadata = adata.obs.copy()
+    counts = pd.DataFrame(adata.X.T, index=adata.var_names, columns=adata.obs_names)
+
+    BulkRNASeqService(results_dir=str(tmp_path / "results")).run_pydeseq2_analysis(
+        count_matrix=counts,
+        metadata=metadata,
+        formula="~condition",
+        contrast=["condition", "treat", "ctrl"],
+        shrink_lfc=False,
+    )
+
+    assert list(metadata["condition"].cat.categories) == ["ctrl", "other", "treat"]
