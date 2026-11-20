@@ -369,3 +369,9 @@ def test_no_message_of_a_very_long_list_overflows_the_go_tui_reader():
     ]
     assert max(len(line.encode()) for line in lines) < go_reader_limit
     assert sum(event["payload"]["content"].count("\n") for event in events) == 150_000
+
+
+def test_an_empty_list_sends_only_its_title():
+    assert _list_events([], title="Files") == [
+        {"type": "text", "payload": {"content": "Files\n"}}
+    ]

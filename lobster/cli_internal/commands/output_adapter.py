@@ -619,6 +619,9 @@ class DashboardOutputAdapter(OutputAdapter):
         return False
 
 
+_LIST_LINES_PER_MESSAGE = 1000
+
+
 class ProtocolOutputAdapter(OutputAdapter):
     """OutputAdapter that emits protocol messages to the Go TUI."""
 
@@ -716,8 +719,11 @@ class ProtocolOutputAdapter(OutputAdapter):
             for index, item in enumerate(data.get("items", []), start=1):
                 prefix = f"{index}." if ordered else "-"
                 lines.append(f"{prefix} {_strip_markup(item)}")
-            if lines:
-                self._send("text", {"content": "\n".join(lines) + "\n"})
+            # The Go TUI reads at most 4 MB per message and loses the link past
+            # it; 1,000 lines of even 255 escaped characters stay near 1.5 MB.
+            for start in range(0, len(lines), _LIST_LINES_PER_MESSAGE):
+                part = lines[start : start + _LIST_LINES_PER_MESSAGE]
+                self._send("text", {"content": "\n".join(part) + "\n"})
             return
 
         if block.kind == "code":
