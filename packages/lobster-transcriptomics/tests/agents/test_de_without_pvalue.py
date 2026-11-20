@@ -350,3 +350,31 @@ def test_the_exported_code_makes_the_call_the_analysis_made(
     exec(compile(ir.render(), "<de>", "exec"), {"adata": _c2()})  # nosec B102
 
     assert seen == [called]
+
+
+def test_a_missing_value_in_the_second_group_counts_too(tmp_path, monkeypatch):
+    adata = counts("bulk_all_expressed")
+    adata.X[-1, :] = np.nan  # a treat sample has no values
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert "(500 with a missing value)" in reply, reply
+
+
+@pytest.mark.parametrize(
+    "case", ["low_and_one_missing", "no_gene"], ids=["partly_missing", "no_gene"]
+)
+def test_a_pre_filter_refusal_says_every_value_is_missing_only_then(
+    tmp_path, monkeypatch, case
+):
+    adata = counts("bulk_all_expressed")
+    if case == "no_gene":
+        adata = adata[:, :0].copy()
+    else:
+        adata.X = adata.X / 1e4  # every value <= 1
+        adata.X[0, 0] = np.nan
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert "the expression pre-filter kept none. " + SIGNED in reply, reply
+    assert "every value is missing" not in reply, reply
