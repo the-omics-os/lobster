@@ -339,15 +339,18 @@ def test_a_dropped_ftp_transfer_resumes_with_rest(ftp, manager, tmp_path):
     assert not list(tmp_path.glob("*.part"))
 
 
-@pytest.mark.parametrize("idle", ["1", "240"])
+@pytest.mark.parametrize("idle, timeout", [("1", 1.0), ("240", 240.0), (None, 60.0)])
 def test_an_ftp_connection_waits_as_long_as_the_idle_bound(
-    ftp, manager, tmp_path, monkeypatch, idle
+    ftp, manager, tmp_path, monkeypatch, idle, timeout
 ):
     # ftplib uses the timeout for the control and the data socket
-    monkeypatch.setenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", idle)
+    if idle is None:
+        monkeypatch.delenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S")
+    else:
+        monkeypatch.setenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", idle)
     ftp.script = [{"cut": 40_000}, {}]
     assert manager.download_file(FTP_URL, tmp_path / "f.gz") is True
-    assert ftp.timeouts == [float(idle)] * 2
+    assert ftp.timeouts == [timeout] * 2
 
 
 def test_a_server_without_rest_gets_the_file_again_from_zero(ftp, manager, tmp_path):

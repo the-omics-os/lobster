@@ -8,7 +8,10 @@ Also tests helpers.py exports for shared utilities.
 """
 
 import gzip
+import http.client
+import socket
 import ssl
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +19,11 @@ import pytest
 # ---------------------------------------------------------------------------
 # soft_download.py tests
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def no_backoff_waits(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _s: None)
 
 
 class TestBuildSoftUrl:
@@ -120,6 +128,7 @@ class TestPreDownloadSoftFile:
         mock_urlopen.assert_called_once_with(
             "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE194nnn/GSE194247/soft/GSE194247_family.soft.gz",
             context=mock_ssl.return_value,
+            timeout=60.0,
         )
         mock_ssl.assert_called_once()
 
@@ -155,6 +164,127 @@ class TestPreDownloadSoftFile:
 
         with pytest.raises(Exception, match="SSL certificate verification failed"):
             pre_download_soft_file("GSE194247", tmp_path)
+
+
+class _Response:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        if isinstance(self.body, BaseException):
+            raise self.body
+        return self.body
+
+
+class TestPreDownloadOnASlowRoute:
+    """A slow or filtered route to NCBI: each request is bounded and retried, so the
+    metadata stays on HTTPS instead of falling back to GEOparse's FTP."""
+
+    @pytest.fixture
+    def opened(self, monkeypatch):
+        from lobster.services.data_access.geo import soft_download
+
+        calls, sleeps = [], []
+        monkeypatch.setattr(soft_download, "create_ssl_context", lambda: None)
+        monkeypatch.setattr("time.sleep", sleeps.append)
+
+        def serve(*results):
+            def urlopen(url, context=None, timeout=None):
+                calls.append(timeout)
+                result = results[min(len(calls), len(results)) - 1]
+                if isinstance(result, BaseException) and not isinstance(
+                    result, socket.timeout
+                ):
+                    raise result
+                return _Response(result)
+
+            monkeypatch.setattr(soft_download.urllib.request, "urlopen", urlopen)
+            return calls, sleeps
+
+        return serve
+
+    @pytest.mark.parametrize("idle, timeout", [(None, 60.0), ("240", 240.0)])
+    def test_each_request_waits_as_long_as_the_idle_bound(
+        self, opened, tmp_path, monkeypatch, idle, timeout
+    ):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        if idle is None:
+            monkeypatch.delenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", raising=False)
+        else:
+            monkeypatch.setenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", idle)
+        calls, _ = opened(_soft_fixture())
+
+        assert pre_download_soft_file("GSE194247", tmp_path) is not None
+        assert calls == [timeout]
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            urllib.error.URLError(socket.timeout("timed out")),
+            ConnectionResetError("reset"),
+            socket.timeout("the read stalled"),
+            http.client.IncompleteRead(b"partial"),
+            urllib.error.HTTPError("u", 503, "busy", {}, None),
+            b"not gzip",
+        ],
+        ids=["connect-timeout", "reset", "read-stall", "cut", "503", "garbled"],
+    )
+    def test_a_transient_failure_is_tried_again(self, opened, tmp_path, failure):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        calls, sleeps = opened(failure, _soft_fixture())
+
+        result = pre_download_soft_file("GSE194247", tmp_path)
+
+        assert result == tmp_path / "GSE194247_family.soft.gz"
+        assert result.read_bytes() == _soft_fixture()
+        assert len(calls) == 2 and len(sleeps) == 1
+        assert not list(tmp_path.glob(".GSE194247_soft_*"))
+
+    def test_it_gives_up_after_three_attempts(self, opened, tmp_path):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        calls, sleeps = opened(ConnectionResetError("reset"))
+
+        assert pre_download_soft_file("GSE194247", tmp_path) is None
+        assert len(calls) == 3
+        assert len(sleeps) == 2 and sleeps[0] < sleeps[1]
+
+    def test_a_file_the_server_does_not_have_is_not_asked_for_again(
+        self, opened, tmp_path
+    ):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        calls, sleeps = opened(urllib.error.HTTPError("u", 404, "missing", {}, None))
+
+        assert pre_download_soft_file("GSE194247", tmp_path) is None
+        assert len(calls) == 1 and not sleeps
+
+    def test_a_certificate_failure_is_not_tried_again(self, opened, tmp_path):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        calls, _ = opened(Exception("CERTIFICATE_VERIFY_FAILED"))
+
+        with pytest.raises(Exception, match="SSL certificate verification failed"):
+            pre_download_soft_file("GSE194247", tmp_path)
+        assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------------
