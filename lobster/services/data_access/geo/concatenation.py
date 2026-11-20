@@ -150,6 +150,10 @@ class SampleConcatenator:
                             "format_specific": True,
                         }
 
+                    # refused before the sample is registered
+                    self.service.data_manager.assert_save_target(
+                        modality_name, f"{gse_id.lower()}_{gsm_id.lower()}_raw.h5ad"
+                    )
                     adata = self.service.data_manager.load_modality(
                         name=modality_name,
                         source=matrix,
@@ -531,6 +535,10 @@ class SampleConcatenator:
                     "format_specific": True,
                 }
 
+            # refused before the sample is registered
+            self.service.data_manager.assert_save_target(
+                modality_name, f"{gsm_id.lower()}_sample.h5ad"
+            )
             adata = self.service.data_manager.load_modality(
                 name=modality_name,
                 source=matrix,

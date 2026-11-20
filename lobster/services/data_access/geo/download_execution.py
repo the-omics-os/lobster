@@ -74,6 +74,28 @@ def _level_from_name(name):
     return "unknown"
 
 
+def _loaded_series_file(manager, clean_geo_id: str):
+    """``(modality, file name)`` when this session loaded an earlier import file of
+    the series (``data/geo_<id>_*_raw.h5ad``), found by its recorded path."""
+    data_dir = getattr(manager, "data_dir", None)
+    if not isinstance(data_dir, Path):  # a stand-in DataManager has no files
+        return None
+    for path in sorted(data_dir.glob(f"geo_{clean_geo_id.lower()}_*_raw.h5ad")):
+        loaded_as = manager.recorded_input(path)
+        if loaded_as is not None:
+            return loaded_as, path.name
+    return None
+
+
+def _already_loaded_text(clean_geo_id: str, loaded) -> str:
+    loaded_as, file_name = loaded
+    return (
+        f"Dataset {clean_geo_id} is already loaded as modality '{loaded_as}' "
+        f"(from data/{file_name}); nothing was downloaded. Use that modality, or "
+        "start a new workspace to import the series again."
+    )
+
+
 class DownloadExecutor:
     """GEO download coordination and pipeline step execution.
 
@@ -125,6 +147,12 @@ class DownloadExecutor:
             clean_geo_id = geo_id.strip().upper()
             if not clean_geo_id.startswith("GSE"):
                 return f"Invalid GEO ID format: {geo_id}. Must be a GSE accession."
+
+            # A resumed session loaded this series' earlier import file: report
+            # it before anything is fetched or registered.
+            loaded = _loaded_series_file(self.service.data_manager, clean_geo_id)
+            if loaded is not None:
+                return _already_loaded_text(clean_geo_id, loaded)
 
             # Check if metadata already exists (should be fetched first)
             if clean_geo_id not in self.service.data_manager.metadata_store:
@@ -390,6 +418,10 @@ class DownloadExecutor:
                 uns = getattr(geo_result.data, "uns", None) or {}
                 not_loaded = list(uns.get("geo_import", {}).get("not_loaded", []))
 
+            # refused before the modality is registered or its load logged
+            self.service.data_manager.assert_save_target(
+                modality_name, f"{modality_name}_raw.h5ad"
+            )
             adata = self.service.data_manager.load_modality(
                 name=modality_name,
                 source=geo_result.data,
@@ -532,6 +564,9 @@ Multi-Modal Dataset Detected:
             refuse("series identity requires a GSE accession")
         if adapter not in (None, "transcriptomics_bulk"):
             refuse("gene_counts requires the bulk transcriptomics adapter")
+        loaded = _loaded_series_file(manager, clean_geo_id)
+        if loaded is not None:
+            refuse(_already_loaded_text(clean_geo_id, loaded))
         for name in manager.list_modalities():
             cached = manager.get_modality(name)
             belongs = (
@@ -609,6 +644,7 @@ Multi-Modal Dataset Detected:
         }
         # Validation can still refuse without registering; conversion is deliberately bypassed.
         modality_name = f"geo_{clean_geo_id.lower()}_transcriptomics_bulk"
+        manager.assert_save_target(modality_name, f"{modality_name}_raw.h5ad")
         manager.load_modality(
             name=modality_name,
             source=staged,

@@ -2157,8 +2157,8 @@ class DataManagerV2:
             resolved = Path(path).resolve()
         except (OSError, RuntimeError, TypeError):
             return
-        if resolved.is_file():
-            self._recorded_inputs.setdefault(resolved, name)
+        if resolved.is_file():  # the latest name it was loaded under
+            self._recorded_inputs[resolved] = name
 
     def recorded_input(self, path: Union[str, Path]) -> Optional[str]:
         """The modality a file this session loaded was loaded as, or None.

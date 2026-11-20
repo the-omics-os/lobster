@@ -337,6 +337,10 @@ class GEOFallbackService:
             if result.success:
                 # Store as bulk RNA-seq modality
                 modality_name = f"geo_{clean_geo_id.lower()}_bulk"
+                # refused before the modality is registered
+                self.data_manager.assert_save_target(
+                    modality_name, f"{clean_geo_id.lower()}_bulk_raw.h5ad"
+                )
                 adata = self.data_manager.load_modality(
                     name=modality_name,
                     source=result.data,
@@ -419,6 +423,10 @@ class GEOFallbackService:
                 "parser_version": "helper_parser",
             }
 
+            # refused before the modality is registered
+            self.data_manager.assert_save_target(
+                modality_name, f"{clean_geo_id.lower()}_tar_processed.h5ad"
+            )
             adata = self.data_manager.load_modality(
                 name=modality_name,
                 source=matrix,
