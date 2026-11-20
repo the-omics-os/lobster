@@ -1,17 +1,19 @@
 """A protein with the same value in every sample no longer wipes out a result.
 
-A t-test, a Mann-Whitney test or a correlation gives no p-value (NaN) for such a
-protein. Benjamini-Hochberg over a list holding one NaN made every adjusted
-p-value NaN, so no protein was significant; Holm and Bonferroni counted the NaN
-among the tests. The correction now runs over the finite p-values only, and the
-reply counts the tests without one. A linear time trend gave the flat protein
-p = 0 (a perfect fit of slope 0); it now gives p = 1, as the polynomial one does.
+A t-test or a correlation gives no p-value (NaN) for such a protein, and so does
+a Mann-Whitney test from scipy 1.18 (scipy 1.16 gives p = 1). Benjamini-Hochberg
+over a list holding one NaN made every adjusted p-value NaN, so no protein was
+significant; Holm and Bonferroni counted the NaN among the tests. The correction
+now runs over the finite p-values only, and the reply counts the tests without
+one. A time trend of a flat protein is 0 / 0: it gave p = 0 (linear) or p = 1
+(polynomial) and now gives none, as the other tests do.
 """
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats as scipy_stats
 
 from lobster.agents.proteomics.de_analysis_expert import de_analysis_expert
 from lobster.core.runtime.data_manager import DataManagerV2
@@ -40,6 +42,13 @@ def _proteins(flat):
     return ad.AnnData(x, obs=obs, var=pd.DataFrame(index=[f"P{i}" for i in range(50)]))
 
 
+def _ties_give_no_p_value():
+    flat = [2.0] * 6
+    return np.isnan(
+        scipy_stats.mannwhitneyu(flat, flat, alternative="two-sided").pvalue
+    )
+
+
 def _results(adata, uns_key):
     return {r["protein"]: r for r in adata.uns[uns_key]["results"]}
 
@@ -61,6 +70,11 @@ def test_a_flat_protein_changes_nothing_for_the_others(method, fdr):
     with_flat, stats = run(_proteins(flat=True))
     without, stats_without = run(_proteins(flat=False)[:, :49].copy())
 
+    if method == "mann_whitney" and not _ties_give_no_p_value():
+        # scipy < 1.18: an ordinary test of p = 1, as before
+        assert with_flat["P49"]["p_value"] == 1.0
+        assert stats["n_tests_without_pvalue"] == 0
+        return
     assert np.isnan(with_flat.pop("P49")["p_adjusted"])
     assert with_flat.keys() == without.keys()
     for protein, result in without.items():
@@ -93,15 +107,24 @@ def test_a_flat_protein_changes_no_correlation_result(method):
     assert stats["n_tests_without_pvalue"] == 1
 
 
-def test_a_flat_protein_has_no_linear_time_trend():
-    out, _, _ = ProteomicsDifferentialService().perform_time_course_analysis(
-        _proteins(flat=True), time_column="time", test_method="linear_trend"
-    )
+@pytest.mark.parametrize("method", ["linear_trend", "polynomial"])
+def test_a_flat_protein_has_no_time_trend_and_changes_no_other(method):
+    def run(adata):
+        out, stats, _ = ProteomicsDifferentialService().perform_time_course_analysis(
+            adata, time_column="time", test_method=method
+        )
+        return _results(out, "time_course_analysis"), stats
 
-    flat = _results(out, "time_course_analysis")["P49"]
-    assert flat["p_value"] == 1.0
-    significant = out.uns["time_course_analysis"]["significant_results"]
-    assert "P49" not in {r["protein"] for r in significant}
+    with_flat, stats = run(_proteins(flat=True))
+    without, stats_without = run(_proteins(flat=False)[:, :49].copy())
+
+    flat = with_flat.pop("P49")
+    assert np.isnan(flat["p_value"]) and np.isnan(flat["p_adjusted"])
+    assert np.isnan(flat["r_squared"])
+    for protein, result in without.items():
+        assert with_flat[protein]["p_adjusted"] == pytest.approx(result["p_adjusted"])
+    assert stats["n_significant_results"] == stats_without["n_significant_results"]
+    assert stats["n_tests_without_pvalue"] == 1
 
 
 def _tools(tmp_path, flat):
@@ -128,6 +151,21 @@ def test_the_de_reply_counts_the_tests_without_a_p_value(tmp_path, flat):
     assert (line in reply) is flat, reply
     assert ("Tests without a p-value" in reply) is flat, reply
     assert "- Significant proteins: 0\n" not in reply, reply
+
+
+@pytest.mark.parametrize("flat", [True, False])
+def test_the_time_course_reply_counts_the_tests_without_a_p_value(tmp_path, flat):
+    reply = _tools(tmp_path, flat)["run_time_course_analysis"].invoke(
+        {"modality_name": "prot", "time_column": "time"}
+    )
+
+    line = (
+        "- Tests without a p-value: 1 (a protein with the same value at every "
+        "time point); left out of the FDR correction\n"
+    )
+    assert (line in reply) is flat, reply
+    assert ("Tests without a p-value" in reply) is flat, reply
+    assert "nan" not in reply, reply
 
 
 @pytest.mark.parametrize("flat", [True, False])
