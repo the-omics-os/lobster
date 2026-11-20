@@ -282,3 +282,98 @@ def test_a_step_without_a_recorded_input_says_so_when_the_notebook_branches(
     text = export(tracker, tmp_path)
 
     assert text.count(UNRECORDED_INPUT_NOTE) == 1
+
+
+DESEQ2_LIKE = "adata.uns['de'] = 'deseq2'"
+RANK_LIKE = "adata = adata.copy()\nadata.uns['rank'] = 'wilcoxon'"
+
+
+def logged_step(tracker, tool, parameters, code):
+    """A step as a tool logs it: its inputs and outputs resolved from the IR."""
+    tracker.create_activity(
+        activity_type=tool,
+        agent="de_analysis_expert",
+        description=tool,
+        parameters=parameters,
+        ir=AnalysisStep(
+            operation=tool,
+            tool_name=tool,
+            description=tool,
+            library="lobster",
+            code_template=code,
+            imports=[],
+            parameters={},
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=["adata"],
+            exportable=True,
+        ),
+    )
+
+
+def test_an_output_list_names_every_modality_the_step_wrote():
+    tracker = ProvenanceTracker()
+    logged_step(
+        tracker,
+        "de",
+        {"modality_name": "raw", "result_modality_names": ["raw", "raw_de"]},
+        DESEQ2_LIKE,
+    )
+    assert tracker.activities[-1]["outputs"] == [
+        {"name": "raw", "resolved": True, "ir_name": "adata"},
+        {"name": "raw_de", "resolved": True, "ir_name": "adata"},
+    ]
+
+
+def test_a_later_step_on_a_modality_changed_in_place_starts_from_that_change(
+    tmp_path,
+):
+    """deseq2 writes its results into its input and saves a copy; a later rank
+    test on the input sees those results, as the session's input had them."""
+    tracker = ProvenanceTracker()
+    logged_step(
+        tracker,
+        "deseq2",
+        {"modality_name": "raw", "result_modality_names": ["raw", "raw_de"]},
+        DESEQ2_LIKE,
+    )
+    save(tracker, "raw_de")
+    logged_step(
+        tracker,
+        "wilcoxon",
+        {"modality_name": "raw", "result_modality_name": "raw_rank"},
+        RANK_LIKE,
+    )
+    save(tracker, "raw_rank")
+
+    written = replay_all(tracker, tmp_path)
+
+    assert written["raw_de"].uns["de"] == "deseq2"
+    assert written["raw_rank"].uns["de"] == "deseq2"
+    assert written["raw_rank"].uns["rank"] == "wilcoxon"
+    assert "rank" not in written["raw_de"].uns
+
+
+def test_a_step_after_a_result_starts_from_its_input_changed_in_place(tmp_path):
+    """wilcoxon makes a result; deseq2 on the input then starts from the input."""
+    tracker = ProvenanceTracker()
+    logged_step(
+        tracker,
+        "wilcoxon",
+        {"modality_name": "raw", "result_modality_name": "raw_rank"},
+        RANK_LIKE,
+    )
+    save(tracker, "raw_rank")
+    logged_step(
+        tracker,
+        "deseq2",
+        {"modality_name": "raw", "result_modality_names": ["raw", "raw_de"]},
+        DESEQ2_LIKE,
+    )
+    save(tracker, "raw_de")
+
+    written = replay_all(tracker, tmp_path)
+
+    assert "rank" not in written["raw_de"].uns
+    assert written["raw_de"].uns["de"] == "deseq2"
+    assert "de" not in written["raw_rank"].uns
