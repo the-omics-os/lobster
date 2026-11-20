@@ -38,8 +38,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "metadata_assistant",  # Publication queue filtering, ID mapping
             "proteomics_expert",  # MS proteomics (DDA/DIA)
             "genomics_expert",  # Genomics analysis and interpretation
-            "machine_learning_expert_agent",
-            "protein_structure_visualization_expert_agent",
+            "machine_learning_expert",
+            "protein_structure_visualization_expert",
         ],
         "restricted_handoffs": {},  # No restrictions — all agents free
         "features": [
@@ -64,8 +64,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "metadata_assistant",
             "proteomics_expert",
             "genomics_expert",
-            "machine_learning_expert_agent",
-            "protein_structure_visualization_expert_agent",
+            "machine_learning_expert",
+            "protein_structure_visualization_expert",
         ],
         "restricted_handoffs": {},  # No restrictions
         "features": [
