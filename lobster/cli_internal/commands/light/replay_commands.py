@@ -1066,7 +1066,16 @@ def verify_notebook(
         after = _watched(workspace, replay_dir, *watched)
     except _Unreadable as exc:
         return unreadable(exc.args[0])
-    changed = _changes(before, after, workspace)
+    stat_only = {
+        k
+        for k in before.keys() | after.keys()
+        if str(before.get(k, after.get(k))).startswith("stat:")
+    }
+    changed = _changes(
+        {k: v for k, v in before.items() if k not in stat_only},
+        {k: v for k, v in after.items() if k not in stat_only},
+        workspace,
+    )
     if changed:
         return refused(
             base_policy,
@@ -1074,6 +1083,22 @@ def verify_notebook(
                 names=", ".join(changed)
             ),
             changed[0],
+        )
+    # Another file: the notebook through a typed path, or a session in this workspace.
+    touched = _changes(
+        {k: v for k, v in before.items() if k in stat_only},
+        {k: v for k, v in after.items() if k in stat_only},
+        workspace,
+    )
+    if touched:
+        return refused(
+            base_policy,
+            h(
+                "{names} in the workspace changed while the notebook ran. If a "
+                "Lobster session is using this workspace, close it and run the "
+                "replay again; otherwise the notebook wrote there."
+            ).format(names=", ".join(touched)),
+            touched[0],
         )
     if status != "success":
         timed_out = "Timeout" in str(result.get("error_type"))

@@ -2097,6 +2097,7 @@
   "Earlier versions: size unknown.": "早期版本：大小未知。",
   "The saved file changed after the session: {names}": "会话之后，已保存的文件发生了变化：{names}",
   "The notebook changed files it should only read: {names}": "notebook 修改了本应只读的文件：{names}",
+  "{names} in the workspace changed while the notebook ran. If a Lobster session is using this workspace, close it and run the replay again; otherwise the notebook wrote there.": "工作区中的 {names} 在 notebook 运行期间被修改。如果有 Lobster 会话正在使用此工作区，请关闭该会话后重新运行 replay；否则是 notebook 写入了这些文件。",
   "The notebook ran past the time limit ({seconds} seconds for one cell).": "notebook 运行超出了时间限制（单个单元格 {seconds} 秒）。",
   "Interrupted.": "已中断。",
   "{name}: written by the notebook; the session has no saved file to compare it with.": "{name}：由 notebook 写出；会话中没有可与之比较的已保存文件。",

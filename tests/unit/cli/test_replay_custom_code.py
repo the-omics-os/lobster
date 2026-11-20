@@ -448,4 +448,8 @@ def test_a_write_to_another_file_of_the_session_is_refused(tmp_path, monkeypatch
     write = "open('../../notes.txt', 'w').write('REPLAY')\n"
     out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
     assert out["verdict"] == "REFUSED", out
-    assert "notes.txt" in json.dumps(out["report"]["refusal"]), out
+    assert out["report"]["refusal"]["reason"] == (
+        "notes.txt in the workspace changed while the notebook ran. If a Lobster "
+        "session is using this workspace, close it and run the replay again; "
+        "otherwise the notebook wrote there."
+    ), out
