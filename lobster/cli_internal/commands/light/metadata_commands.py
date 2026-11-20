@@ -933,7 +933,8 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
                     (h("Total"), h("{count} items").format(count=total_count)),
                 ],
                 title=h("About to Clear"),
-            )
+            ),
+            *_every_file(disk_files, metadata_dir, _not_a_project_metadata_alert),
         ],
     )
 
@@ -998,7 +999,7 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
 
 
 def _not_a_project(workspace: Path) -> bool:
-    """A workspace that is a folder of the user's (-w): its exports may be theirs."""
+    """A workspace that is a folder of the user's (-w): its files may be theirs."""
     from lobster.core.runtime.workspace import _is_project_workspace
 
     return not _is_project_workspace(workspace)
@@ -1011,6 +1012,22 @@ def _not_a_project_alert() -> OutputBlock:
         ),
         level="warning",
     )
+
+
+def _not_a_project_metadata_alert() -> OutputBlock:
+    return alert_block(
+        h(
+            "This folder is not a Lobster project; files in its metadata folder may be your own."
+        ),
+        level="warning",
+    )
+
+
+def _every_file(files: list, folder: Optional[Path], alert) -> list:
+    """In a workspace that is not a project, the alert and every file to delete."""
+    if not files or not _not_a_project(folder.parent):
+        return []
+    return [alert(), list_block([f.name for f in files], title=h("Files"))]
 
 
 def metadata_clear_exports(
@@ -1191,14 +1208,8 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
                 ],
                 title=h("About to Clear All Metadata"),
             ),
-            *(
-                [
-                    _not_a_project_alert(),
-                    list_block([f.name for f in export_files], title=h("Files")),
-                ]
-                if export_files and _not_a_project(exports_dir.parent)
-                else []
-            ),
+            *_every_file(disk_files, metadata_dir, _not_a_project_metadata_alert),
+            *_every_file(export_files, exports_dir, _not_a_project_alert),
         ],
     )
     confirm = output.confirm(

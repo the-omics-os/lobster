@@ -1717,6 +1717,17 @@ def test_metadata_list_protocol_mode_renders_structured_output(tmp_path):
     assert output.messages[8] == ("dim", "New exports go to: workspace/exports/")
 
 
+# the dummy workspace is a plain folder, not a project: each clear names every file
+NOT_A_PROJECT = (
+    "This folder is not a Lobster project; "
+    "files in its exports folder may be your own."
+)
+METADATA_NOT_A_PROJECT = (
+    "This folder is not a Lobster project; "
+    "files in its metadata folder may be your own."
+)
+
+
 def test_metadata_clear_protocol_mode_confirms_then_cancels(tmp_path):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
@@ -1743,15 +1754,12 @@ def test_metadata_clear_protocol_mode_confirms_then_cancels(tmp_path):
                 ],
             },
         ),
+        ("warning", METADATA_NOT_A_PROJECT),
+        (None, "Files"),
+        (None, "- study_metadata.json"),
         ("confirm", "Clear all 5 metadata items?"),
         (None, "Operation cancelled"),
     ]
-
-
-NOT_A_PROJECT = (
-    "This folder is not a Lobster project; "
-    "files in its exports folder may be your own."
-)
 
 
 def test_metadata_clear_exports_protocol_mode_confirms_and_succeeds(tmp_path):
@@ -1769,7 +1777,6 @@ def test_metadata_clear_exports_protocol_mode_confirms_and_succeeds(tmp_path):
     assert not (tmp_path / "exports" / "analysis_summary.csv").exists()
     assert output.messages[0][0] == "table"
     assert output.messages[0][1]["title"] == "About to Clear Export Files"
-    # the workspace is a plain folder, not a project: every file, and a warning
     assert output.messages[1] == ("warning", NOT_A_PROJECT)
     assert output.messages[2] == (None, "Preview")
     assert output.messages[3] == (None, "- analysis_summary.csv (0.0 KB)")
@@ -1805,6 +1812,9 @@ def test_metadata_clear_all_protocol_mode_confirms_then_cancels(tmp_path):
                 ],
             },
         ),
+        ("warning", METADATA_NOT_A_PROJECT),
+        (None, "Files"),
+        (None, "- study_metadata.json"),
         ("warning", NOT_A_PROJECT),
         (None, "Files"),
         (None, "- analysis_summary.csv"),
