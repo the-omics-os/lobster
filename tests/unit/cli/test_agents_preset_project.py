@@ -58,15 +58,28 @@ def _out():
     return agent_commands.console.file.getvalue()
 
 
-def test_list_ticks_the_agents_the_preset_enables(ws):
-    agent_commands.agents_list(workspace=ws)
-
+def _ticked():
     rows = {
         line.split()[1]: line
         for line in _out().splitlines()
         if line.startswith("│") and line.split()[1] in PACKAGES
     }
-    assert {name for name, row in rows.items() if " v " in row} == set(BASIC)
+    return {name for name, row in rows.items() if " v " in row}
+
+
+def test_list_ticks_the_agents_the_preset_enables_and_their_children(ws):
+    agent_commands.agents_list(workspace=ws)
+
+    # the graph adds an enabled agent's child agents
+    assert _ticked() == set(BASIC) | set(CHILDREN["transcriptomics_expert"])
+
+
+def test_list_ticks_the_children_of_a_listed_agent(ws):
+    WorkspaceAgentConfig(enabled_agents=["transcriptomics_expert"]).save(ws)
+
+    agent_commands.agents_list(workspace=ws)
+
+    assert _ticked() == {"transcriptomics_expert", *CHILDREN["transcriptomics_expert"]}
 
 
 def test_install_adds_to_the_preset_as_an_explicit_list(ws, monkeypatch):
