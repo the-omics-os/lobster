@@ -9,7 +9,6 @@ as such and is not reported.
 """
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
@@ -181,7 +180,7 @@ def _analysed_and_exported(tmp_path, monkeypatch, adata, method):
     )
     scope = {"adata": adata.copy()}
     exec(compile(ir.render(), "<de>", "exec"), scope)  # nosec B102
-    return out, pd.DataFrame(scope["adata_de"].uns["de_results_ctrl_vs_treat"])
+    return out, scope["adata_de"].uns["de_results_ctrl_vs_treat"]["results_df"]
 
 
 @pytest.mark.parametrize("method", ["deseq2_like", "wilcoxon", "t_test"])
