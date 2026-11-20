@@ -161,12 +161,26 @@ def _unmodelled_covariates_text(obs, groupby) -> str:
 
 def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     """No gene was left to report: there is no DE result. Names the step that
-    dropped them: the expression pre-filter, or a fold change that is not a
-    number (the only post-filter left on: min_fold_change=1.0)."""
+    dropped them: the expression pre-filter, a missing p-value, or a fold change
+    that is not a number (the only post-filter left on: min_fold_change=1.0)."""
     if adata_de.n_vars:
         return None
     passed = de_stats.get("pre_filter_gene_count") or 0
-    if passed:
+    without = de_stats.get("n_genes_without_pvalue", 0)
+    no_pvalue = "a t-test gives none for a gene with the same value in every sample"
+    if passed and without == passed:
+        cause = (
+            f"{passed:,} passed the expression pre-filter, but none has a "
+            f"p-value: {no_pvalue}. So no result can be reported"
+        )
+    elif without:
+        cause = (
+            f"{passed:,} passed the expression pre-filter, but none can be "
+            f"reported: {without:,} have no p-value ({no_pvalue}) and the fold "
+            f"change of the other {passed - without:,} is not a number (one "
+            "group's mean is below -1, as with centred or signed values)"
+        )
+    elif passed:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a finite "
             "fold change: the fold change log2((mean2 + 1) / (mean1 + 1)) is not "
@@ -188,15 +202,17 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
 
 def _genes_tested_text(adata, de_stats) -> str:
     """ "N of M (K below the expression threshold, J whose fold change is not a
-    number)": what a wilcoxon / t-test tested of the input's genes, and why the
-    others were not (the parts that are zero left out)."""
+    number, L without a p-value)": what a wilcoxon / t-test tested of the input's
+    genes, and why the others were not (the parts that are zero left out)."""
     tested = de_stats["n_genes_tested"]
     passed = de_stats.get("pre_filter_gene_count", tested)
+    without = de_stats.get("n_genes_without_pvalue", 0)
     untested = [
         f"{count:,} {why}"
         for count, why in (
             (adata.n_vars - passed, "below the expression threshold"),
-            (passed - tested, "whose fold change is not a number"),
+            (passed - tested - without, "whose fold change is not a number"),
+            (without, "without a p-value"),
         )
         if count
     ]

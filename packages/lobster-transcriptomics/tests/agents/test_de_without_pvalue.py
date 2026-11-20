@@ -159,12 +159,10 @@ def test_a_refusal_for_both_reasons_counts_each(tmp_path, monkeypatch):
     ), reply
 
 
-@pytest.mark.parametrize("method", ["deseq2_like", "wilcoxon", "t_test"])
-def test_the_exported_code_adjusts_as_the_analysis_does(tmp_path, monkeypatch, method):
+def _analysed_and_exported(tmp_path, monkeypatch, adata, method):
     monkeypatch.chdir(tmp_path)
-    adata = _constant(_c2(), 1)
     service = BulkRNASeqService(results_dir=str(tmp_path / "results"))
-    out, stats, ir = service.run_differential_expression_analysis(
+    out, _, ir = service.run_differential_expression_analysis(
         adata=adata.copy(),
         groupby="condition",
         group1="ctrl",
@@ -173,13 +171,34 @@ def test_the_exported_code_adjusts_as_the_analysis_does(tmp_path, monkeypatch, m
         **FILTERS,
     )
     scope = {"adata": adata.copy()}
-
     exec(compile(ir.render(), "<de>", "exec"), scope)  # nosec B102
+    return out, scope["results_df"]
+
+
+@pytest.mark.parametrize("method", ["deseq2_like", "wilcoxon", "t_test"])
+def test_the_exported_code_adjusts_as_the_analysis_does(tmp_path, monkeypatch, method):
+    adata = _constant(_c2(), 1)
+    adata.X[0, 0] = np.nan  # no p-value from any test, and no fold change
+
+    out, exported = _analysed_and_exported(tmp_path, monkeypatch, adata, method)
 
     # a wilcoxon gives the constant gene p = 1; a t-test gives it none
-    assert out.n_vars == (2000 if method == "wilcoxon" else 1999)
-    replayed = scope["results_df"]["padj"].dropna()
+    assert out.n_vars == (1999 if method == "wilcoxon" else 1998)
+    replayed = exported["padj"].dropna()
     assert len(replayed) == out.n_vars
     np.testing.assert_allclose(
         replayed.loc[out.var_names].to_numpy(), out.var["padj"].to_numpy()
     )
+
+
+@pytest.mark.parametrize("method", ["deseq2_like", "wilcoxon", "t_test"])
+def test_the_exported_code_runs_when_no_gene_has_a_p_value(
+    tmp_path, monkeypatch, statsmodels_0_14, method
+):
+    adata = counts("bulk_all_expressed")
+    adata.X[:] = np.nan
+
+    out, exported = _analysed_and_exported(tmp_path, monkeypatch, adata, method)
+
+    assert out.n_vars == 0
+    assert exported["padj"].isna().all()

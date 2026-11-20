@@ -66,6 +66,20 @@ def _shrinkage_coefficient(ds) -> Tuple[Optional[str], str]:
     )
 
 
+def _bh_over_finite(p_values) -> np.ndarray:
+    """Benjamini-Hochberg adjusted p-values over the finite p-values only, NaN
+    elsewhere. One NaN in the list made every adjusted value NaN, and statsmodels
+    0.14 divides by zero on an empty list."""
+    from statsmodels.stats.multitest import multipletests
+
+    p_values = np.asarray(p_values, dtype=float)
+    p_adjusted = np.full(p_values.shape, np.nan)
+    finite = np.isfinite(p_values)
+    if finite.any():
+        p_adjusted[finite] = multipletests(p_values[finite], method="fdr_bh")[1]
+    return p_adjusted
+
+
 class BulkRNASeqService:
     """
     Stateless service for bulk RNA-seq analysis workflows.
@@ -529,6 +543,16 @@ Next suggested step: Import quantification data with tximport for differential e
                     f"Unknown differential expression method: {method}"
                 )
 
+            # A gene whose fold change is not a number, or with no p-value (a
+            # t-test gives none for a gene with the same value in every sample),
+            # is not reported; the second are counted apart.
+            n_genes_without_pvalue = int(
+                (
+                    results_df["pvalue"].isna() & results_df["log2FoldChange"].notna()
+                ).sum()
+            )
+            results_df = results_df.dropna()
+
             # Add results to AnnData
             adata_de.uns[f"de_results_{group1}_vs_{group2}"] = results_df.to_dict()
 
@@ -637,6 +661,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_samples_group1": group1_data.n_obs,
                 "n_samples_group2": group2_data.n_obs,
                 "n_genes_tested": len(results_df),
+                "n_genes_without_pvalue": n_genes_without_pvalue,
                 "n_significant_genes": len(significant_genes),
                 "n_upregulated": len(upregulated),
                 "n_downregulated": len(downregulated),
@@ -902,9 +927,7 @@ Next suggested step: Import quantification data with tximport for differential e
         p_values = np.array(p_values)
 
         # Multiple testing correction (Benjamini-Hochberg)
-        from statsmodels.stats.multitest import multipletests
-
-        _, p_adjusted, _, _ = multipletests(p_values, method="fdr_bh")
+        p_adjusted = _bh_over_finite(p_values)
 
         # Create results DataFrame
         results_df = pd.DataFrame(
@@ -919,7 +942,7 @@ Next suggested step: Import quantification data with tximport for differential e
             index=gene_names,
         )
 
-        return results_df.dropna()
+        return results_df
 
     def _run_wilcoxon_test(
         self,
@@ -961,9 +984,7 @@ Next suggested step: Import quantification data with tximport for differential e
         p_values = np.array(p_values)
 
         # Multiple testing correction
-        from statsmodels.stats.multitest import multipletests
-
-        _, p_adjusted, _, _ = multipletests(p_values, method="fdr_bh")
+        p_adjusted = _bh_over_finite(p_values)
 
         results_df = pd.DataFrame(
             {
@@ -977,7 +998,7 @@ Next suggested step: Import quantification data with tximport for differential e
             index=gene_names,
         )
 
-        return results_df.dropna()
+        return results_df
 
     def _run_ttest_analysis(
         self,
@@ -1023,9 +1044,7 @@ Next suggested step: Import quantification data with tximport for differential e
         t_stats = np.array(t_stats)
 
         # Multiple testing correction
-        from statsmodels.stats.multitest import multipletests
-
-        _, p_adjusted, _, _ = multipletests(p_values, method="fdr_bh")
+        p_adjusted = _bh_over_finite(p_values)
 
         results_df = pd.DataFrame(
             {
@@ -1039,7 +1058,7 @@ Next suggested step: Import quantification data with tximport for differential e
             index=gene_names,
         )
 
-        return results_df.dropna()
+        return results_df
 
     def _parse_fastqc_results(self, qc_dir: Path) -> str:
         """Parse FastQC results and create summary."""
@@ -2074,7 +2093,11 @@ for i in range(adata_de.n_vars):
     p_values.append(p_val)
 
 # Multiple testing correction (Benjamini-Hochberg FDR)
-_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+p_values = np.asarray(p_values, dtype=float)
+p_adjusted = np.full(p_values.shape, np.nan)
+finite = np.isfinite(p_values)  # a t-test gives no p-value for a constant gene
+if finite.any():
+    p_adjusted[finite] = multipletests(p_values[finite], method='fdr_bh')[1]
 
 # Create results DataFrame
 results_df = pd.DataFrame({
@@ -2121,7 +2144,11 @@ for i in range(adata.n_vars):
     p_values.append(p_val)
 
 # FDR correction
-_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+p_values = np.asarray(p_values, dtype=float)
+p_adjusted = np.full(p_values.shape, np.nan)
+finite = np.isfinite(p_values)  # a t-test gives no p-value for a constant gene
+if finite.any():
+    p_adjusted[finite] = multipletests(p_values[finite], method='fdr_bh')[1]
 
 # Results DataFrame
 results_df = pd.DataFrame({
@@ -2167,7 +2194,11 @@ for i in range(adata.n_vars):
     p_values.append(p_val)
 
 # FDR correction
-_, p_adjusted, _, _ = multipletests(p_values, method='fdr_bh')
+p_values = np.asarray(p_values, dtype=float)
+p_adjusted = np.full(p_values.shape, np.nan)
+finite = np.isfinite(p_values)  # a t-test gives no p-value for a constant gene
+if finite.any():
+    p_adjusted[finite] = multipletests(p_values[finite], method='fdr_bh')[1]
 
 results_df = pd.DataFrame({
     'baseMean': (group1_mean + group2_mean) / 2,
