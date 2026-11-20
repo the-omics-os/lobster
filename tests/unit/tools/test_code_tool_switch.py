@@ -765,3 +765,52 @@ def test_a_file_fixed_then_broken_the_same_way_is_told_again(
         code_tool_enabled("supervisor", default=True, workspace_path=ws)
 
     assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
+
+
+# A code_tool setting that is there but is not true or false may be the user's
+# disable written another way: the tool is off for that agent, and the warning names
+# the file, the key and what was found. Other agents keep their own setting.
+
+NOT_A_BOOL = [
+    pytest.param('"false"', "str", id="text_false"),
+    pytest.param("0", "int", id="zero"),
+    pytest.param('"no"', "str", id="text_no"),
+    pytest.param("[]", "list", id="list"),
+    pytest.param("{ on = true }", "dict", id="table"),
+]
+
+
+@pytest.mark.parametrize("default", [True, False])
+@pytest.mark.parametrize("line, kind", NOT_A_BOOL)
+def test_a_code_tool_value_that_is_not_true_or_false_turns_it_off(
+    tmp_path, warnings_seen, default, line, kind
+):
+    ws = _workspace(tmp_path, line=line)
+
+    assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is False
+    said = [w for w in warnings_seen if f"agent_settings.{AGENT}.code_tool" in w]
+    assert len(said) == 1, warnings_seen
+    assert str(ws / "config.toml") in said[0] and f"(found {kind})" in said[0]
+
+
+def test_an_agent_entry_that_is_not_a_table_turns_it_off(tmp_path, warnings_seen):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text('[agent_settings]\nsupervisor = "off"\n')
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    said = [w for w in warnings_seen if "agent_settings.supervisor " in w]
+    assert len(said) == 1 and "(found str)" in said[0], warnings_seen
+
+
+def test_another_agents_bad_value_leaves_this_agent_alone(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text(
+        '[agent_settings.supervisor]\ncode_tool = "false"\n'
+        f"[agent_settings.{AGENT}]\ncode_tool = true\n"
+    )
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is True
+    assert code_tool_enabled("data_expert_agent", default=True, workspace_path=ws)
