@@ -144,3 +144,39 @@ def test_they_count_among_the_genes_tested(tmp_path, monkeypatch):
 
     assert "- Genes tested: 2,000 of 2,000\n" in reply, reply
     assert _stored_rows(dm)[0] == 2000
+
+
+def test_the_count_is_of_the_genes_reported(tmp_path, monkeypatch):
+    """A library call with a fold change filter: a split gene it drops is not
+    counted among the genes tested."""
+    adata = _split(_c2(), 2)
+    treat = (adata.obs["condition"] == "treat").to_numpy()
+    adata.X[:, -2] = np.where(treat, 11.0, 10.0)  # log2(12 / 11): below log2(1.5)
+    monkeypatch.chdir(tmp_path)
+
+    out, stats, _ = BulkRNASeqService(
+        results_dir=str(tmp_path / "results")
+    ).run_differential_expression_analysis(
+        adata=adata,
+        groupby="condition",
+        group1="ctrl",
+        group2="treat",
+        method="t_test",
+        **{**FILTERS, "min_fold_change": 1.5},
+    )
+
+    assert stats["n_zero_within_group_variance"] == 1
+    assert int(out.var["zero_within_group_variance"].sum()) == 1
+
+
+def test_a_gene_with_one_value_everywhere_is_not_split_by_rounding(
+    tmp_path, monkeypatch
+):
+    """1.1 in 6 samples and in 4: the float means differ by 2e-16."""
+    adata = _c2()[:10].copy()
+    adata.X = adata.X.astype(np.float64)
+    adata.X[:, -1] = 1.1
+
+    out, stats, _ = _analysed(tmp_path, monkeypatch, adata)
+
+    assert stats["n_zero_within_group_variance"] == 0
