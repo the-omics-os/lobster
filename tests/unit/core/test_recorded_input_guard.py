@@ -438,3 +438,51 @@ def test_own_snapshot_never_reaches_another_modalitys_loaded_file(tmp_path, case
     with pytest.raises(RecordedInputError):
         dm.save_modality(name, path, own_snapshot=True)
     assert _sha(target) == before
+
+
+def _case_insensitive(folder):
+    probe = folder / "Case_Probe"
+    probe.touch()
+    try:
+        return (folder / "case_probe").exists()
+    finally:
+        probe.unlink()
+
+
+def test_a_name_differing_in_case_is_the_loaded_file(ws):
+    """On a case-insensitive volume (macOS by default) X.h5ad is x.h5ad: a
+    modality 'X' saved there overwrote the loaded file."""
+    if not _case_insensitive(ws):
+        pytest.skip("this volume tells X.h5ad from x.h5ad")
+    dm = DataManagerV2(workspace_path=ws)
+    target = dm.data_dir / "x.h5ad"
+    before = _sha(target)
+    dm.modalities["X"] = _adata(shift=2.0)
+
+    with pytest.raises(RecordedInputError):
+        dm.save_modality("X", "X.h5ad")
+    assert _sha(target) == before
+    assert dm.recorded_input("X.h5ad") == "x"
+    assert dm.unloaded_name("X") == "X_2"
+
+
+def test_a_loaded_file_moved_away_is_still_matched_whatever_its_case(ws):
+    """A loaded file no longer on disk cannot be compared as a file: its path
+    is compared, letter case aside (refusing is the safe side)."""
+    dm = DataManagerV2(workspace_path=ws)
+    (dm.data_dir / "x.h5ad").rename(ws.parent / "moved.h5ad")
+    assert dm.recorded_input("x.h5ad") == "x"
+    assert dm.recorded_input("X.h5ad") == "x"
+
+
+def test_another_file_differing_only_in_case_is_not_the_loaded_one(ws):
+    """Where the volume tells them apart, X.h5ad beside the loaded x.h5ad is
+    another file and may be saved."""
+    if _case_insensitive(ws):
+        pytest.skip("this volume does not tell X.h5ad from x.h5ad")
+    dm = DataManagerV2(workspace_path=ws)
+    before = _sha(dm.data_dir / "x.h5ad")
+    dm.modalities["X"] = _adata(shift=2.0)
+    dm.save_modality("X", "X.h5ad")
+    assert dm.recorded_input("X.h5ad") is None
+    assert _sha(dm.data_dir / "x.h5ad") == before
