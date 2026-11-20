@@ -128,6 +128,236 @@ def _rebind_cell(name: str) -> NotebookNode:
     )
 
 
+# Raised in a custom-code cell for a read the notebook cannot serve from its own
+# results; replay names its message.
+CUSTOM_READ_ERROR = "LobsterReplayReadError"
+
+# Defined once, before the first custom-code cell.
+CUSTOM_READS_HELPER = f'''# Custom code reads this notebook's own results, as the session gave it the
+# modalities in memory. In each custom cell the anndata, scanpy and h5py readers
+# are pointed at this notebook's object for each modality the cell reads, written
+# to a fresh file of that cell on its first read (one write per name per cell). Run
+# anywhere but the session's workspace, a read of any other file in that workspace
+# stops the run. Not guarded: pandas, open() or numpy on a typed path, and readers
+# other than anndata, scanpy and h5py.
+import os as _lobster_os
+from pathlib import Path as _LobsterPath
+
+
+class {CUSTOM_READ_ERROR}(RuntimeError):
+    pass
+
+
+_lobster_reading = {{}}
+
+
+def _lobster_target(path):
+    """The file a custom cell's read of ``path`` opens."""
+    if not _lobster_reading or not isinstance(path, (str, _lobster_os.PathLike)):
+        return path
+    text = _lobster_os.fspath(path)
+    aliases = _lobster_reading["aliases"]
+    for key in (text, _lobster_os.path.normpath(text), _lobster_os.path.basename(text)):
+        if key in aliases:
+            return _lobster_serve(*aliases[key])
+    real = _LobsterPath(text).resolve()
+    here = _lobster_reading["here"]  # the run's own folder may be inside the session's
+    if real.suffix.lower() == ".h5ad" and real.parent.name == "data" and not real.exists():
+        if real.parent.parent in (here, _lobster_reading["session"]):
+            _lobster_serve("missing", real.stem)
+    guarded = _lobster_reading["guarded"]
+    if guarded is not None:
+        if (
+            str(real) != _lobster_reading["input"]
+            and (real == guarded or guarded in real.parents)
+            and not (real == here or here in real.parents)
+        ):
+            raise {CUSTOM_READ_ERROR}(
+                f"custom code reads {{real.relative_to(guarded).as_posix()}} of the "
+                "session's workspace; a replay reads only this notebook's results"
+            )
+    return path
+
+
+def _lobster_serve(kind, value, name=None):
+    """The file for one aliased read: the input's path, or this notebook's object
+    for the name written to this cell's folder on its first read."""
+    if kind == "missing":
+        raise {CUSTOM_READ_ERROR}(
+            f"custom code reads {{value!r}}, which this notebook does not compute"
+        )
+    if kind == "file":
+        return value
+    target = _lobster_reading["folder"] / f"{{name}}.h5ad"
+    if not target.exists():
+        _lobster_reading["folder"].mkdir(parents=True, exist_ok=True)
+        try:
+            from lobster.core.backends.h5ad_backend import write_session_h5ad
+        except ImportError:
+            value.write_h5ad(target)
+        else:
+            write_session_h5ad(value, target)
+    return str(target)
+
+
+def _lobster_patch_readers():
+    try:
+        import anndata as _ad
+
+        _read_h5ad = _ad.read_h5ad
+
+        def _aliased_read_h5ad(path, *args, **kwargs):
+            return _read_h5ad(_lobster_target(path), *args, **kwargs)
+
+        _ad.read_h5ad = _aliased_read_h5ad
+    except ImportError:
+        _aliased_read_h5ad = None
+    try:
+        import scanpy as _sc
+
+        if _aliased_read_h5ad is not None:
+            _sc.read_h5ad = _aliased_read_h5ad
+        _sc_read = _sc.read
+
+        def _aliased_sc_read(path, *args, **kwargs):
+            return _sc_read(_lobster_target(path), *args, **kwargs)
+
+        _sc.read = _aliased_sc_read
+    except ImportError:
+        pass
+    try:
+        import h5py as _h5py
+
+        _h5py_init = _h5py.File.__init__
+
+        def _aliased_h5py_init(self, name, mode="r", *args, **kwargs):
+            if mode in ("r", "r+"):
+                name = _lobster_target(name)
+            return _h5py_init(self, name, mode, *args, **kwargs)
+
+        _h5py.File.__init__ = _aliased_h5py_init
+    except (ImportError, AttributeError):
+        pass
+
+
+_lobster_patch_readers()
+
+
+def _lobster_reads(cell, session_workspace, sources, missing, runs_on=None):
+    """Point the next custom cell's reads at this notebook's results.
+
+    ``sources`` maps each modality the cell reads to this notebook's object for
+    it, or to the input file's path; ``missing`` names those it cannot compute.
+    An object is written to this cell's own folder when first read.
+    """
+    if runs_on is not None:
+        raise {CUSTOM_READ_ERROR}(
+            f"custom code runs on {{runs_on!r}}, which this notebook does not compute"
+        )
+    folder = WORKSPACE / ".lobster_replay" / str(cell)
+    roots = {{str(WORKSPACE), str(session_workspace), "/tmp/workspace"}}
+
+    def keys(name):
+        found = {{f"data/{{name}}.h5ad", f"{{name}}.h5ad"}}
+        for root in roots:
+            found |= {{f"{{root}}/data/{{name}}.h5ad", f"{{root}}/modalities/{{name}}.h5ad"}}
+        return found
+
+    aliases = {{}}
+    for name, source in sources.items():
+        if isinstance(source, (str, _lobster_os.PathLike)):
+            alias = ("file", str(_LobsterPath(source).resolve()))
+        else:
+            alias = ("object", source, name)
+        aliases.update((key, alias) for key in keys(name))
+    for name in missing:
+        aliases.update((key, ("missing", name)) for key in keys(name))
+    elsewhere = _LobsterPath(WORKSPACE).resolve() != _LobsterPath(session_workspace).resolve()
+    _lobster_reading.update(
+        aliases=aliases,
+        folder=folder,
+        guarded=_LobsterPath(session_workspace).resolve() if elsewhere else None,
+        here=_LobsterPath(WORKSPACE).resolve(),
+        session=_LobsterPath(session_workspace).resolve(),
+        input=str(_LobsterPath(input_data).resolve()),
+    )
+
+
+def _lobster_reads_done():
+    """After a custom cell: its readers are plain again, its copies removed (a
+    replay counts any data file left in its folder)."""
+    import shutil
+
+    folder = _lobster_reading.get("folder")
+    _lobster_reading.clear()
+    if folder is not None:
+        shutil.rmtree(folder, ignore_errors=True)
+        try:
+            folder.parent.rmdir()  # only when no other cell's copies are left
+        except OSError:
+            pass
+'''
+
+
+def _custom_code_cell(
+    ir: AnalysisStep,
+    position: int,
+    plan: Dict[str, str],
+    runs_on: Optional[str],
+    written_back: Optional[str],
+) -> NotebookNode:
+    """A custom-code cell that runs on this notebook's results.
+
+    ``WORKSPACE`` is the ``workspace_path`` parameter (a replay sets its own
+    folder), and each modality the code reads is this notebook's object for it
+    (``plan``: name -> ``adata``, ``kept``, ``input`` or ``missing``). As in the
+    session, the code runs on a copy of ``adata``: the changed copy is kept as
+    ``written_back`` (the name the session stored it under), ``adata`` is left as
+    it was.
+    """
+    session_workspace = str(ir.parameters.get("workspace_path") or "")
+    sources = {
+        name: {
+            "adata": "adata",
+            "kept": f"_kept_modalities[{name!r}]",
+            "input": "input_data",
+        }[kind]
+        for name, kind in plan.items()
+        if kind != "missing"
+    }
+    missing = [name for name, kind in plan.items() if kind == "missing"]
+    source_map = "{" + ", ".join(f"{k!r}: {v}" for k, v in sources.items()) + "}"
+    keep_result = (
+        "if '_kept_modalities' not in globals():\n"
+        "    _kept_modalities = {}\n"
+        f"_kept_modalities[{written_back!r}] = adata  # the session stored it so\n"
+        if written_back
+        else ""
+    )
+    code = f"""# Workspace setup (a replay runs in its own folder)
+from pathlib import Path
+import sys
+
+WORKSPACE = Path(workspace_path)
+sys.path.append(str(WORKSPACE))
+
+# OUTPUT_DIR: Recommended directory for CSV/TSV/Excel exports
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+(WORKSPACE / 'data').mkdir(exist_ok=True)
+_lobster_reads({position}, {session_workspace!r}, {source_map}, {missing!r}, runs_on={runs_on!r})
+
+_lobster_held, adata = adata, (adata.copy() if adata is not None else None)
+
+# User code
+{ir.parameters.get("code", "")}
+
+_lobster_reads_done()
+{keep_result}adata = _lobster_held
+"""
+    return new_code_cell(code)
+
+
 # Cell metadata (under "lobster") naming the step of a cell that draws a figure.
 FIGURE_CELL_KEY = "figure"
 UNRECORDED_INPUT_NOTE = (
@@ -383,19 +613,39 @@ class NotebookExporter:
             if activity.get("type", "") not in ("load_dataset", "save_dataset")
         ]
         saves = self._saves(irs)
-        keep, rebind, save_at = self._lineage(
-            [activity for _, activity, _ in steps], list(saves)
+        custom = {
+            position: self._custom_reads(activity, ir)
+            for position, (_, activity, ir) in enumerate(steps)
+            if self._is_custom_code(activity, ir)
+            and id(activity) not in unrun
+            and isinstance(ir.parameters.get("code"), str)  # else rendered as recorded
+        }
+        keep, rebind, save_at, read_plans = self._lineage(
+            [activity for _, activity, _ in steps], list(saves), custom
         )
         placed = set()
         kept_any = False
+        custom_helper = False
 
         def after(position: int) -> None:
             """Write each modality the session saved where it was made, then keep
             the copies later steps start from."""
             nonlocal kept_any
+            written_back = custom[position][2] if position in custom else None
             for name in save_at.get(position, []):
                 cell = self._save_cell(saves[name])
-                if cell is not None:
+                if cell is not None and name == written_back:
+                    # the save cell writes adata: the custom cell's result, here
+                    notebook.cells.append(
+                        new_code_cell(
+                            "_lobster_saving = adata\n"
+                            f"adata = _kept_modalities[{name!r}]"
+                        )
+                    )
+                    notebook.cells.append(cell)
+                    notebook.cells.append(new_code_cell("adata = _lobster_saving"))
+                    placed.add(name)
+                elif cell is not None:
                     notebook.cells.append(cell)
                     placed.add(name)
             if position in keep:
@@ -418,7 +668,21 @@ class NotebookExporter:
                 notebook.cells.append(self._unrun_cell(ir, origin))
                 after(position)
                 continue
-            code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
+            if position in custom:
+                if not custom_helper:
+                    notebook.cells.append(new_code_cell(CUSTOM_READS_HELPER))
+                    custom_helper = True
+                runs_on, _, written_back = custom[position]
+                code_cell = _custom_code_cell(
+                    ir,
+                    position,
+                    read_plans[position],
+                    runs_on if runs_on in read_plans[-1] else None,
+                    written_back,
+                )
+                kept_any = kept_any or written_back is not None
+            else:
+                code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
             if "fig" in (ir.output_entities or []):
                 # replay names each figure it drew without comparing it
                 label = f"Step {idx}: {self._step_label(activity)}"
@@ -1283,10 +1547,54 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             activity.get("inputs")
         )
 
+    @staticmethod
+    def _custom_reads(
+        activity: Dict[str, Any], ir: AnalysisStep
+    ) -> Tuple[Optional[str], List[str], Optional[str]]:
+        """A custom-code step's ``modality_name``, the modalities its code reads by
+        a literal ``.h5ad`` path (the names the session gave it from memory), and
+        the name the session stored its changed ``adata`` under, if it did."""
+        from lobster.services.execution.custom_code_execution_service import (
+            h5ad_references,
+        )
+
+        code = str(ir.parameters.get("code") or "")
+        refs = h5ad_references(code)
+        try:  # any .h5ad name in the code, e.g. WORKSPACE / "data" / "x.h5ad"
+            refs += [
+                node.value
+                for node in ast.walk(ast.parse(code))
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value.lower().endswith(".h5ad")
+            ]
+        except SyntaxError:
+            pass
+        names = dict.fromkeys(Path(ref).stem for ref in refs)
+        written_back = next(
+            (
+                str(entry["name"])
+                for entry in activity.get("outputs") or []
+                if isinstance(entry, dict) and entry.get("name")
+            ),
+            None,
+        )
+        return ir.parameters.get("modality_name") or None, list(names), written_back
+
     @classmethod
     def _lineage(
-        cls, steps: List[Dict[str, Any]], saved: List[str]
-    ) -> Tuple[Dict[int, List[str]], Dict[int, str], Dict[int, List[str]]]:
+        cls,
+        steps: List[Dict[str, Any]],
+        saved: List[str],
+        custom: Optional[
+            Dict[int, Tuple[Optional[str], List[str], Optional[str]]]
+        ] = None,
+    ) -> Tuple[
+        Dict[int, List[str]],
+        Dict[int, str],
+        Dict[int, List[str]],
+        Dict[int, Dict[str, str]],
+    ]:
         """Where the step cells must keep, restore and save modalities.
 
         Every step cell works on one ``adata``. A step whose recorded input is
@@ -1297,29 +1605,83 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         the saved names to write after it. A step without a recorded ``adata``
         input runs on what the step above left, as before; a saved name no step
         made is in none of them.
+
+        A custom-code step (*custom*: position -> its ``modality_name``, the
+        modalities its code reads and the name the session stored its changed
+        ``adata`` under) runs on a copy of ``modality_name`` and leaves ``adata``
+        unchanged, as the session left that modality; the cell itself keeps the
+        changed copy under the stored name, and a save of that name is written
+        after it. The fourth result gives, per custom step, where each name it
+        reads comes from as of that step: ``input`` (the loaded input, not remade
+        since), ``adata``, ``kept`` (a copy kept where it was last made) or
+        ``missing``; under -1, the custom steps' ``modality_name`` the notebook
+        does not compute.
         """
+        custom = custom or {}
         held: Optional[str] = None  # the modality adata holds
         made_at: Dict[str, int] = {}  # where adata last became each modality
+        saved_made_at: Dict[str, int] = {}  # the same, custom steps left out
         keep: Dict[int, List[str]] = {}
         rebind: Dict[int, str] = {}
+        plans: Dict[int, Dict[str, str]] = {-1: {}}
+        loaded: Optional[str] = None
+        self_kept: set = set()  # kept by the custom cell that made them
+
+        def keep_at(where: int, name: str) -> None:
+            if name in self_kept:
+                return
+            names = keep.setdefault(where, [])
+            if name not in names:
+                names.append(name)
 
         for position, activity in enumerate(steps):
-            source = cls._adata_name(activity.get("inputs"))
-            result = cls._adata_name(activity.get("outputs"))
+            if position in custom:
+                source, result = custom[position][0], None
+            else:
+                source = cls._adata_name(activity.get("inputs"))
+                result = cls._adata_name(activity.get("outputs"))
             if held is None and source:  # the first step that says what it read
                 held, made_at[source] = source, position - 1
+                saved_made_at[source] = position - 1
+                loaded = source
             if source and source != held and source in made_at:
-                names = keep.setdefault(made_at[source], [])
-                if source not in names:
-                    names.append(source)
+                keep_at(made_at[source], source)
                 rebind[position] = held = source
+            if position in custom:
+                if source and source != held:  # not computed by this notebook
+                    plans[-1][source] = "missing"
+                plan = plans[position] = {}
+                for name in custom[position][1]:
+                    if name == loaded and made_at.get(name) == -1:
+                        plan[name] = "input"
+                    elif name == held:
+                        plan[name] = "adata"
+                    elif name in made_at:
+                        keep_at(made_at[name], name)
+                        plan[name] = "kept"
+                    else:
+                        plan[name] = "missing"
+                if held:  # read by a path the code builds: served at no cost
+                    plan.setdefault(held, "adata")
+                if loaded and made_at.get(loaded) == -1:
+                    plan.setdefault(loaded, "input")
+                written_back = custom[position][2]
+                if written_back:
+                    made_at[written_back] = saved_made_at[written_back] = position
+                    self_kept.add(written_back)
             if result:
+                self_kept.discard(result)
                 held, made_at[result] = result, position
+                if position not in custom:
+                    # shortcut: a save is placed after the last non-custom step
+                    # that made the name; a session that saved a name a custom
+                    # step changed after that save would differ.
+                    saved_made_at[result] = position
         save_at: Dict[int, List[str]] = {}
         for name in saved:
-            if name in made_at:
-                save_at.setdefault(made_at[name], []).append(name)
-        return keep, rebind, save_at
+            if name in saved_made_at:
+                save_at.setdefault(saved_made_at[name], []).append(name)
+        return keep, rebind, save_at, plans
 
     @staticmethod
     def _split_saves(emitted_irs: Optional[List[AnalysisStep]]) -> set:

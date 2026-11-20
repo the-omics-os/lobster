@@ -18,6 +18,7 @@ EXECUTION LIMITS:
 import ast
 import json
 import os
+import re
 import stat as _stat
 import subprocess  # nosec B404 # Only runs the generated script with the current interpreter; never a shell.
 import sys
@@ -150,6 +151,23 @@ class CodeValidationError(CodeExecutionError):
     """Raised when code fails safety validation."""
 
     pass
+
+
+# The h5ad file reads custom code makes by a literal path; the session gives each
+# one the modality of that name (and the exported cell, the notebook's own copy).
+_H5AD_READ_PATTERNS = (
+    r"""(?:read_h5ad|\.read)\s*\(\s*['"](.*?\.h5ad)['"]\s*""",
+    r"""Path\s*\(\s*['"](.*?\.h5ad)['"]\s*\)""",
+    r"""h5py\.File\s*\(\s*['"](.*?\.h5ad)['"]\s*""",
+)
+
+
+def h5ad_references(code: str) -> List[str]:
+    """The ``.h5ad`` paths ``code`` reads by a literal, in pattern order."""
+    refs: List[str] = []
+    for pattern in _H5AD_READ_PATTERNS:
+        refs.extend(re.findall(pattern, code))
+    return refs
 
 
 class CustomCodeExecutionService:
@@ -611,7 +629,9 @@ class CustomCodeExecutionService:
                 finally:
                     try:
                         modified_path.unlink(missing_ok=True)
-                    except Exception:  # nosec B110 # Best-effort removal of the temporary write-back file; failure must not mask the result.
+                    except (
+                        Exception
+                    ):  # nosec B110 # Best-effort removal of the temporary write-back file; failure must not mask the result.
                         pass
 
         # Step 4b: read explicitly submitted figures (successful attempts only; the caller
@@ -642,7 +662,9 @@ class CustomCodeExecutionService:
             import shutil
 
             shutil.rmtree(exec_cache, ignore_errors=True)
-        except Exception:  # nosec B110 # Best-effort cleanup of the per-execution cache once all reads are done.
+        except (
+            Exception
+        ):  # nosec B110 # Best-effort cleanup of the per-execution cache once all reads are done.
             pass
 
         # Step 4b: Save large outputs to files (DeepAgents pattern)
@@ -861,8 +883,6 @@ class CustomCodeExecutionService:
 
         Raises CodeValidationError if unresolvable h5ad paths are found (fail-fast).
         """
-        import re
-
         required = set()
         available = set(self.data_manager.locality_provider.list_available())
         # Also include in-memory modalities (may not be in provider's list yet)
@@ -877,17 +897,7 @@ class CustomCodeExecutionService:
             required.add(explicit_modality)
         unresolved = []
 
-        # Regex patterns for h5ad file access
-        patterns = [
-            r"""(?:read_h5ad|\.read)\s*\(\s*['"](.*?\.h5ad)['"]\s*""",
-            r"""Path\s*\(\s*['"](.*?\.h5ad)['"]\s*\)""",
-            r"""h5py\.File\s*\(\s*['"](.*?\.h5ad)['"]\s*""",
-        ]
-        h5ad_refs = []
-        for pattern in patterns:
-            h5ad_refs.extend(re.findall(pattern, code))
-
-        for ref in h5ad_refs:
+        for ref in h5ad_references(code):
             stem = Path(ref).stem
             if stem in available:
                 required.add(stem)

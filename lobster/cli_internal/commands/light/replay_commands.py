@@ -749,15 +749,24 @@ def _outputs(replay_dir: Path) -> List[Path]:
     )
 
 
+def _custom_read_refusal(error: Any) -> Optional[str]:
+    """The reason a custom-code cell gave for a read it refused, if that stopped it."""
+    from lobster.core.notebooks.exporter import CUSTOM_READ_ERROR
+
+    found = re.search(rf"{CUSTOM_READ_ERROR}: ([^\n]+)", str(error or ""))
+    return found.group(1).strip() if found else None
+
+
 def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
     """SHA-256 of what a replay must leave alone, by path.
 
-    That is every file under ``data/``, every ``.h5ad``/``.h5mu`` anywhere in the
-    workspace outside ``.lamindb/`` and ``skip`` (this run's folder), and ``files``.
+    That is every file under ``data/`` and ``exports/``, every ``.h5ad``/``.h5mu``
+    anywhere in the workspace outside ``.lamindb/`` and ``skip`` (this run's
+    folder), and ``files``.
     """
     root = workspace.resolve()
     skipped = skip.resolve()
-    data_root = (root / "data").resolve()
+    data_roots = [(root / "data").resolve(), (root / "exports").resolve()]
     paths = {p.resolve() for p in files if p.is_file()}
     seen = {root}  # real folders already walked: a link back into one is not walked
     # Links are followed (data/ may be a link to a bigger disk); names stay lexical.
@@ -771,7 +780,10 @@ def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
                 keep.append(d)
         dirs[:] = keep
         real_here = here.resolve()
-        in_data = real_here == data_root or data_root in real_here.parents
+        in_data = any(
+            real_here == data_root or data_root in real_here.parents
+            for data_root in data_roots
+        )
         paths |= {
             here / n for n in names if in_data or n.lower().endswith(DATA_SUFFIXES)
         }
@@ -972,13 +984,20 @@ def verify_notebook(
         before = _watched(workspace, replay_dir, *watched)
     except _Unreadable as exc:
         return unreadable(exc.args[0])
+    injected = {"output_prefix": str(outputs)}
+    try:
+        if "workspace_path" in NotebookExecutor.notebook_parameters(notebook):
+            # custom-code cells: WORKSPACE (and OUTPUT_DIR) is the replay's folder
+            injected["workspace_path"] = str(replay_dir.resolve())
+    except Exception:  # an unreadable parameters cell fails in execute() below
+        pass
     try:
         # The executor logs to stdout; stdout is the result of this command.
         with _working_in(replay_dir), contextlib.redirect_stdout(sys.stderr):
             result = NotebookExecutor(None).execute(
                 notebook.resolve(),
                 input_data.resolve(),
-                {"output_prefix": str(outputs)},
+                injected,
                 executed,
                 timeout=timeout or None,
             )
@@ -1024,6 +1043,13 @@ def verify_notebook(
                     "The notebook ran past the time limit ({seconds} seconds for "
                     "one cell).",
                     {"seconds": timeout},
+                )
+            )
+        elif _custom_read_refusal(result.get("error")):
+            outcome.notes.append(
+                (
+                    "The notebook stopped: {reason}",
+                    {"reason": _custom_read_refusal(result.get("error"))},
                 )
             )
         else:
