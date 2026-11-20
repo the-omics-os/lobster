@@ -10,6 +10,7 @@ session saved. Skipped without the transcriptomics package or a Jupyter kernel.
 """
 
 import json
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -105,15 +106,21 @@ def test_an_imported_count_table_replays_to_match(
     if method == "deseq2":
         pytest.importorskip("pydeseq2")
     dm, notebook, source = _session(tmp_path, monkeypatch, layout, method)
+    # the replay reads the file it is given: a copy elsewhere, the original gone
+    copy = tmp_path / "elsewhere" / source.name
+    copy.parent.mkdir()
+    shutil.copy(source, copy)
+    source.unlink()
 
-    result, out = _verify(dm, notebook, source)
+    result, out = _verify(dm, notebook, copy)
 
     assert out["verdict"] == "MATCH", out
     assert result.exit_code == 0, (result.output, result.exception)
 
 
 @needs_kernel
-def test_another_table_than_the_one_imported_is_never_a_match(tmp_path, monkeypatch):
+def test_a_tampered_table_is_never_a_match(tmp_path, monkeypatch):
+    """The imported table with one count changed: refused or a mismatch."""
     dm, notebook, source = _session(tmp_path, monkeypatch, "genes_rows", "wilcoxon")
     other = _counts()
     other.iloc[0, 0] += 7
@@ -121,7 +128,7 @@ def test_another_table_than_the_one_imported_is_never_a_match(tmp_path, monkeypa
 
     result, out = _verify(dm, notebook, changed)
 
-    assert out["verdict"] != "MATCH", out
+    assert out["verdict"] in ("MISMATCH", "REFUSED"), out
     assert result.exit_code != 0
 
 
