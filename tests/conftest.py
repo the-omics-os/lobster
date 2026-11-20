@@ -1307,3 +1307,64 @@ def _console_files_follow_the_process_streams():
     if manager is not None:
         for console in (manager._console, manager._error_console):
             console._file = None
+
+
+@pytest.fixture(autouse=True)
+def isolated_config_dir(request, tmp_path_factory, monkeypatch):
+    """No test writes the user's own config folder (the project list first of
+    all: every init_project registers its folder there). A test that sets its own
+    CONFIG_DIR still does so after this one. A real_api test keeps the user's
+    folder: it may need the provider set there."""
+    if request.node.get_closest_marker("real_api"):
+        return
+    from lobster.config import global_config
+
+    monkeypatch.setattr(
+        global_config, "CONFIG_DIR", tmp_path_factory.mktemp("config") / "lobster"
+    )
+
+
+def _user_files(folder: Path) -> dict:
+    """Size and change time of every file below ``folder``. A folder that is
+    missing or empty holds none: importing lobster.cli makes ~/.lobster empty."""
+    found = {}
+    for root, _dirs, names in os.walk(folder):
+        for name in names:
+            try:
+                stat = os.stat(os.path.join(root, name))
+            except OSError:
+                continue
+            key = os.path.relpath(os.path.join(root, name), folder)
+            found[key] = (stat.st_size, stat.st_mtime_ns)
+    return found
+
+
+def _user_folders():
+    from lobster.config import global_config
+
+    return [global_config.CONFIG_DIR, Path.home() / ".lobster"]
+
+
+def pytest_sessionstart(session):
+    session.config._user_files_before = {
+        folder: _user_files(folder) for folder in _user_folders()
+    }
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run when it changed a file in the user's own Lobster folders.
+
+    A lobster command run by hand during the tests changes them too."""
+    for folder, before in getattr(session.config, "_user_files_before", {}).items():
+        after = _user_files(folder)
+        changed = sorted(
+            name
+            for name in set(before) | set(after)
+            if before.get(name) != after.get(name)
+        )
+        if changed:
+            sys.stderr.write(
+                f"\nThe tests changed the user's folder {folder}: "
+                f"{', '.join(changed)}\n"
+            )
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
