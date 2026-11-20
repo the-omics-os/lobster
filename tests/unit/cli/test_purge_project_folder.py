@@ -440,3 +440,20 @@ def test_a_dry_run_forgets_no_project(project):
 
     assert result.exit_code == 0, result.output
     assert [e.root for e in projects.registered_projects()] == [str(project)]
+
+
+def test_purging_everything_leaves_no_project_registry_behind(
+    project, monkeypatch, tmp_path
+):
+    from lobster.cli import app
+
+    # purge's config folder is the one the registry lives in
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    assert projects.registry_path().exists()
+    (tmp_path / "cfg" / "lobster" / "providers.json").write_text("{}")
+    monkeypatch.chdir(project)
+    result = CliRunner().invoke(app, ["purge", "--scope", "all", "--force"])
+
+    assert result.exit_code == 0, result.output
+    assert not projects.registry_path().exists()
+    assert_user_files_kept(project)

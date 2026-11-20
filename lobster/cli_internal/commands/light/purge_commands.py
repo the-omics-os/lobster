@@ -25,6 +25,7 @@ from lobster.core.runtime.workspace import (
     WORKSPACE_FOLDER_NAME,
     _is_project_workspace,
     _named_workspace,
+    find_project_root,
 )
 from lobster.i18n import h
 
@@ -77,7 +78,8 @@ class LobsterPaths:
         env_workspace = os.environ.get("LOBSTER_WORKSPACE")
         if env_workspace:
             return _named_workspace(Path(env_workspace))
-        return Path.cwd() / WORKSPACE_FOLDER_NAME
+        root = find_project_root()  # inside a project: its workspace, as elsewhere
+        return (Path.cwd() if root is None else root) / WORKSPACE_FOLDER_NAME
 
     # Marker files that identify Lobster AI directories
     GLOBAL_CONFIG_MARKERS = ["providers.json", "credentials.env"]
@@ -471,6 +473,11 @@ def execute_purge(
                     target.path.rmdir()
             elif target.path.is_dir():
                 shutil.rmtree(target.path)
+                # a project's project.json went with its workspace; a folder no
+                # project registered is left as it is
+                from lobster.core.projects import forget_project
+
+                forget_project(target.path.parent)
             else:
                 target.path.unlink()
 
