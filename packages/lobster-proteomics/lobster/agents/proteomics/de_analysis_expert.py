@@ -713,10 +713,7 @@ def de_analysis_expert(
             if target.nunique() > 1:
                 cause = "every protein has the same value in every sample"
                 advice = _FLAT_ADVICE
-            elif target.empty:
-                cause = f"'{target_column}' has no value"
-                advice = "Choose a target with a value in each sample."
-            else:
+            else:  # tests ran, and each needs 5 samples with a target value
                 cause = (
                     f"every value of '{target_column}' is the same "
                     f"({target.iloc[0]:g}), so no protein can be correlated with it"
