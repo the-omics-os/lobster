@@ -826,14 +826,15 @@ def test_a_bad_value_is_told_once_however_often_the_graph_is_built(
     ws = tmp_path / "ws"
     ws.mkdir()
     (ws / "config.toml").write_text(
+        '[agent_settings]\ndata_expert_agent = "off"\n'
         f'[agent_settings.supervisor]\ncode_tool = "false"\n'
         f'[agent_settings.{AGENT}]\ncode_tool = "no"\n'
     )
     for _ in range(3):  # three graph builds, each asks for every agent
-        assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
-        assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
+        for agent in ("supervisor", AGENT, "data_expert_agent"):
+            assert code_tool_enabled(agent, default=True, workspace_path=ws) is False
 
-    assert len([w for w in warnings_seen if "must be true or false" in w]) == 2
+    assert len([w for w in warnings_seen if "must be true or false" in w]) == 3
 
 
 def test_a_bad_value_fixed_then_written_again_is_told_again(
@@ -848,3 +849,36 @@ def test_a_bad_value_fixed_then_written_again_is_told_again(
         code_tool_enabled(AGENT, default=True, workspace_path=ws)
 
     assert len([w for w in warnings_seen if "must be true or false" in w]) == 2
+
+
+def test_a_broken_file_deleted_then_written_again_is_told_again(
+    tmp_path, warnings_seen, told
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for step in ("broken", "deleted", "broken"):
+        if step == "broken":
+            (ws / "config.toml").write_text("[agent_settings.supervisor\n")
+        else:
+            (ws / "config.toml").unlink()
+        code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
+
+
+def test_files_that_read_fine_are_not_remembered(tmp_path, told):
+    # a long-lived server reads many workspaces
+    for name in ("one", "two", "three"):
+        (tmp_path / name).mkdir()
+        ws = _workspace(tmp_path / name, line="false")
+        code_tool_enabled(AGENT, default=True, workspace_path=ws)
+
+    assert switch._told == {}
+
+
+def test_a_told_file_is_remembered_by_a_digest_not_its_bytes(tmp_path, told):
+    ws = _workspace(tmp_path, line='"false"')
+    code_tool_enabled(AGENT, default=True, workspace_path=ws)
+
+    ((held, _said),) = switch._told.values()
+    assert held != (ws / "config.toml").read_bytes() and len(held) == 16
