@@ -520,3 +520,40 @@ def test_ml_splits_refused_leave_memory_provenance_and_files(ws):
     assert set(dm.get_modality("x").uns) == uns
     assert len(dm.provenance.activities) == activities
     assert {p.name: _sha(p) for p in (ws / "data").glob("*.h5ad")} == shas
+
+
+def _stats_for_one_autosave(tmp_path, n, monkeypatch):
+    """os.stat calls made by one auto-save of a resumed session that loaded n
+    files (x<i>.h5ad, none changed)."""
+    import os
+
+    data = tmp_path / f"ws{n}" / "data"
+    data.mkdir(parents=True)
+    tiny = ad.AnnData(X=np.zeros((2, 2), dtype=np.float32))
+    for i in range(n):
+        tiny.write_h5ad(data / f"x{i}.h5ad")
+    dm = DataManagerV2(workspace_path=data.parent)
+    assert len(dm.list_modalities()) == n
+    calls = []
+    real = os.stat
+
+    def counting(*args, **kwargs):
+        calls.append(args[0])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", counting)
+    dm.auto_save_state()
+    monkeypatch.setattr(os, "stat", real)
+    return len(calls)
+
+
+def test_one_autosave_costs_a_bounded_number_of_stats_per_loaded_file(
+    tmp_path, monkeypatch
+):
+    """Matching a path against the loaded files is a lookup, not a scan: an
+    auto-save of n loaded files makes O(n) stat calls, not O(n^2) (400 loaded
+    files took 24 s to auto-save instead of 2.5 s)."""
+    small = _stats_for_one_autosave(tmp_path, 50, monkeypatch)
+    large = _stats_for_one_autosave(tmp_path, 200, monkeypatch)
+    assert large <= 4 * small * 1.25, (small, large)  # linear, with slack
+    assert large / 200 <= 40, large
