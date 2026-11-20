@@ -31,6 +31,8 @@ class ProteomicsDifferentialError(Exception):
     pass
 
 
+# a correlation needs this many samples with a value of the protein and the target
+MIN_CORRELATION_SAMPLES = 5
 # limma_like borrows variance from the other proteins when this many are tested
 _LIMMA_PRIOR_MIN_PROTEINS = 10
 # below this many samples in a group, Mann-Whitney's normal approximation with
@@ -1511,9 +1513,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             # Remove missing values (NaN only — zeros are valid for log-transformed data)
             valid_mask = ~np.isnan(protein_values) & ~np.isnan(target_values)
 
-            if (
-                valid_mask.sum() < 5
-            ):  # Need at least 5 points for meaningful correlation
+            if valid_mask.sum() < MIN_CORRELATION_SAMPLES:
                 continue
 
             valid_protein = protein_values[valid_mask]

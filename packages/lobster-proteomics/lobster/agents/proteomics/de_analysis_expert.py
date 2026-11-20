@@ -29,6 +29,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
@@ -44,6 +45,7 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.proteomics_differential_service import (
+    MIN_CORRELATION_SAMPLES,
     ProteomicsDifferentialService,
 )
 from lobster.utils.logger import get_logger
@@ -85,6 +87,55 @@ def _no_pvalue_refusal(what: str, n: int, stats: dict, cause: str, advice: str):
 
 
 _FLAT_ADVICE = "Check the values loaded for this modality."
+
+
+def _correlation_refusal(adata, target_column: str, stats: dict):
+    """The refusal when the correlation tested no protein, or none has a
+    p-value (naming a target with one value where the proteins have values),
+    else None."""
+    n = stats.get("n_tests_performed")
+    target = adata.obs[target_column].astype(float)  # as the service reads it
+    if n == 0:
+        k = int(target.notna().sum())
+        cause = (
+            f"Of {adata.n_obs:,} samples, {k:,} {'has' if k == 1 else 'have'} a "
+            f"value of '{target_column}'"
+            if k < MIN_CORRELATION_SAMPLES
+            else f"No protein has a value in at least {MIN_CORRELATION_SAMPLES} "
+            f"of the {k:,} samples with a value of '{target_column}'"
+        )
+        return (
+            "**Correlation refused: no protein was tested.**\n\n"
+            f"{cause}; a correlation needs at least {MIN_CORRELATION_SAMPLES}. "
+            "No result modality was stored."
+        )
+    if not n or stats.get("n_tests_without_pvalue", 0) < n:
+        return None
+    # the samples a test could use: with a value of the target and of a protein
+    usable = target.notna().to_numpy() & ~np.isnan(adata.X).all(axis=1)
+    values = target[usable]
+    if values.nunique() > 1:
+        return _no_pvalue_refusal(
+            "Correlation",
+            n,
+            stats,
+            "every protein has the same value in every sample",
+            _FLAT_ADVICE,
+        )
+    where = (
+        ""
+        if usable.sum() == target.notna().sum()
+        else " in the samples with a protein value"
+    )
+    return _no_pvalue_refusal(
+        "Correlation",
+        n,
+        stats,
+        f"every value of '{target_column}'{where} is the same "
+        f"({values.iloc[0]:g}), so no protein can be correlated with it",
+        "Choose a target that varies across samples.",
+    )
+
 
 _SPLIT_TEST_NAMES = {"welch_t_test": "Welch t-test", "limma_like": "limma-like test"}
 
@@ -718,24 +769,7 @@ def de_analysis_expert(
                 )
             )
 
-            # as the service reads it
-            target = adata_copy.obs[target_column].astype(float).dropna()
-            if target.nunique() > 1:
-                cause = "every protein has the same value in every sample"
-                advice = _FLAT_ADVICE
-            else:  # tests ran, and each needs 5 samples with a target value
-                cause = (
-                    f"every value of '{target_column}' is the same "
-                    f"({target.iloc[0]:g}), so no protein can be correlated with it"
-                )
-                advice = "Choose a target that varies across samples."
-            refusal = _no_pvalue_refusal(
-                "Correlation",
-                corr_stats.get("n_tests_performed", 0),
-                corr_stats,
-                cause,
-                advice,
-            )
+            refusal = _correlation_refusal(adata_copy, target_column, corr_stats)
             if refusal:
                 return refusal
 
