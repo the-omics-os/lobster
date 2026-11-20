@@ -818,3 +818,19 @@ def test_a_config_without_agent_settings_keeps_the_defaults(tmp_path, warnings_s
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is True
     assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
     assert warnings_seen == []
+
+
+def test_a_bad_value_is_told_once_however_often_the_graph_is_built(
+    tmp_path, warnings_seen, told
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text(
+        f'[agent_settings.supervisor]\ncode_tool = "false"\n'
+        f'[agent_settings.{AGENT}]\ncode_tool = "no"\n'
+    )
+    for _ in range(3):  # three graph builds, each asks for every agent
+        assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+        assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
+
+    assert len([w for w in warnings_seen if "must be true or false" in w]) == 2
