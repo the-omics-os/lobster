@@ -71,6 +71,7 @@ from lobster.core.figures.export_guard import (
 )
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.core.sparse_utils import safe_toarray
 from lobster.services.analysis.bulk_rnaseq_service import (
     BulkRNASeqError,
     BulkRNASeqService,
@@ -159,16 +160,55 @@ def _unmodelled_covariates_text(obs, groupby) -> str:
     )
 
 
+# What to do about each cause of a fold change that is not a number.
+_REFUSAL_ADVICE = {
+    (True, False): (
+        "Remove the genes with missing values, or fill them, before testing; or "
+        "import complete raw counts and use deseq2."
+    ),
+    (False, True): (
+        "Wilcoxon and t-test expect counts or log-scale values. Use deseq2 on raw "
+        "counts, or run on unscaled values."
+    ),
+    (True, True): (
+        "Remove the genes with missing values, and run on counts or log-scale "
+        "values rather than centred or scaled ones; deseq2 on complete raw counts "
+        "avoids both."
+    ),
+}
+
+
 def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     """No gene was left to report: there is no DE result. Names the step that
     dropped them: the expression pre-filter, a missing p-value, or a fold change
-    that is not a number (the only post-filter left on: min_fold_change=1.0)."""
+    that is not a number (the only post-filter left on: min_fold_change=1.0),
+    counting a missing value apart from a group mean below -1, and advises for
+    the causes that apply."""
     if adata_de.n_vars:
         return None
     passed = de_stats.get("pre_filter_gene_count") or 0
     without = de_stats.get("n_genes_without_pvalue", 0)
+    missing = de_stats.get("n_genes_with_missing_value", 0)
+    signed = passed - without - missing
     no_pvalue = "a t-test gives none for a gene with the same value in every sample"
     have = "has" if without == 1 else "have"
+    causes = [
+        (count, label, when)
+        for count, label, when in (
+            (missing, "a missing value", "a gene has a missing value"),
+            (
+                signed,
+                "a group mean below -1",
+                "one group's mean is below -1, as with centred or signed values",
+            ),
+        )
+        if count
+    ]
+    counted = ", ".join(f"{count:,} with {label}" for count, label, _ in causes)
+    # for the fold change causes that apply; else the advice for unscaled values
+    advice = _REFUSAL_ADVICE.get(
+        (bool(missing), bool(signed)), _REFUSAL_ADVICE[(False, True)]
+    )
     if passed and without == passed:
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a "
@@ -178,16 +218,21 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
         cause = (
             f"{passed:,} passed the expression pre-filter, but none can be "
             f"reported: {without:,} {have} no p-value ({no_pvalue}) and the fold "
-            f"change of the other {passed - without:,} is not a number (a missing "
-            "value, or one group's mean below -1, as with centred or signed values)"
+            f"change of the other {passed - without:,} is not a number ({counted})"
         )
     elif passed:
+        whens = ", or when ".join(when for _, _, when in causes)
         cause = (
             f"{passed:,} passed the expression pre-filter, but none has a fold "
-            "change that is a number: the fold change log2((mean2 + 1) / "
-            "(mean1 + 1)) is not a number when a gene has a missing value, or when "
-            "one group's mean is below -1, as with centred or signed values. So no "
-            "result can be reported"
+            f"change that is a number ({counted}): the fold change log2((mean2 + "
+            f"1) / (mean1 + 1)) is not a number when {whens}. So no result can be "
+            "reported"
+        )
+    elif adata.n_vars and np.isnan(safe_toarray(adata.X)).all():
+        advice = _REFUSAL_ADVICE[(True, False)]
+        cause = (
+            f"no gene has a value above {floor} in at least 2 samples (every value "
+            "is missing), so the expression pre-filter kept none"
         )
     else:
         cause = (
@@ -197,9 +242,8 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
     genes = "gene" if adata.n_vars == 1 else "genes"
     return (
         "**DE refused: no gene was tested.**\n\n"
-        f"Of {adata.n_vars:,} {genes}, {cause}. Wilcoxon and t-test expect counts "
-        "or log-scale values. Use deseq2 on raw counts, or run on unscaled "
-        "values. No result modality was stored."
+        f"Of {adata.n_vars:,} {genes}, {cause}. {advice} No result modality was "
+        "stored."
     )
 
 

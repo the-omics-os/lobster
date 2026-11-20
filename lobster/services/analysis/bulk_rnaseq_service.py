@@ -558,6 +558,17 @@ Next suggested step: Import quantification data with tximport for differential e
                 ).sum()
             )
             n_zero_within_group_variance = int(flagged.sum())
+            # A missing value makes a gene's fold change not a number; counted
+            # apart from a group mean below -1, the other cause
+            n_genes_with_missing_value = int(
+                np.isnan(
+                    np.vstack(
+                        [safe_toarray(group1_data.X), safe_toarray(group2_data.X)]
+                    )
+                )
+                .any(axis=0)
+                .sum()
+            )
             complete = (
                 results_df.drop(columns=["stat", "pvalue", "padj"], errors="ignore")
                 .notna()
@@ -677,6 +688,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_genes_tested": len(results_df),
                 "n_genes_without_pvalue": n_genes_without_pvalue,
                 "n_zero_within_group_variance": n_zero_within_group_variance,
+                "n_genes_with_missing_value": n_genes_with_missing_value,
                 "n_significant_genes": len(significant_genes),
                 "n_upregulated": len(upregulated),
                 "n_downregulated": len(downregulated),
