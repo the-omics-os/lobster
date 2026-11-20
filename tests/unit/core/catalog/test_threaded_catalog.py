@@ -736,3 +736,21 @@ def test_different_problems_of_one_operation_are_each_reported_once(
         "first problem)",
         "second problem)",
     ]
+
+
+def test_ending_at_exit_early_and_again_ends_the_run_once(
+    make_catalog, engine, tmp_path
+):
+    # the exit's first moments end it (a tool may still run); atexit comes later
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("aborted", reason="Ctrl-C")
+    callers = [threading.Thread(target=catalog.end_at_exit) for _ in range(3)]
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join()
+    catalog._at_exit()
+    assert [c for c in engine.calls if c[0] == "end_run"] == [
+        ("end_run", ("aborted", None))
+    ]

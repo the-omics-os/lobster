@@ -13,6 +13,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import typer
@@ -779,3 +780,214 @@ def test_a_served_status_request_is_completed():
     )
     api.get("/status")
     assert client.catalog.end == ("completed", None)
+
+
+# -- a Ctrl-C or SIGTERM ends the run before the exit waits for a running tool --
+
+
+@pytest.fixture
+def exit_hooks(monkeypatch):
+    """Hooks registered to run as the exit begins, recorded instead of registered."""
+    hooks = []
+    monkeypatch.setattr(threading, "_register_atexit", hooks.append)
+    monkeypatch.setattr(factory, "_ending_early", False, raising=False)
+    return hooks
+
+
+def test_the_early_end_is_registered_once_and_only_for_a_bound_run(
+    monkeypatch, exit_hooks
+):
+    factory.end_run_when_exit_begins()
+    assert exit_hooks == []  # no run: nothing to end
+
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    factory.end_run_when_exit_begins()
+    factory.end_run_when_exit_begins()
+    assert len(exit_hooks) == 1
+
+
+def test_a_ctrl_c_registers_the_early_end(monkeypatch, exit_hooks):
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    with pytest.raises(KeyboardInterrupt):
+        with factory.recorded_run_status(_client("s")):
+            raise KeyboardInterrupt
+    assert len(exit_hooks) == 1
+
+
+def test_a_sigterm_registers_the_early_end(monkeypatch, exit_hooks, exit_later):
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    with pytest.raises(SystemExit):
+        factory._on_sigterm(signal.SIGTERM, None)
+    assert len(exit_hooks) == 1
+
+
+def test_a_streamed_query_stopped_with_ctrl_c_registers_the_early_end(
+    monkeypatch, tmp_path, exit_hooks
+):
+    from lobster.cli_internal.commands.heavy import query_commands
+
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    monkeypatch.setattr(
+        query_commands,
+        "_display_streaming_response",
+        lambda *a: {"success": False, "error": "Interrupted", "interrupted": True},
+    )
+    with pytest.raises(typer.Exit):
+        _query(monkeypatch, tmp_path, _client(), stream=True)
+    assert len(exit_hooks) == 1
+
+
+def test_the_hard_exit_ends_the_run_first(monkeypatch):
+    done = []
+    catalog = SimpleNamespace(end_at_exit=lambda: done.append("ended"))
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
+    timers = []
+    monkeypatch.setattr(
+        threading, "Timer", lambda s, fn, args=(): timers.append((fn, args)) or Mock()
+    )
+    monkeypatch.setattr(factory.os, "_exit", lambda code: done.append(code))
+
+    factory._exit_later(143)
+    fn, args = timers[0]
+    fn(*args)
+
+    assert done == ["ended", 143]
+
+
+CTRL_C_CHILD = textwrap.dedent("""
+    import atexit, sys, time
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+    from types import SimpleNamespace
+    from lobster.cli_internal.commands.heavy import query_commands
+    from lobster.core.catalog import factory, thread
+    thread.AT_EXIT_TIMEOUT_S = 1.0
+    mode, bound = sys.argv[1], sys.argv[2]
+    class Catalog:
+        status = reason = None
+        ended = 0
+        def set_end_status(self, status, session_id=None, reason=None, **only):
+            if self.status is None:
+                self.status, self.reason = status, reason
+        def end_at_exit(self):
+            Catalog.ended += 1
+            print("RUN", self.status, self.reason, flush=True)
+    catalog = Catalog()
+    atexit.register(lambda: print("EXIT HOOKS RAN; ended", Catalog.ended, flush=True))
+    pool = ThreadPoolExecutor(1)
+    def tool(seconds):
+        time.sleep(seconds)  # a call that answers late
+        Path("out.bin").write_bytes(b"x" * 1_000_000)
+        print("TOOL done", flush=True)
+    class Client:
+        callbacks = []
+        data_manager = SimpleNamespace(catalog=catalog)
+        def query(self, question, stream=False):
+            print("ready", flush=True)
+            if mode == "free":
+                time.sleep(30)  # waits in the main thread: nothing holds the exit
+            pool.submit(tool, float(mode)).result()
+            return {"success": True, "response": "x"}
+    def init_client(*args, **kwargs):
+        if bound == "catalog":
+            factory._process_catalog = (Path("."), catalog)
+            factory.abort_runs_on_sigterm()
+        return Client()
+    query_commands.init_client = init_client
+    query_commands.validate_startup_or_raise_startup_diagnostic = lambda **kw: None
+    from lobster.cli import app
+    app(["query", "--no-stream", "hello"])
+""")
+
+STOPPING = (
+    "Stopping without waiting for the running tool; "
+    "a file it was writing may be incomplete."
+)
+
+
+def _signalled(tmp_path, mode, bound, presses):
+    """Run the child; ``presses``: (seconds after ready, signal). Returns the exit
+    code and each output line with the seconds since the first signal."""
+    pytest.importorskip("langchain_core")
+    child = subprocess.Popen(
+        [sys.executable, "-c", CTRL_C_CHILD, mode, bound],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=tmp_path,
+        env={"PATH": "", "PYTHONPATH": ":".join(sys.path), "HOME": str(tmp_path)},
+    )
+    lines = []
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        began = time.monotonic()
+
+        def press():
+            for at, sig in presses:
+                time.sleep(max(0.0, began + at - time.monotonic()))
+                child.send_signal(sig)
+
+        threading.Thread(target=press, daemon=True).start()
+        for line in child.stdout:
+            lines.append((time.monotonic() - began, line.rstrip()))
+        code = child.wait(timeout=40)
+        lines.append((time.monotonic() - began, "<exit>"))
+    finally:
+        child.kill()
+    return code, lines
+
+
+def _at(lines, text):
+    return next(at for at, line in lines if line.startswith(text))
+
+
+def _said(lines):
+    return "\n".join(line for _, line in lines)
+
+
+def test_a_ctrl_c_ends_the_run_while_a_tool_still_runs_and_cuts_nothing(tmp_path):
+    code, lines = _signalled(tmp_path, "4", "catalog", [(0, signal.SIGINT)])
+
+    assert code == 130, _said(lines)
+    assert _at(lines, "RUN aborted Ctrl-C") < 1.0 + 1.0  # within the exit budget
+    assert _at(lines, "RUN") < _at(lines, "TOOL done")  # the tool still ran
+    assert (tmp_path / "out.bin").read_bytes() == b"x" * 1_000_000
+    assert "EXIT HOOKS RAN; ended 1" in _said(lines)
+
+
+def test_a_ctrl_c_with_nothing_running_exits_at_once(tmp_path):
+    code, lines = _signalled(tmp_path, "free", "catalog", [(0, signal.SIGINT)])
+
+    assert code == 130, _said(lines)
+    assert _at(lines, "<exit>") < 1.0
+    assert "EXIT HOOKS RAN; ended 1" in _said(lines)
+
+
+def test_a_second_ctrl_c_stops_waiting_for_the_tool_without_a_traceback(tmp_path):
+    code, lines = _signalled(
+        tmp_path, "30", "catalog", [(0, signal.SIGINT), (2.0, signal.SIGINT)]
+    )
+
+    said = _said(lines)
+    assert code == 130, said
+    assert _at(lines, "RUN aborted Ctrl-C") < 2.0
+    assert STOPPING in said
+    assert "Traceback" not in said and "Exception ignored" not in said
+    assert "EXIT HOOKS RAN; ended 1" in said
+    assert _at(lines, "<exit>") < 2.0 + 1.5
+
+
+def test_a_ctrl_c_without_a_run_is_unchanged(tmp_path):
+    code, lines = _signalled(tmp_path, "3", "none", [(0, signal.SIGINT)])
+
+    said = _said(lines)
+    assert code == 130, said
+    assert "RUN" not in said and STOPPING not in said
+    assert _at(lines, "TOOL done") < _at(lines, "<exit>")  # it waits, as before
+
+
+def test_a_sigterm_ends_the_run_before_the_hard_exit(tmp_path):
+    code, lines = _signalled(tmp_path, "30", "catalog", [(0, signal.SIGTERM)])
+
+    assert code == 143, _said(lines)
+    assert _at(lines, "RUN aborted SIGTERM") < _at(lines, "<exit>") < 1.0 + 2.5
