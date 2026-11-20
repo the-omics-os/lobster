@@ -2117,103 +2117,27 @@ adata_de.uns[{{ ('de_results_' ~ group1 ~ '_vs_' ~ group2) | repr }}] = results_
                 "from scipy import stats",
                 "from statsmodels.stats.multitest import multipletests",
             ]
-        elif method == "wilcoxon":
+        else:  # wilcoxon, t_test: the analysis itself, so the filters and the
+            # correction are the ones the analysis ran
             code_template = """
-# Wilcoxon rank-sum test for differential expression
-import numpy as np
-import pandas as pd
-from scipy import stats
-from statsmodels.stats.multitest import multipletests
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
-# Filter and subset groups
-group1_data = adata[adata.obs[{{ groupby | string | repr }}] == {{ group1 | string | repr }}]
-group2_data = adata[adata.obs[{{ groupby | string | repr }}] == {{ group2 | string | repr }}]
-
-group1_expr = group1_data.X.toarray() if hasattr(group1_data.X, 'toarray') else group1_data.X
-group2_expr = group2_data.X.toarray() if hasattr(group2_data.X, 'toarray') else group2_data.X
-
-# Calculate log fold change
-group1_mean = np.mean(group1_expr, axis=0)
-group2_mean = np.mean(group2_expr, axis=0)
-log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
-
-# Wilcoxon rank-sum test
-p_values = []
-for i in range(adata.n_vars):
-    _, p_val = stats.ranksums(group1_expr[:, i], group2_expr[:, i])
-    p_values.append(p_val)
-
-# FDR correction
-p_values = np.asarray(p_values, dtype=float)
-p_adjusted = np.full(p_values.shape, np.nan)
-finite = np.isfinite(p_values)  # a t-test gives no p-value for a constant gene
-if finite.any():
-    p_adjusted[finite] = multipletests(p_values[finite], method='fdr_bh')[1]
-
-# Results DataFrame
-results_df = pd.DataFrame({
-    'baseMean': (group1_mean + group2_mean) / 2,
-    'log2FoldChange': log2_fold_change,
-    'pvalue': p_values,
-    'padj': p_adjusted
-}, index=adata.var_names)
+bulk_service = BulkRNASeqService(results_dir='bulk_results')
+adata_de, de_stats, _ = bulk_service.run_differential_expression_analysis(
+    adata=adata,
+    groupby={{ groupby | string | repr }},
+    group1={{ group1 | string | repr }},
+    group2={{ group2 | string | repr }},
+    method={{ method | repr }},
+    min_expression_threshold={{ min_expression_threshold | repr }},
+    min_fold_change={{ min_fold_change | repr }},
+    min_pct_expressed={{ min_pct_expressed | repr }},
+    max_out_pct_expressed={{ max_out_pct_expressed | repr }},
+)
 """
-            library = "scipy"
+            library = "lobster"
             imports = [
-                "import numpy as np",
-                "import pandas as pd",
-                "from scipy import stats",
-                "from statsmodels.stats.multitest import multipletests",
-            ]
-        else:  # t-test
-            code_template = """
-# Student's t-test for differential expression
-import numpy as np
-import pandas as pd
-from scipy import stats
-from statsmodels.stats.multitest import multipletests
-
-# Subset groups
-group1_data = adata[adata.obs[{{ groupby | string | repr }}] == {{ group1 | string | repr }}]
-group2_data = adata[adata.obs[{{ groupby | string | repr }}] == {{ group2 | string | repr }}]
-
-group1_expr = group1_data.X.toarray() if hasattr(group1_data.X, 'toarray') else group1_data.X
-group2_expr = group2_data.X.toarray() if hasattr(group2_data.X, 'toarray') else group2_data.X
-
-# Calculate statistics
-group1_mean = np.mean(group1_expr, axis=0)
-group2_mean = np.mean(group2_expr, axis=0)
-log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
-
-# T-test
-t_stats = []
-p_values = []
-for i in range(adata.n_vars):
-    t_stat, p_val = stats.ttest_ind(group1_expr[:, i], group2_expr[:, i])
-    t_stats.append(t_stat)
-    p_values.append(p_val)
-
-# FDR correction
-p_values = np.asarray(p_values, dtype=float)
-p_adjusted = np.full(p_values.shape, np.nan)
-finite = np.isfinite(p_values)  # a t-test gives no p-value for a constant gene
-if finite.any():
-    p_adjusted[finite] = multipletests(p_values[finite], method='fdr_bh')[1]
-
-results_df = pd.DataFrame({
-    'baseMean': (group1_mean + group2_mean) / 2,
-    'log2FoldChange': log2_fold_change,
-    'stat': t_stats,
-    'pvalue': p_values,
-    'padj': p_adjusted
-}, index=adata.var_names)
-"""
-            library = "scipy"
-            imports = [
-                "import numpy as np",
-                "import pandas as pd",
-                "from scipy import stats",
-                "from statsmodels.stats.multitest import multipletests",
+                "from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService"
             ]
 
         return AnalysisStep(

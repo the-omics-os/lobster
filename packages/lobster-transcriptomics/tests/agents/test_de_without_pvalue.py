@@ -173,7 +173,7 @@ def _analysed_and_exported(tmp_path, monkeypatch, adata, method):
     )
     scope = {"adata": adata.copy()}
     exec(compile(ir.render(), "<de>", "exec"), scope)  # nosec B102
-    return out, scope["results_df"]
+    return out, pd.DataFrame(scope["adata_de"].uns["de_results_ctrl_vs_treat"])
 
 
 @pytest.mark.parametrize("method", ["deseq2_like", "wilcoxon", "t_test"])
@@ -265,13 +265,9 @@ def test_the_exported_code_tests_the_genes_the_analysis_tested(
     adata = _c2()
     adata.X[:, :30] = np.arange(12)[:, None] % 3 * 0.5  # 0 to 1: varies, never above
 
-    out, scope = _analysed_and_exported_scope(tmp_path, monkeypatch, adata, method)
+    out, exported = _analysed_and_exported(tmp_path, monkeypatch, adata, method)
 
-    if "adata_de" in scope:
-        table = pd.DataFrame(scope["adata_de"].uns["de_results_ctrl_vs_treat"])
-    else:  # the code before: a table of every gene
-        table = scope["results_df"]
-    replayed = table["padj"].dropna()
+    replayed = exported["padj"].dropna()
     assert out.n_vars == 1970
     assert sorted(replayed.index) == sorted(out.var_names)
     np.testing.assert_allclose(
@@ -279,17 +275,32 @@ def test_the_exported_code_tests_the_genes_the_analysis_tested(
     )
 
 
-def _analysed_and_exported_scope(tmp_path, monkeypatch, adata, method):
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+def test_the_exported_code_makes_the_call_the_analysis_made(
+    tmp_path, monkeypatch, method
+):
     monkeypatch.chdir(tmp_path)
+    called = {
+        "groupby": "condition",
+        "group1": "ctrl",
+        "group2": "treat",
+        "method": method,
+        "min_expression_threshold": 2.5,
+        "min_fold_change": 1.7,
+        "min_pct_expressed": 0.3,
+        "max_out_pct_expressed": 0.8,
+    }
     service = BulkRNASeqService(results_dir=str(tmp_path / "results"))
-    out, _, ir = service.run_differential_expression_analysis(
-        adata=adata.copy(),
-        groupby="condition",
-        group1="ctrl",
-        group2="treat",
-        method=method,
-        **FILTERS,
+    _, _, ir = service.run_differential_expression_analysis(adata=_c2(), **called)
+    seen = []
+
+    def record(self, adata, **kwargs):
+        seen.append(kwargs)
+        return adata, {}, None
+
+    monkeypatch.setattr(
+        BulkRNASeqService, "run_differential_expression_analysis", record
     )
-    scope = {"adata": adata.copy()}
-    exec(compile(ir.render(), "<de>", "exec"), scope)  # nosec B102
-    return out, scope
+    exec(compile(ir.render(), "<de>", "exec"), {"adata": _c2()})  # nosec B102
+
+    assert seen == [called]

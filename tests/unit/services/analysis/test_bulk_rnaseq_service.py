@@ -1313,7 +1313,8 @@ class TestIRGeneration:
 
         assert ir.operation == "differential_expression"
         assert "wilcoxon" in ir.description.lower()
-        assert "ranksums" in ir.code_template or "mannwhitneyu" in ir.code_template
+        # the exported code is the analysis itself
+        assert "run_differential_expression_analysis(" in ir.code_template
         assert ir.parameters["method"] == "wilcoxon"
 
     def test_create_de_ir_ttest(self, bulk_service):
@@ -1324,7 +1325,7 @@ class TestIRGeneration:
 
         assert ir.operation == "differential_expression"
         assert "t-test" in ir.description.lower() or "t_test" in ir.description.lower()
-        assert "ttest_ind" in ir.code_template
+        assert "run_differential_expression_analysis(" in ir.code_template
         assert ir.parameters["method"] == "t_test"
 
     def test_create_enrichment_ir(self, bulk_service):
