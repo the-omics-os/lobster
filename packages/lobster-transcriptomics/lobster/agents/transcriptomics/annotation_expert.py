@@ -606,11 +606,11 @@ def annotation_expert(
             total_debris_cells = debris_stats["n_debris_cells"]
 
             # Save as new modality
-            debris_modality_name = f"{modality_name}_debris_marked"
-            if remove_debris:
-                debris_modality_name = data_manager.unloaded_name(
-                    f"{modality_name}_debris_removed"
-                )
+            debris_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_debris_removed"
+                if remove_debris
+                else f"{modality_name}_debris_marked"
+            )
 
             data_manager.store_modality(
                 name=debris_modality_name,
