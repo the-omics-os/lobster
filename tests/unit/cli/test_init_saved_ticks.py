@@ -180,3 +180,110 @@ def test_init_force_hands_the_saved_packages_to_the_picker(
     assert exc_info.value.exit_code == 0
     expected = ["lobster-research", "lobster-genomics"] if saved else None
     assert seen["packages"] == expected
+
+
+# --- an interactive --preset starts every picker and is recorded --------------
+
+SCRNA_FULL = [
+    "lobster-research",
+    "lobster-transcriptomics",
+    "lobster-visualization",
+    "lobster-metadata",
+]
+SCRNA_FULL_AGENTS = [
+    "research_agent",
+    "data_expert_agent",
+    "transcriptomics_expert",
+    "annotation_expert",
+    "de_analysis_expert",
+    "visualization_expert_agent",
+    "metadata_assistant",
+]
+
+
+@pytest.mark.parametrize(
+    "answer, kept", [(None, "scrna-full"), ("1,2", None)], ids=["kept", "unticked"]
+)
+def test_classic_picker_starts_from_the_preset(ws, monkeypatch, answer, kept):
+    WorkspaceAgentConfig(enabled_agents=GENOMICS).save(ws)  # --preset wins
+    asked = []
+
+    def ask(prompt, default):
+        asked.append(default)
+        return answer or default
+
+    monkeypatch.setattr(init_commands.Prompt, "ask", ask)
+    monkeypatch.setattr(init_commands, "_get_installed_agents", lambda: {})
+    monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: True)
+    selected, preset = init_commands._perform_agent_selection_interactive(
+        ws, skip_extras=True, preset="scrna-full"
+    )
+    assert asked == ["1,2,3,9"]
+    assert preset == kept
+    out = init_commands.console.file.getvalue()
+    replaced = "Preset 'scrna-full' will be saved as explicit agents instead."
+    assert (replaced in out) is (kept is None)
+    if kept:
+        assert sorted(selected) == sorted(SCRNA_FULL_AGENTS)
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto"])
+@pytest.mark.parametrize(
+    "picked, kept",
+    [
+        (SCRNA_FULL_AGENTS, "scrna-full"),
+        (["research_agent", "data_expert_agent"], None),
+    ],
+    ids=["kept", "unticked"],
+)
+def test_init_preset_starts_the_picker_and_is_recorded(
+    ws, monkeypatch, ui_mode, picked, kept
+):
+    (ws.parent / ".env").write_text("OLLAMA_BASE_URL=http://localhost:11434\n")
+    WorkspaceAgentConfig(enabled_agents=GENOMICS).save(ws)  # --preset wins
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    seen = {}
+
+    def picker(*_args, agent_packages=None, **_kwargs):
+        seen["packages"] = agent_packages
+        return {"provider": "ollama", "agents": list(picked), "cancelled": False}
+
+    monkeypatch.setattr(
+        "lobster.ui.bridge.binary_finder.find_tui_binary",
+        lambda: "/fake/lobster-tui" if ui_mode == "go" else None,
+    )
+    monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.run_init_wizard", picker)
+    monkeypatch.setattr(
+        "lobster.ui.bridge.questionary_fallback.run_questionary_init", picker
+    )
+    monkeypatch.setattr(init_commands, "_ask_language", lambda **_: None)
+    with pytest.raises(typer.Exit) as exc_info:
+        init_impl(**_init_kwargs(ui_mode=ui_mode, preset="scrna-full"))
+    assert exc_info.value.exit_code == 0
+    assert seen["packages"] == SCRNA_FULL
+    saved = WorkspaceAgentConfig.load(ws)
+    assert saved.preset == kept
+    if kept is None:
+        assert saved.enabled_agents == picked
+        out = init_commands.console.file.getvalue()
+        assert "Preset 'scrna-full' will be saved as explicit agents instead." in out
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "classic"])
+def test_interactive_init_refuses_an_unknown_preset(ws, monkeypatch, ui_mode):
+    (ws.parent / ".env").write_text("OLLAMA_BASE_URL=http://localhost:11434\n")
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+
+    def picker(*_args, **_kwargs):
+        raise AssertionError("no picker for an unknown preset")
+
+    monkeypatch.setattr(
+        "lobster.ui.bridge.binary_finder.find_tui_binary", lambda: "/fake/lobster-tui"
+    )
+    monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.run_init_wizard", picker)
+    monkeypatch.setattr(init_commands, "_ask_language", picker)
+    monkeypatch.setattr(init_commands.Prompt, "ask", picker)
+    with pytest.raises(typer.Exit) as exc_info:
+        init_impl(**_init_kwargs(ui_mode=ui_mode, preset="scrna-everything"))
+    assert exc_info.value.exit_code == 1
+    assert "Invalid preset: scrna-everything" in init_commands.console.file.getvalue()
