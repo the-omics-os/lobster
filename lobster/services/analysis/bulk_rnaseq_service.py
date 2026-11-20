@@ -568,13 +568,15 @@ Next suggested step: Import quantification data with tximport for differential e
                 .any(axis=0)
                 .sum()
             )
+            # lfcSE is not estimated by these tests: its NaN drops no gene
+            estimated = results_df.drop(columns=["lfcSE"], errors="ignore")
             complete = (
-                results_df.drop(columns=["stat", "pvalue", "padj"], errors="ignore")
+                estimated.drop(columns=["stat", "pvalue", "padj"], errors="ignore")
                 .notna()
                 .all(axis=1)
             )
             results_df = results_df[
-                results_df.notna().all(axis=1) | (flagged & complete)
+                estimated.notna().all(axis=1) | (flagged & complete)
             ]
 
             # Add results to AnnData
@@ -949,11 +951,14 @@ Next suggested step: Import quantification data with tximport for differential e
         from scipy import stats
 
         p_values = []
+        t_stats = []
         for i in range(n_genes):
             if group1_expr.shape[0] > 1 and group2_expr.shape[0] > 1:
-                _, p_val = stats.ttest_ind(group1_expr[:, i], group2_expr[:, i])
+                t_stat, p_val = stats.ttest_ind(group2_expr[:, i], group1_expr[:, i])
+                t_stats.append(t_stat)
                 p_values.append(p_val)
             else:
+                t_stats.append(0.0)
                 p_values.append(1.0)  # No test possible with single sample
 
         p_values = np.array(p_values)
@@ -966,8 +971,8 @@ Next suggested step: Import quantification data with tximport for differential e
             {
                 "baseMean": (group1_mean + group2_mean) / 2,
                 "log2FoldChange": log2_fold_change,
-                "lfcSE": np.ones(n_genes),  # Simplified
-                "stat": log2_fold_change / np.ones(n_genes),  # Simplified
+                "lfcSE": np.full(n_genes, np.nan),  # not estimated
+                "stat": np.array(t_stats),
                 "pvalue": p_values,
                 "padj": p_adjusted,
             },
@@ -1006,14 +1011,24 @@ Next suggested step: Import quantification data with tximport for differential e
 
         # Wilcoxon test for each gene
         p_values = []
+        z_stats = []
         for i in range(n_genes):
             if group1_expr.shape[0] > 1 and group2_expr.shape[0] > 1:
-                _, p_val = stats.ranksums(group1_expr[:, i], group2_expr[:, i])
+                z_stat, p_val = stats.ranksums(group2_expr[:, i], group1_expr[:, i])
+                z_stats.append(z_stat)
                 p_values.append(p_val)
             else:
+                z_stats.append(0.0)
                 p_values.append(1.0)
 
         p_values = np.array(p_values)
+        z_stats = np.array(z_stats)
+
+        # With one value in every sample all ranks tie: the rank sum has no
+        # variance, so z is 0 / 0, not 0 with p = 1. No p-value, as the t-test.
+        one_value = np.ptp(np.vstack([group1_expr, group2_expr]), axis=0) == 0
+        p_values[one_value] = np.nan
+        z_stats[one_value] = np.nan
 
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)
@@ -1022,8 +1037,8 @@ Next suggested step: Import quantification data with tximport for differential e
             {
                 "baseMean": (group1_mean + group2_mean) / 2,
                 "log2FoldChange": log2_fold_change,
-                "lfcSE": np.ones(n_genes),
-                "stat": log2_fold_change / np.ones(n_genes),
+                "lfcSE": np.full(n_genes, np.nan),  # not estimated
+                "stat": z_stats,
                 "pvalue": p_values,
                 "padj": p_adjusted,
             },
@@ -1065,7 +1080,7 @@ Next suggested step: Import quantification data with tximport for differential e
         t_stats = []
         for i in range(n_genes):
             if group1_expr.shape[0] > 1 and group2_expr.shape[0] > 1:
-                t_stat, p_val = stats.ttest_ind(group1_expr[:, i], group2_expr[:, i])
+                t_stat, p_val = stats.ttest_ind(group2_expr[:, i], group1_expr[:, i])
                 t_stats.append(t_stat)
                 p_values.append(p_val)
             else:
@@ -1098,7 +1113,7 @@ Next suggested step: Import quantification data with tximport for differential e
             {
                 "baseMean": (group1_mean + group2_mean) / 2,
                 "log2FoldChange": log2_fold_change,
-                "lfcSE": np.ones(n_genes),
+                "lfcSE": np.full(n_genes, np.nan),  # not estimated
                 "stat": t_stats,
                 "pvalue": p_values,
                 "padj": p_adjusted,
