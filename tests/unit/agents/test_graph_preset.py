@@ -53,3 +53,65 @@ def test_an_uninstalled_name_in_the_list_is_skipped():
 def test_no_preference_runs_every_installed_agent():
     assert _workers(WorkspaceAgentConfig()) == set(INSTALLED)
     assert _workers(None) == set(INSTALLED)
+
+
+NONE_INSTALLED = (
+    "None of this project's experts (gone_expert, lost_expert) are installed; "
+    "run lobster agents install <package> or lobster init --force."
+)
+
+
+def _metadata(config, tmp_path):
+    from unittest.mock import MagicMock, patch
+
+    import lobster.agents.graph as graph_module
+
+    def react(**_):
+        agent = MagicMock()
+        agent.with_config.return_value = agent
+        return agent
+
+    data_manager = MagicMock()
+    data_manager.workspace_path = tmp_path
+    data_manager.get_modality_ids.return_value = []
+    data_manager.list_modalities.return_value = []
+    with (
+        patch.object(graph_module, "create_llm", return_value=MagicMock()),
+        patch.object(graph_module, "create_react_agent", side_effect=react),
+    ):
+        _, metadata = graph_module.create_bioinformatics_graph(
+            data_manager=data_manager,
+            config=config,
+            subscription_tier="free",
+            agent_filter=lambda name, cfg: True,
+        )
+    return metadata
+
+
+def test_a_config_with_no_installed_expert_says_so_once(tmp_path, monkeypatch, caplog):
+    import lobster.agents.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_told_uninstalled", set())
+    config = WorkspaceAgentConfig(enabled_agents=["lost_expert", "gone_expert"])
+
+    with caplog.at_level("WARNING", logger="lobster"):
+        first = _metadata(config, tmp_path)
+        again = _metadata(config, tmp_path)
+
+    assert first.uninstalled_experts == ["gone_expert", "lost_expert"]
+    assert again.uninstalled_experts == ["gone_expert", "lost_expert"]
+    told = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert [r.getMessage() for r in told if "None of" in r.getMessage()] == [
+        NONE_INSTALLED
+    ]
+
+
+def test_an_installed_expert_or_no_preference_says_nothing(tmp_path, monkeypatch):
+    import lobster.agents.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_told_uninstalled", set())
+    monkeypatch.setattr(component_registry, "list_agents", lambda: {})
+
+    # nothing installed and nothing named: the supervisor's own line covers it
+    assert _metadata(WorkspaceAgentConfig(), tmp_path).uninstalled_experts == []
+    assert graph_module._told_uninstalled == set()
