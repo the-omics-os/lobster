@@ -1075,17 +1075,21 @@ Next suggested step: Import quantification data with tximport for differential e
         p_values = np.array(p_values)
         t_stats = np.array(t_stats)
 
-        # A gene with the same value within each group and a different value
-        # between them has no variance to test against: t is inf and p is 0.
-        # It gets no p-value, so it stays out of the correction, and is flagged.
-        no_variance = (
+        # A gene with the same value within each group has no variance to test
+        # against: with a different value between them t is inf and p is 0 (it
+        # is flagged); with one value everywhere t is 0 / 0, or rounding noise
+        # for a value like 1.1. It gets no p-value, so it stays out of the
+        # correction.
+        one_value_per_group = (
             (min(group1_expr.shape[0], group2_expr.shape[0]) > 1)
             & (np.ptp(group1_expr, axis=0) == 0)
             & (np.ptp(group2_expr, axis=0) == 0)
-            & (group1_expr[0] != group2_expr[0])  # exact: each group is one value
         )
-        p_values[no_variance] = np.nan
-        t_stats[no_variance] = np.nan  # not +-inf: it would top a table sorted by it
+        no_variance = one_value_per_group & (
+            group1_expr[0] != group2_expr[0]  # exact: each group is one value
+        )
+        p_values[one_value_per_group] = np.nan
+        t_stats[one_value_per_group] = np.nan  # not +-inf: it would top a sort
 
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)

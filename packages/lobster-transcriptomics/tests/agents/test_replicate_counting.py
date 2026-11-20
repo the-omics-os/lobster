@@ -143,7 +143,7 @@ class TestDesignToolUsesDonors:
 
         assert "1 donor(s)" in result
         assert "pseudoreplication" in result
-        assert "biological replicates" in result
+        assert "1 biological replicate (" in result
 
     def test_three_donors_report_libraries_to_donors(self, tmp_path, monkeypatch):
         tools = self._tools(_pseudobulk(3, 2), tmp_path, monkeypatch)

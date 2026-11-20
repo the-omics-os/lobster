@@ -229,7 +229,10 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
             "reported"
         )
     elif adata.n_vars and np.isnan(safe_toarray(adata.X)).all():
-        advice = _REFUSAL_ADVICE[(True, False)]
+        advice = (
+            "No value was loaded: check the import, then import complete raw "
+            "counts and use deseq2."
+        )
         cause = (
             f"no gene has a value above {floor} in at least 2 samples (every value "
             "is missing), so the expression pre-filter kept none"
@@ -346,7 +349,10 @@ def _count_biological_replicates(
     column exists, n is the number of distinct units per group.
     """
     unit_col = _find_biological_unit_column(metadata, groupby)
-    row_counts = metadata[groupby].value_counts().to_dict()
+    # a group with no row (an unused category) is not in the data
+    row_counts = {
+        group: n for group, n in metadata[groupby].value_counts().items() if n
+    }
     if unit_col is not None:
         unit_counts = (
             metadata.groupby(groupby, observed=True)[unit_col]
@@ -366,7 +372,7 @@ def _count_biological_replicates(
         "errors": [],
     }
     unit_label = f"donor(s) in column '{unit_col}'" if unit_col else "samples"
-    kind = "biological replicates" if unit_col else "replicates"
+    kind = "biological replicate" if unit_col else "replicate"
 
     if unit_col is None:
         validation["warnings"].append(
@@ -398,7 +404,7 @@ def _count_biological_replicates(
                     "(pseudoreplication)"
                 )
             validation["errors"].append(
-                f"Group '{group}' has only {n_units} {kind}{detail} "
+                f"Group '{group}' has only {n_units} {kind}{'' if n_units == 1 else 's'}{detail} "
                 f"(minimum {min_replicates} required for stable variance estimation)"
             )
             continue
@@ -411,7 +417,7 @@ def _count_biological_replicates(
             )
         if n_units < 4:
             validation["warnings"].append(
-                f"Group '{group}' has {n_units} {kind}. "
+                f"Group '{group}' has {n_units} {kind}{'' if n_units == 1 else 's'}. "
                 f"Statistical power may be limited. 4+ replicates recommended."
             )
 
@@ -1490,14 +1496,36 @@ def de_analysis_expert(
             if group2 not in available_groups:
                 return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
 
-            # Validate replicate counts
+            # Validate the replicates of the groups fitted: deseq2 fits every
+            # group of the column (design ~groupby), the others only the two
+            compared = adata.obs[groupby].isin([group1, group2])
             replicate_validation = _validate_replicate_counts(
-                adata.obs, groupby, min_replicates=min_replicates
+                adata.obs if method == "deseq2" else adata.obs[compared],
+                groupby,
+                min_replicates=min_replicates,
             )
 
             if not replicate_validation["valid"]:
                 error_msg = "; ".join(replicate_validation["errors"])
-                return f"**Insufficient replicates**: {error_msg}\n\nMinimum {min_replicates} replicates per group required for stable variance estimation."
+                response = f"**Insufficient replicates**: {error_msg}\n\nMinimum {min_replicates} replicates per group required for stable variance estimation."
+                short = [
+                    f"'{group}'"
+                    for group, n in replicate_validation["group_counts"].items()
+                    if method == "deseq2"
+                    and n < min_replicates
+                    and group not in (group1, group2)
+                ]
+                if short:
+                    its = "it is" if len(short) == 1 else "they are"
+                    them = "it" if len(short) == 1 else "them"
+                    count = "counts" if len(short) == 1 else "count"
+                    response += (
+                        f" deseq2 fits every group of '{groupby}' (design "
+                        f"~{groupby}), so {', '.join(short)} {count} although "
+                        f"{its} not compared; remove {them} first, or use "
+                        "wilcoxon or t_test."
+                    )
+                return response
 
             # Get group counts for response
             group1_count = (adata.obs[groupby] == group1).sum()
