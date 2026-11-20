@@ -115,7 +115,7 @@ params = {
     "format": "json",
     "limit": 100,
 }
-{% if target_chembl_id %}"params["target_chembl_id"] = {{ target_chembl_id | tojson }}{% endif %}
+{% if target_chembl_id %}params["target_chembl_id"] = {{ target_chembl_id | tojson }}{% endif %}
 response = httpx.get({{ (base_url ~ '/activity') | repr }}, params=params, timeout={{ timeout }})
 response.raise_for_status()
 data = response.json()
