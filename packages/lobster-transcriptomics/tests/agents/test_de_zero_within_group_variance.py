@@ -182,7 +182,7 @@ def test_a_gene_with_one_value_everywhere_is_not_split_by_rounding(
     assert stats["n_zero_within_group_variance"] == 0
 
 
-@pytest.mark.parametrize("value", [1.1, 2.3, 0.1])
+@pytest.mark.parametrize("value", [1.1, 2.3, 5.1])
 def test_one_value_everywhere_has_no_p_value_whatever_the_value(
     tmp_path, monkeypatch, value
 ):
