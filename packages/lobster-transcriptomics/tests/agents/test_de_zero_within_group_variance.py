@@ -15,7 +15,7 @@ from statsmodels.stats.multitest import multipletests
 from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
 from .test_bulk_rank_no_marker_filter import _c2
-from .test_de_genes_tested_line import _run
+from .test_de_genes_tested_line import _run, _stored_rows
 from .test_de_without_pvalue import FILTERS, _analysed_and_exported
 
 LINE = (
@@ -113,3 +113,32 @@ def test_the_reply_says_nothing_when_no_gene_is_split_so(tmp_path, monkeypatch, 
     _, reply = _run(tmp_path, monkeypatch, _c2(), method, False)
 
     assert "the same value within each group" not in reply
+
+
+@pytest.mark.parametrize("group", ["ctrl", "treat"])
+def test_a_gene_with_no_variance_within_one_group_only_keeps_its_p_value(
+    tmp_path, monkeypatch, group
+):
+    adata = _c2()
+    adata.X[(adata.obs["condition"] == group).to_numpy(), -1] = 7.0
+
+    out, stats, _ = _analysed(tmp_path, monkeypatch, adata)
+
+    assert stats["n_zero_within_group_variance"] == 0
+    assert np.isfinite(out.var["pvalue"].iloc[-1])
+
+
+def test_one_sample_per_group_flags_no_gene(tmp_path, monkeypatch):
+    adata = _c2()[[0, 6]].copy()
+
+    out, stats, _ = _analysed(tmp_path, monkeypatch, adata)
+
+    assert stats["n_zero_within_group_variance"] == 0
+    assert not out.var["zero_within_group_variance"].any()
+
+
+def test_they_count_among_the_genes_tested(tmp_path, monkeypatch):
+    dm, reply = _run(tmp_path, monkeypatch, _split(_c2(), 3), "t_test", False)
+
+    assert "- Genes tested: 2,000 of 2,000\n" in reply, reply
+    assert _stored_rows(dm)[0] == 2000
