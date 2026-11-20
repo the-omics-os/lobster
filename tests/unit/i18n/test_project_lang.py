@@ -106,6 +106,11 @@ def test_an_unreadable_user_wide_config_folder_is_skipped(tmp_path, monkeypatch)
         folder.chmod(0o755)
 
 
+def test_a_workspace_under_the_home_folder_is_found(project, monkeypatch):
+    monkeypatch.setenv("HOME", str(project.parent))
+    assert _lang("query", "-w", "~/study") == "zh"
+
+
 def test_a_workspace_under_an_unknown_user_keeps_the_default(project):
     assert _lang("query", "-w", "~nosuchuser/x") == "en"
     assert _lang("query", "--workspace=~nosuchuser/x") == "en"

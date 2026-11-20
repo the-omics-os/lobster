@@ -121,7 +121,7 @@ def read_workspace_lang(workspace: Optional[Path] = None) -> Optional[str]:
             path = root / ".lobster_workspace" / "provider_config.json"
         if not path.is_file():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict):
@@ -146,7 +146,7 @@ def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[st
     try:
         if not path.is_file():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):  # no access, not UTF-8, not JSON
         return None
     if not isinstance(data, dict):
@@ -155,6 +155,14 @@ def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[st
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _expanded(raw: str) -> Path:
+    """``~user/x`` for a user this system does not know stays as typed."""
+    try:
+        return Path(raw).expanduser()
+    except RuntimeError:
+        return Path(raw)
 
 
 def _workspace_of(selected: Optional[Path]) -> Optional[Path]:
@@ -195,11 +203,11 @@ def resolve_lang(
             if item == "--":
                 break
             if item in ("--workspace", "-w") and i + 1 < len(argv):
-                selected_workspace = Path(argv[i + 1]).expanduser()
+                selected_workspace = _expanded(argv[i + 1])
             elif item.startswith("--workspace="):
-                selected_workspace = Path(item.split("=", 1)[1]).expanduser()
+                selected_workspace = _expanded(item.split("=", 1)[1])
     if selected_workspace is None and env.get("LOBSTER_WORKSPACE"):
-        selected_workspace = Path(env["LOBSTER_WORKSPACE"]).expanduser()
+        selected_workspace = _expanded(env["LOBSTER_WORKSPACE"])
     source = "flag"
     chosen = consume_lang_flag(argv)
     if not chosen:
