@@ -59,7 +59,8 @@ def test_flag_and_env_are_explicit(tmp_path, global_dir):
     assert lang_source() == "default" and not language_was_explicit()
 
 
-def test_global_config_dir_matches_provider_config():
+def test_global_config_dir_matches_provider_config(monkeypatch):
+    monkeypatch.undo()  # the real folder, not the unit tests' stand-in; read only
     from lobster.config.global_config import CONFIG_DIR
 
     assert i18n._global_config_dir() == CONFIG_DIR

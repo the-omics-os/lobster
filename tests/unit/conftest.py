@@ -36,3 +36,15 @@ def restore_model_pricing():
     table = settings.MODEL_PRICING
     table.clear()
     table.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def isolated_config_dir(tmp_path_factory, monkeypatch):
+    """No unit test writes the user's own config folder (the project list first of
+    all: every init_project registers its folder there). A test that sets its own
+    CONFIG_DIR still does so after this one."""
+    from lobster.config import global_config
+
+    monkeypatch.setattr(
+        global_config, "CONFIG_DIR", tmp_path_factory.mktemp("config") / "lobster"
+    )
