@@ -16,6 +16,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -48,6 +49,10 @@ func NewHandler(r io.Reader, w io.Writer) *Handler {
 // exceed bufio's default 64 KB).
 const maxMessageBytes = 4 * 1024 * 1024 // 4 MB
 
+// ErrMessageTooLarge is reported on Errs() for a message line of maxMessageBytes
+// or more, which is skipped.
+var ErrMessageTooLarge = errors.New("a message over 4 MB was skipped")
+
 // StartReadLoop launches a goroutine that continuously reads newline-delimited
 // JSON messages from the underlying reader and sends them to the Msgs() channel.
 // The loop exits on EOF or a read error; the error is forwarded to Errs(). A
@@ -66,7 +71,7 @@ func (h *Handler) StartReadLoop() {
 
 			line, tooLong, err := readLine(reader)
 			if tooLong {
-				h.errCh <- fmt.Errorf("protocol read: a message over %d bytes was skipped", maxMessageBytes)
+				h.errCh <- fmt.Errorf("protocol read: %w", ErrMessageTooLarge)
 			}
 			if err != nil {
 				if err != io.EOF {

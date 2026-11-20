@@ -8,6 +8,7 @@ package chat
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -441,7 +442,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case protocolErr:
-		// Log but don't crash — keep draining the error channel.
+		// Log but don't crash — keep draining the error channel. A message
+		// skipped for its size is told: its text would otherwise just be missing.
+		if errors.Is(msg.err, protocol.ErrMessageTooLarge) {
+			m.appendMessage(ChatMessage{
+				Role: "alert_warning",
+				Blocks: []ContentBlock{BlockAlert{
+					Level:   "warning",
+					Message: i18n.P("A message from Lobster was too large to show and was skipped."),
+				}},
+			}, false)
+		}
 		return m, waitForProtocolErr(m.handler)
 
 	case changeEventTick:
