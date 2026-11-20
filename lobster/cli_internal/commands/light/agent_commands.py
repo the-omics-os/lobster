@@ -343,15 +343,17 @@ def _change_enabled(workspace_path: Path, *, add=(), remove=()) -> None:
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
     config = WorkspaceAgentConfig.load(workspace_path)
+    current = set(config.effective_agents())
+    changed = (current | set(add)) - set(remove)
+    if changed == current:
+        return  # nothing to change: a preset stays a preset
     if config.preset:
         console.print(
             h(
                 "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
             ).format(preset_name=config.preset)
         )
-    config.enabled_agents = sorted(
-        (set(config.effective_agents()) | set(add)) - set(remove)
-    )
+    config.enabled_agents = sorted(changed)
     config.preset = None
     config.save(workspace_path)
 
