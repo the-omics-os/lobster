@@ -20,7 +20,7 @@ METHODS = ["t_test", "wilcoxon", "deseq2_like"]
 
 
 def _groups(adata, gene):
-    x = adata[:, gene].X.ravel().astype(np.float64)
+    x = adata[:, gene].X.ravel()  # float32, as the service sees it
     treat = (adata.obs["condition"] == "treat").to_numpy()
     return x[~treat], x[treat]
 
