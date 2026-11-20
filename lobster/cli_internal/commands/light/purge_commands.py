@@ -82,7 +82,8 @@ class LobsterPaths:
         return (Path.cwd() if root is None else root) / WORKSPACE_FOLDER_NAME
 
     # Marker files that identify Lobster AI directories
-    GLOBAL_CONFIG_MARKERS = ["providers.json", "credentials.env"]
+    # the project list alone marks it too: lobster init <folder> writes only that
+    GLOBAL_CONFIG_MARKERS = ["providers.json", "credentials.env", "projects.json"]
     HOME_DIR_MARKERS = ["license.json", "lobster_history", ".version_check_cache.json"]
     WORKSPACE_MARKERS = ["provider_config.json", ".session.json"]
     # What Lobster writes in its global folders, taken from the writers; the rest is
@@ -91,7 +92,7 @@ class LobsterPaths:
     # license.json from older releases. The config folder: config/global_config.py
     # and the project registry (core/projects.py).
     HOME_DIR_ENTRIES = HOME_DIR_MARKERS + ["vector_store", "ontology_cache"]
-    GLOBAL_CONFIG_ENTRIES = GLOBAL_CONFIG_MARKERS + ["projects.json"]
+    GLOBAL_CONFIG_ENTRIES = GLOBAL_CONFIG_MARKERS
     OS_FILES = [".DS_Store", "Thumbs.db", "desktop.ini"]
     WORKSPACE_SUBDIRS = ["data", "cache", "plots", "exports", "metadata", ".lobster"]
 
