@@ -82,6 +82,9 @@ def _python_literal(value: Any) -> str:
 
 
 _JINJA_ENV.filters["repr"] = _python_literal
+# Templates also use ``| tojson``, whose built-in JSON is not Python: True, None
+# and NaN would render as the undefined names true, null and NaN.
+_JINJA_ENV.filters["tojson"] = _python_literal
 
 
 @dataclass
