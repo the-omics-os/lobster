@@ -43,8 +43,10 @@ func readAll(t *testing.T, h *Handler) (contents []string, errs []string) {
 // A line longer than the reader's 4 MB limit is skipped with an error; the
 // messages after it still arrive, so the TUI keeps the Python process.
 func TestALineOverTheReaderLimitIsSkippedAndTheLinkKept(t *testing.T) {
+	const limit = 4 * 1024 * 1024
+	atLimit := textLine(strings.Repeat("x", limit-len(textLine(""))))
 	long := textLine(strings.Repeat("x", 5*1024*1024))
-	input := textLine("before") + "\n" + long + "\n" + textLine("after") + "\n"
+	input := textLine("before") + "\n" + atLimit + "\n" + long + "\n" + textLine("after") + "\n"
 	h := NewHandler(strings.NewReader(input), &bytes.Buffer{})
 	h.StartReadLoop()
 	defer h.Close()
@@ -54,8 +56,8 @@ func TestALineOverTheReaderLimitIsSkippedAndTheLinkKept(t *testing.T) {
 	if strings.Join(contents, ",") != "before,after" {
 		t.Fatalf("messages = %q, want before,after", contents)
 	}
-	if len(errs) != 1 || !strings.Contains(errs[0], "skipped") {
-		t.Fatalf("errors = %q, want one about the skipped message", errs)
+	if len(errs) != 2 || !strings.Contains(errs[0], "skipped") || !strings.Contains(errs[1], "skipped") {
+		t.Fatalf("errors = %q, want two about the skipped messages", errs)
 	}
 }
 
@@ -65,7 +67,7 @@ func TestLinesWithinTheLimitReadAsBefore(t *testing.T) {
 	const limit = 4 * 1024 * 1024
 	fill := limit - 1 - len(textLine(""))
 	near := textLine(strings.Repeat("y", fill))
-	input := textLine("a") + "\r\n\n" + near + "\n" + textLine("b")
+	input := textLine("a") + "\r\n\r\n\n" + near + "\n" + textLine("b")
 	h := NewHandler(strings.NewReader(input), &bytes.Buffer{})
 	h.StartReadLoop()
 	defer h.Close()

@@ -14,6 +14,7 @@ package protocol
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,18 +44,18 @@ func NewHandler(r io.Reader, w io.Writer) *Handler {
 	}
 }
 
+// maxMessageBytes bounds one message line (large markdown blocks or code cells
+// exceed bufio's default 64 KB).
+const maxMessageBytes = 4 * 1024 * 1024 // 4 MB
+
 // StartReadLoop launches a goroutine that continuously reads newline-delimited
 // JSON messages from the underlying reader and sends them to the Msgs() channel.
-// The loop exits on EOF or a read/parse error; the error is forwarded to Errs().
+// The loop exits on EOF or a read error; the error is forwarded to Errs(). A
+// line that does not parse or is too long is skipped with an error on Errs().
 // Call Close() to signal shutdown.
 func (h *Handler) StartReadLoop() {
 	go func() {
-		scanner := bufio.NewScanner(h.reader)
-		// Increase the scanner buffer to handle large payloads (e.g. markdown
-		// blocks or code cells can exceed the default 64 KB).
-		const maxBuf = 4 * 1024 * 1024 // 4 MB
-		buf := make([]byte, maxBuf)
-		scanner.Buffer(buf, maxBuf)
+		reader := bufio.NewReader(h.reader)
 
 		for {
 			select {
@@ -63,8 +64,12 @@ func (h *Handler) StartReadLoop() {
 			default:
 			}
 
-			if !scanner.Scan() {
-				if err := scanner.Err(); err != nil {
+			line, tooLong, err := readLine(reader)
+			if tooLong {
+				h.errCh <- fmt.Errorf("protocol read: a message over %d bytes was skipped", maxMessageBytes)
+			}
+			if err != nil {
+				if err != io.EOF {
 					h.errCh <- fmt.Errorf("protocol read: %w", err)
 				}
 				// EOF — the Python process exited.
@@ -72,7 +77,7 @@ func (h *Handler) StartReadLoop() {
 				return
 			}
 
-			line := scanner.Bytes()
+			line = bytes.TrimSuffix(line, []byte("\r"))
 			if len(line) == 0 {
 				continue
 			}
@@ -91,6 +96,31 @@ func (h *Handler) StartReadLoop() {
 			}
 		}
 	}()
+}
+
+// readLine reads one line without its newline. A line of maxMessageBytes or
+// more is read to its end and dropped (tooLong); the last line may lack a
+// newline.
+func readLine(r *bufio.Reader) (line []byte, tooLong bool, err error) {
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if !tooLong {
+			line = append(line, chunk...)
+			tooLong = len(bytes.TrimSuffix(line, []byte("\n"))) >= maxMessageBytes
+			if tooLong {
+				line = nil
+			}
+		}
+		switch {
+		case err == bufio.ErrBufferFull:
+			continue
+		case err == io.EOF && len(line) > 0:
+			return line, tooLong, nil
+		case err != nil:
+			return nil, tooLong, err
+		}
+		return bytes.TrimSuffix(line, []byte("\n")), tooLong, nil
+	}
 }
 
 // Send encodes msg as a single JSON line and writes it to the underlying writer.
