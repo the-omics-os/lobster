@@ -283,9 +283,10 @@ class _FakeFTP:
 
     script: list = []
     retrs: list = []  # the REST offset of each RETR
+    timeouts: list = []  # the socket timeout of each connection
 
     def connect(self, host, port=21, timeout=None):
-        pass
+        self.timeouts.append(timeout)
 
     def login(self, *args):
         pass
@@ -320,7 +321,7 @@ class _FakeFTP:
 
 @pytest.fixture
 def ftp(monkeypatch):
-    _FakeFTP.retrs = []
+    _FakeFTP.retrs, _FakeFTP.timeouts = [], []
     monkeypatch.setattr(dl.ftplib, "FTP", _FakeFTP)
     monkeypatch.setattr(dl.time, "sleep", lambda _s: None)
     return _FakeFTP
@@ -336,6 +337,17 @@ def test_a_dropped_ftp_transfer_resumes_with_rest(ftp, manager, tmp_path):
     assert target.read_bytes() == BODY
     assert ftp.retrs[0] is None and 0 < ftp.retrs[1] < ftp.retrs[2]
     assert not list(tmp_path.glob("*.part"))
+
+
+@pytest.mark.parametrize("idle", ["1", "240"])
+def test_an_ftp_connection_waits_as_long_as_the_idle_bound(
+    ftp, manager, tmp_path, monkeypatch, idle
+):
+    # ftplib uses the timeout for the control and the data socket
+    monkeypatch.setenv("LOBSTER_DOWNLOAD_IDLE_TIMEOUT_S", idle)
+    ftp.script = [{"cut": 40_000}, {}]
+    assert manager.download_file(FTP_URL, tmp_path / "f.gz") is True
+    assert ftp.timeouts == [float(idle)] * 2
 
 
 def test_a_server_without_rest_gets_the_file_again_from_zero(ftp, manager, tmp_path):
