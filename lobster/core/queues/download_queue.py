@@ -9,11 +9,14 @@ import json
 import logging
 import os
 import shutil
+import socket
 import threading
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
+
+import psutil
 
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.figures.export_dirs import assert_dirs_allowed
@@ -29,6 +32,10 @@ from lobster.core.queues.queue_storage import (
 from lobster.core.schemas.download_queue import DownloadQueueEntry, DownloadStatus
 
 logger = logging.getLogger(__name__)
+
+# A claim that recorded no process (written before claims did) counts as left
+# behind once it is this old.
+UNOWNED_CLAIM_STALE_AFTER = timedelta(hours=1)
 
 
 def _standard_workspace(queue_file: Path) -> Optional[Path]:
@@ -292,6 +299,10 @@ class DownloadQueue:
                         error=error,
                         downloaded_by=downloaded_by,
                     )
+                    if getattr(status, "value", status) == "in_progress":
+                        # The claimer: reclaim_stale tells a dead claim from a live one.
+                        entry.claimed_pid = os.getpid()
+                        entry.claimed_host = socket.gethostname()
                     updated_entry = entry
                     break
 
@@ -306,6 +317,49 @@ class DownloadQueue:
 
             logger.debug(f"Updated entry {entry_id} status to {status}")
             return updated_entry
+
+    def reclaim_stale(self, entry_id: str) -> Optional[str]:
+        """
+        Take back an in_progress claim left by a run that is gone.
+
+        A claim is stale when its process is no longer running on this host,
+        or when it recorded no process and is older than
+        UNOWNED_CLAIM_STALE_AFTER. A claim from another host is never taken.
+        The entry goes to FAILED with a note, so it can be downloaded again.
+
+        Returns:
+            The line to show for a claim taken back, else None.
+        """
+        with self._locked():
+            entries = self._load_entries()
+            entry = next((e for e in entries if e.entry_id == entry_id), None)
+            if entry is None or getattr(entry.status, "value", entry.status) != (
+                "in_progress"
+            ):
+                return None
+            since = entry.updated_at.isoformat(sep=" ", timespec="seconds")
+            if entry.claimed_pid is None:
+                if datetime.now() - entry.updated_at < UNOWNED_CLAIM_STALE_AFTER:
+                    return None
+                why = f"was left in progress (claimed {since}; no process was recorded)"
+            elif entry.claimed_host == socket.gethostname() and not (
+                # shortcut: a reused pid makes a dead claim look alive; the entry
+                # then stays in progress as before this check.
+                psutil.pid_exists(entry.claimed_pid)
+            ):
+                why = (
+                    f"was left in progress by process {entry.claimed_pid}, which is "
+                    f"no longer running (claimed {since})"
+                )
+            else:
+                return None
+            entry.update_status(DownloadStatus.FAILED, error=f"Claim taken back: {why}")
+            self._backup_queue()
+            self._write_entries_atomic(entries)
+
+        note = f"Entry '{entry_id}' {why}; starting the download again."
+        logger.warning(note)
+        return note
 
     def list_entries(
         self, status: Optional[DownloadStatus] = None

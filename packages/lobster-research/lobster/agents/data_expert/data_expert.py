@@ -271,6 +271,13 @@ def data_expert(
                 )
 
             entry = data_manager.download_queue.get_entry(entry_id)
+            # A killed run leaves its claim in progress: take it back first.
+            reclaimed = ""
+            if entry.status == DownloadStatus.IN_PROGRESS:
+                note = data_manager.download_queue.reclaim_stale(entry_id)
+                if note:
+                    entry = data_manager.download_queue.get_entry(entry_id)
+                    reclaimed = note + "\n"
 
             if requirement.active:
                 if entry.database.lower() != "geo":
@@ -339,7 +346,7 @@ Dataset: {entry.dataset_id}
 
 **Recommendation:** Review warnings above. If warnings are acceptable (e.g., missing optional metadata fields), proceed with force_download=True.
 """
-                return warning_msg
+                return reclaimed + warning_msg
 
             # Verify entry is downloadable
             if entry.status == DownloadStatus.COMPLETED:
@@ -347,8 +354,12 @@ Dataset: {entry.dataset_id}
                     f"Entry '{entry_id}' already downloaded as '{entry.modality_name}'"
                 )
             elif entry.status == DownloadStatus.IN_PROGRESS:
+                if entry.claimed_pid is None:
+                    return f"Entry '{entry_id}' is currently being downloaded by another agent"
+                since = entry.updated_at.isoformat(sep=" ", timespec="seconds")
                 return (
-                    f"Entry '{entry_id}' is currently being downloaded by another agent"
+                    f"Entry '{entry_id}' is being downloaded by process "
+                    f"{entry.claimed_pid} on {entry.claimed_host} since {since}."
                 )
 
             # 2. BUILD STRATEGY OVERRIDE (if applicable)
@@ -520,13 +531,13 @@ You can now analyze this dataset using the appropriate analysis tools.
                     evidence = result_adata.uns.get("geo_import")
                     if isinstance(evidence, dict):
                         response += f"\nImport evidence: {evidence}\n"
-                return response
+                return reclaimed + response
 
             except ManagedPathError:
                 return MANAGED_EXPORT_MESSAGE  # nothing downloaded; not a failure
             except ImportRequirementNotMet as download_error:
                 logger.error(f"Import refused for {entry.dataset_id}: {download_error}")
-                return (
+                return reclaimed + (
                     f"## Import Refused: {entry.dataset_id}\n\n"
                     f"- **Queue entry**: `{entry_id}` (FAILED)\n\n"
                     f"{download_error.to_message()}"
@@ -560,7 +571,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                     "5. Review error log: `get_queue_status(status_filter='FAILED')`\n"
                 )
 
-                return response
+                return reclaimed + response
 
         except ManagedPathError:
             return MANAGED_EXPORT_MESSAGE

@@ -273,6 +273,12 @@ class DownloadQueueEntry(BaseModel):
     downloaded_by: Optional[str] = Field(
         None, description="Agent or user who executed the download"
     )
+    claimed_pid: Optional[int] = Field(
+        None, description="Process that claimed the download (in_progress)"
+    )
+    claimed_host: Optional[str] = Field(
+        None, description="Host of the process that claimed the download"
+    )
     modality_name: Optional[str] = Field(
         None, description="Name of resulting modality in DataManagerV2"
     )
