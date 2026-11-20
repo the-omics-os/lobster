@@ -2248,5 +2248,6 @@
   "Stopping without waiting for the running tool; a file it was writing may be incomplete.": "不再等待正在运行的工具，即将停止；它正在写入的文件可能不完整。",
   "Stopping: waiting for the running step to finish; press Ctrl+C again to stop now.": "正在停止：等待当前步骤完成；再按一次 Ctrl+C 立即停止。",
   "This folder is not a Lobster project; files in its exports folder may be your own.": "此文件夹不是 Lobster 项目；其 exports 文件夹中的文件可能是你自己的。",
-  "This folder is not a Lobster project; files in its metadata folder may be your own.": "此文件夹不是 Lobster 项目；其 metadata 文件夹中的文件可能是你自己的。"
+  "This folder is not a Lobster project; files in its metadata folder may be your own.": "此文件夹不是 Lobster 项目；其 metadata 文件夹中的文件可能是你自己的。",
+  "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}": "无法读取 {file}，因此在修复之前所有智能体的代码工具均已关闭：{error}"
 }

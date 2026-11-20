@@ -152,16 +152,6 @@ def test_non_boolean_default_warns_and_is_off(warnings_seen):
     assert len(warnings_seen) == 1
 
 
-@pytest.mark.parametrize("default", [True, False])
-def test_corrupt_or_unreadable_config_falls_back(tmp_path, default):
-    ws = _workspace(tmp_path)
-    (ws / "config.toml").write_text("[agent_settings.proteomics_expert\ncode_tool = ")
-    assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is default
-    (ws / "config.toml").unlink()
-    (ws / "config.toml").mkdir()  # exists but cannot be read as a file
-    assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is default
-
-
 # ---------------------------------------------------------------------- the inputs
 
 
@@ -336,8 +326,6 @@ def test_an_invalid_value_warns_with_the_agent_and_its_default(
     [
         pytest.param("agent_settings = 5\n", id="agent_settings_not_a_table"),
         pytest.param(f'[agent_settings]\n{AGENT} = "on"\n', id="agent_not_a_table"),
-        pytest.param("[agent_settings.x\n", id="bad_toml"),
-        pytest.param(b"\xff\xfe code_tool = true", id="not_utf8"),
     ],
 )
 def test_an_unusable_config_warns_and_falls_through(tmp_path, warnings_seen, body):
@@ -735,3 +723,14 @@ def test_a_missing_config_keeps_the_defaults(tmp_path, warnings_seen, told):
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is True
     assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
     assert warnings_seen == []
+
+
+def test_a_file_broken_again_another_way_is_told_again(tmp_path, warnings_seen, told):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text("[agent_settings.supervisor\n")
+    code_tool_enabled("supervisor", default=True, workspace_path=ws)
+    (ws / "config.toml").write_bytes(b"\xff\xfe\x00garbage")
+    code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert len([w for w in warnings_seen if "code tool is off" in w]) == 2

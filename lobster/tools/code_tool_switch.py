@@ -15,7 +15,10 @@ Resolution for one agent (first match wins):
 4. the agent's declared default (``AgentRegistryConfig.code_tool_default``)
 5. ``False``
 
-An invalid value logs a warning and only that layer is ignored. The inputs are only the
+An invalid value logs a warning and only that layer is ignored. A ``config.toml`` that
+exists but cannot be read may hold the user's ``code_tool = false``: the tool is then off
+for every agent (the env layers still apply) and one warning names the file. The inputs
+are only the
 process environment, the agent's own workspace ``config.toml`` and the declared default;
 no user-level or global configuration is read. The workspace setting is read on its own
 from exactly ``<workspace_path>/config.toml``, so other settings in that file never
@@ -34,6 +37,9 @@ GLOBAL_MODES = ("default", "all", "none")
 
 #: The supervisor has no AGENT_CONFIG; its code tool is on unless switched off.
 SUPERVISOR_CODE_TOOL_DEFAULT = True
+
+# (file, reason) already told: every agent of a graph asks for the same file.
+_told_unreadable: set = set()
 
 
 def agent_env_var(agent_name: str) -> str:
@@ -95,9 +101,9 @@ def _workspace_layer(
         data = tomllib.loads(path.read_bytes().decode("utf-8-sig"))
     except FileNotFoundError:
         return None
-    except (OSError, ValueError):
-        ignore(f"{CONFIG_FILE_NAME} is not readable TOML")
-        return None
+    except (OSError, ValueError) as error:
+        _tell_unreadable(path, error)
+        return False
     all_settings = data.get("agent_settings")
     if all_settings is None:
         return None
@@ -115,6 +121,20 @@ def _workspace_layer(
         return value
     ignore("expected true or false")
     return None
+
+
+def _tell_unreadable(path: Path, error: Exception) -> None:
+    told = (str(path), str(error))
+    if told in _told_unreadable:
+        return
+    _told_unreadable.add(told)
+    from lobster.i18n import h
+
+    logger.warning(
+        h(
+            "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
+        ).format(file=path, error=error)
+    )
 
 
 def code_tool_enabled(
