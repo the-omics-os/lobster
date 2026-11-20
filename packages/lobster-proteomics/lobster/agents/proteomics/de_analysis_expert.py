@@ -97,21 +97,22 @@ def _split_text(stats: dict, method: str) -> str:
         return ""
     have, them = ("has", "it") if n == 1 else ("have", "them")
     test = _SPLIT_TEST_NAMES.get(method, "t-test")
+    # Mann-Whitney is not reliable with fewer than 4 samples in a group
+    small = stats.get("zero_within_group_variance_in_small_groups")
+    no_test = "; with fewer than 4 samples in a group, no test can show the difference reliably"
+    mann_whitney = no_test if small else f"; check {them} with Mann-Whitney"
     # limma_like flags one only without a prior, i.e. with fewer than 10 proteins
     if method == "limma_like":
         advice = (
-            " (fewer than 10 proteins tested: no variance to borrow); check "
-            f"{them} with Mann-Whitney"
+            " (fewer than 10 proteins tested: no variance to borrow)" + mann_whitney
         )
     elif stats.get("zero_within_group_variance_in_few_proteins"):
-        advice = (
-            f"; check {them} with Mann-Whitney (fewer than 10 proteins tested: "
-            "limma_like has no variance to borrow)"
-        )
+        few = " (fewer than 10 proteins tested: limma_like has no variance to borrow)"
+        advice = few + no_test if small else mann_whitney + few
     else:
         advice = (
             f"; check {them} with limma_like, which borrows variance from the "
-            "other proteins, or with Mann-Whitney"
+            "other proteins" + ("" if small else ", or with Mann-Whitney")
         )
     return (
         f"- Of the proteins tested, {n:,} {have} the same value in every sample of "

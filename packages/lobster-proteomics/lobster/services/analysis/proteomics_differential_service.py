@@ -33,6 +33,9 @@ class ProteomicsDifferentialError(Exception):
 
 # limma_like borrows variance from the other proteins when this many are tested
 _LIMMA_PRIOR_MIN_PROTEINS = 10
+# below this many samples in a group, Mann-Whitney's normal approximation with
+# ties is anti-conservative (3 v 3: p = 0.047, where the exact smallest is 0.10)
+_MANN_WHITNEY_MIN_SAMPLES = 4
 
 
 def _split_in_few_proteins(results: List[Dict[str, Any]]) -> bool:
@@ -41,6 +44,16 @@ def _split_in_few_proteins(results: List[Dict[str, Any]]) -> bool:
     tested = pd.Series([r["comparison"] for r in results]).value_counts()
     return any(
         tested[r["comparison"]] < _LIMMA_PRIOR_MIN_PROTEINS
+        for r in results
+        if r.get("zero_within_group_variance")
+    )
+
+
+def _split_in_small_groups(results: List[Dict[str, Any]]) -> bool:
+    """A flagged split protein has a group of fewer samples than Mann-Whitney
+    needs to be reliable."""
+    return any(
+        min(r["n_group1"], r["n_group2"]) < _MANN_WHITNEY_MIN_SAMPLES
         for r in results
         if r.get("zero_within_group_variance")
     )
@@ -450,6 +463,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     ),
                     "zero_within_group_variance_in_few_proteins": (
                         _split_in_few_proteins(de_results)
+                    ),
+                    "zero_within_group_variance_in_small_groups": (
+                        _split_in_small_groups(de_results)
                     ),
                 }
             )
