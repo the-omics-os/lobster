@@ -2,10 +2,11 @@
 the others were not.
 
 "Genes tested: N" left out the genes the expression pre-filter dropped (no value
-above 1.0 in at least 2 samples) and those without a finite fold change (one
-group's mean below -1). The line is now "Genes tested: N of M (K below the
-expression threshold, J without a finite fold change)", the parts that are zero
-left out, and N is the stored table's row count.
+above 1.0 in at least 2 samples) and those whose fold change is not a number (one
+group's mean below -1; exactly -1 gives -inf, which is kept). The line is now
+"Genes tested: N of M (K below the expression threshold, J whose fold change is
+not a number)", the parts that are zero left out, and N is the stored table's row
+count.
 """
 
 import pytest
@@ -73,13 +74,13 @@ CASES = {
     "no_finite_fold_change": (
         0,
         20,
-        "- Genes tested: 1,980 of 2,000 (20 without a finite fold change)",
+        "- Genes tested: 1,980 of 2,000 (20 whose fold change is not a number)",
     ),
     "both": (
         30,
         20,
         "- Genes tested: 1,950 of 2,000 (30 below the expression threshold, "
-        "20 without a finite fold change)",
+        "20 whose fold change is not a number)",
     ),
 }
 

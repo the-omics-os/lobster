@@ -201,8 +201,8 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
 
 
 def _genes_tested_text(adata, de_stats) -> str:
-    """ "N of M (K below the expression threshold, J without a finite fold
-    change)": what a wilcoxon / t-test tested of the input's genes, and why the
+    """ "N of M (K below the expression threshold, J whose fold change is not a
+    number)": what a wilcoxon / t-test tested of the input's genes, and why the
     others were not (the parts that are zero left out)."""
     tested = de_stats["n_genes_tested"]
     passed = de_stats.get("pre_filter_gene_count", tested)
@@ -210,7 +210,7 @@ def _genes_tested_text(adata, de_stats) -> str:
         f"{count:,} {why}"
         for count, why in (
             (adata.n_vars - passed, "below the expression threshold"),
-            (passed - tested, "without a finite fold change"),
+            (passed - tested, "whose fold change is not a number"),
         )
         if count
     ]
