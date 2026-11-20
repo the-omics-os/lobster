@@ -443,10 +443,10 @@ def test_progress_resets_only_when_the_peak_grows_and_stops_at_the_limit():
 class _RealFTPServer:
     """An FTP server on 127.0.0.1 that ftplib itself talks to. ``retr``: "stall" opens
     the data connection, sends nothing and answers nothing more; "send" sends BODY.
-    ``answer_quit`` False: QUIT is never answered."""
+    ``quit_reply`` None: QUIT is never answered."""
 
-    def __init__(self, retr, answer_quit):
-        self.retr, self.answer_quit, self.retrs = retr, answer_quit, 0
+    def __init__(self, retr, quit_reply):
+        self.retr, self.quit_reply, self.retrs = retr, quit_reply, 0
         self.listener = socket.create_server(("127.0.0.1", 0))
         self.url = f"ftp://127.0.0.1:{self.listener.getsockname()[1]}/geo/f.gz"
         self.held = []  # open until the test ends, so a stall stays a stall
@@ -485,8 +485,8 @@ class _RealFTPServer:
                 sent.close()
                 say("226 done")
             elif verb == "QUIT":
-                if self.answer_quit:
-                    say("221 bye")
+                if self.quit_reply:
+                    say(self.quit_reply)
                 return
             else:
                 say(
@@ -524,8 +524,8 @@ def real_ftp(monkeypatch):
     monkeypatch.setattr(dl, "_QUIT_TIMEOUT_S", 0.2, raising=False)
     servers = []
 
-    def serve(retr, answer_quit=False):
-        servers.append(_RealFTPServer(retr, answer_quit))
+    def serve(retr, quit_reply=None):
+        servers.append(_RealFTPServer(retr, quit_reply))
         return servers[-1], sessions, quits
 
     yield serve
@@ -556,10 +556,12 @@ def test_quit_on_a_stalled_control_connection_waits_only_briefly(
     assert all(session.sock is None for session in sessions)  # closed all the same
 
 
-def test_a_finished_ftp_transfer_is_kept_when_quit_gets_no_answer(
-    real_ftp, manager, tmp_path
+@pytest.mark.parametrize("quit_reply", [None, "421 Timeout."])
+def test_a_finished_ftp_transfer_is_kept_when_quit_fails(
+    real_ftp, manager, tmp_path, quit_reply
 ):
-    server, sessions, quits = real_ftp("send")
+    # None: no answer at all; 421: the server timed the session out first
+    server, sessions, quits = real_ftp("send", quit_reply)
     target = tmp_path / "f.gz"
 
     assert manager.download_file(server.url, target) is True
@@ -570,8 +572,12 @@ def test_a_finished_ftp_transfer_is_kept_when_quit_gets_no_answer(
 
 
 def test_a_finished_ftp_transfer_says_goodbye(real_ftp, manager, tmp_path):
-    server, sessions, quits = real_ftp("send", answer_quit=True)
+    server, sessions, quits = real_ftp("send", "221 bye")
 
     assert manager.download_file(server.url, tmp_path / "f.gz") is True
 
     assert len(quits) == 1 and server.retrs == 1
+
+
+def test_quit_waits_seconds_not_the_idle_bound():
+    assert 0 < dl._QUIT_TIMEOUT_S <= 5
