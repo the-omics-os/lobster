@@ -1702,7 +1702,12 @@ def _print_lamin_notes(
         console.print(h("  [dim]Installing {pkg}...[/dim]").format(pkg=escape(package)))
         if _uv_pip_install(package)[0]:
             importlib.invalidate_caches()
-    for line in init_notes(choice, global_config=global_config):
+    notes = init_notes(
+        choice,
+        global_config=global_config,
+        install_hint=not (install and is_uv_tool_env()),
+    )
+    for line in notes:
         console.print(line, markup=False)
 
 

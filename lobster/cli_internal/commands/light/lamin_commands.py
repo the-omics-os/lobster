@@ -158,8 +158,14 @@ def apply_init_choice(
         _set_env(workspace, ENV_ENABLE, "0")
 
 
-def init_notes(choice: Optional[bool], *, global_config: bool) -> list:
-    """Lines `lobster init` prints after saving the answer."""
+def init_notes(
+    choice: Optional[bool], *, global_config: bool, install_hint: bool = True
+) -> list:
+    """Lines `lobster init` prints after saving the answer.
+
+    ``install_hint=False``: init installs LaminDB itself (the uv tool reinstall
+    at its end), so no separate command, which would drop the picked packages.
+    """
     if choice is None:
         return []
     if not choice:
@@ -171,7 +177,7 @@ def init_notes(choice: Optional[bool], *, global_config: bool) -> list:
             else h("LaminDB catalog: on. `lobster lamin status` shows it.")
         )
     ]
-    if not _engine_installed():
+    if install_hint and not _engine_installed():
         from lobster.core.component_registry import get_install_command
 
         notes.append(
