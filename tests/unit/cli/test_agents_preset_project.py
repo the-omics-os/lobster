@@ -74,6 +74,28 @@ def test_list_ticks_the_agents_the_preset_enables_and_their_children(ws):
     assert _ticked() == set(BASIC) | set(CHILDREN["transcriptomics_expert"])
 
 
+ALL_RUN = "All installed agents run here: no choice is saved for this project."
+
+
+@pytest.mark.parametrize("saved", [True, False], ids=["empty-config", "no-config"])
+def test_list_with_no_choice_saved_ticks_every_installed_agent(ws, saved):
+    (ws / "config.toml").unlink()
+    if saved:
+        WorkspaceAgentConfig().save(ws)
+
+    agent_commands.agents_list(workspace=ws)
+
+    # the graph runs every installed agent then
+    assert _ticked() == set(PACKAGES)
+    assert ALL_RUN in " ".join(_out().split())
+
+
+def test_list_with_a_choice_saved_says_nothing_about_all(ws):
+    agent_commands.agents_list(workspace=ws)
+
+    assert ALL_RUN not in " ".join(_out().split())
+
+
 def test_list_ticks_the_children_of_a_listed_agent(ws):
     WorkspaceAgentConfig(enabled_agents=["transcriptomics_expert"]).save(ws)
 
