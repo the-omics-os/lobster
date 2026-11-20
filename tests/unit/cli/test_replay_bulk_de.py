@@ -279,3 +279,36 @@ def test_a_rank_or_t_test_notebook_replays_to_match(
     probed.write_text(json.dumps(probe))
     result, out = _verify(probed, source, dm.workspace_path)
     assert result.exit_code == 1 and out["verdict"] == "MISMATCH", out
+
+
+SEQUENCES = {
+    "wilcoxon-then-deseq2": [("wilcoxon", "treat"), ("deseq2", "treat")],
+    "deseq2-then-wilcoxon": [("deseq2", "treat"), ("wilcoxon", "treat")],
+    "t_test-then-deseq2": [("t_test", "treat"), ("deseq2", "treat")],
+    "two-wilcoxon-contrasts": [("wilcoxon", "treat"), ("wilcoxon", "treat2")],
+}
+
+
+@needs_kernel
+@pytest.mark.parametrize("pseudobulk", [False, True], ids=["bulk", "pseudobulk"])
+@pytest.mark.parametrize("sequence", list(SEQUENCES))
+def test_later_de_on_the_same_modality_replays_to_match(
+    tmp_path, monkeypatch, sequence, pseudobulk
+):
+    """Each DE step reads the modality the session ran it on, not the result of
+    the DE step above it."""
+    monkeypatch.chdir(tmp_path)
+    adata = _rank_fixture(pseudobulk)
+    if sequence == "two-wilcoxon-contrasts":
+        adata.obs["condition"] = ["ctrl"] * 6 + ["treat"] * 3 + ["treat2"] * 3
+    source = tmp_path / "bulk.h5ad"
+    adata.write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("bulk", str(source), adapter="transcriptomics_bulk")
+    for method, group2 in SEQUENCES[sequence]:
+        reply = _run_de(dm, "run_differential_expression", method, group2=group2)
+        assert "Complete" in reply, reply
+    notebook = dm.export_notebook("de", "bulk DE", filter_strategy="successful")
+    result, out = _verify(notebook, source, dm.workspace_path)
+    assert result.exit_code == 0, (result.output, result.exception, out)
+    assert out["verdict"] == "MATCH", out
