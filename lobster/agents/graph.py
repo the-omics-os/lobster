@@ -221,6 +221,8 @@ class GraphMetadata:
     available_agents: List[AgentInfo] = field(default_factory=list)
     supervisor_accessible_agents: List[str] = field(default_factory=list)
     filtered_out_agents: List[str] = field(default_factory=list)
+    # The config's experts when none of them is installed (the session has none).
+    uninstalled_experts: List[str] = field(default_factory=list)
 
     @property
     def agent_count(self) -> int:
@@ -467,6 +469,37 @@ def _create_lazy_delegation_tool(
     from lobster.tools._async_compat import enable_sync_fallback
 
     return enable_sync_fallback(invoke_agent_lazy)
+
+
+# shortcut: once per process, which is one session for the CLI and the TUI.
+_told_uninstalled: set = set()
+
+
+def uninstalled_experts_text(names: List[str]) -> str:
+    from lobster.i18n import h
+
+    return h(
+        "None of this project's experts ({names}) are installed; "
+        "run lobster agents install <package> or lobster init --force."
+    ).format(names=", ".join(names))
+
+
+def _uninstalled_experts(
+    enabled_agents: Optional[List[str]],
+    config: Optional["WorkspaceAgentConfig"],
+    worker_agents: Dict,
+    filtered_out_agents: List[str],
+) -> List[str]:
+    """The config's experts when not one of them is installed; warns once."""
+    if enabled_agents is not None or not config or worker_agents:
+        return []
+    if filtered_out_agents:  # installed, removed by the license tier
+        return []
+    names = sorted(config.effective_agents())
+    if names and tuple(names) not in _told_uninstalled:
+        _told_uninstalled.add(tuple(names))
+        logger.warning(uninstalled_experts_text(names))
+    return names
 
 
 def _resolve_worker_agents(
@@ -1072,6 +1105,9 @@ def create_bioinformatics_graph(
         agent_filter=agent_filter,
         subscription_tier=subscription_tier,
     )
+    uninstalled = _uninstalled_experts(
+        enabled_agents, config, worker_agents, filtered_out_agents
+    )
 
     # Create all agents in a single pass with lazy delegation tools
     created_agents: Dict[str, Any] = {}
@@ -1188,6 +1224,7 @@ def create_bioinformatics_graph(
         filtered_out_agents=filtered_out_agents,
         subscription_tier=subscription_tier,
     )
+    metadata.uninstalled_experts = uninstalled
 
     # ==========================================================================
     # AQUADIF Monitoring: build tool_metadata_map and wire monitor

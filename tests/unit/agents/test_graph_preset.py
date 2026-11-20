@@ -61,7 +61,7 @@ NONE_INSTALLED = (
 )
 
 
-def _metadata(config, tmp_path):
+def _metadata(config, tmp_path, **options):
     from unittest.mock import MagicMock, patch
 
     import lobster.agents.graph as graph_module
@@ -82,8 +82,11 @@ def _metadata(config, tmp_path):
         _, metadata = graph_module.create_bioinformatics_graph(
             data_manager=data_manager,
             config=config,
-            subscription_tier="free",
-            agent_filter=lambda name, cfg: True,
+            **{
+                "subscription_tier": "free",
+                "agent_filter": lambda name, cfg: True,
+                **options,
+            },
         )
     return metadata
 
@@ -114,4 +117,25 @@ def test_an_installed_expert_or_no_preference_says_nothing(tmp_path, monkeypatch
 
     # nothing installed and nothing named: the supervisor's own line covers it
     assert _metadata(WorkspaceAgentConfig(), tmp_path).uninstalled_experts == []
+    assert graph_module._told_uninstalled == set()
+
+
+def test_a_tier_filter_or_an_explicit_list_is_not_an_uninstalled_expert(
+    tmp_path, monkeypatch
+):
+    import lobster.agents.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_told_uninstalled", set())
+    installed = WorkspaceAgentConfig(enabled_agents=["research_agent"])
+    gone = WorkspaceAgentConfig(enabled_agents=["gone_expert"])
+
+    tier = _metadata(installed, tmp_path, agent_filter=lambda name, cfg: False)
+    explicit = _metadata(gone, tmp_path, enabled_agents=[])
+    some = _metadata(
+        WorkspaceAgentConfig(enabled_agents=["research_agent", "gone_expert"]),
+        tmp_path,
+    )
+
+    # research_agent is installed (its fake entry builds no agent)
+    assert [m.uninstalled_experts for m in (tier, explicit, some)] == [[], [], []]
     assert graph_module._told_uninstalled == set()

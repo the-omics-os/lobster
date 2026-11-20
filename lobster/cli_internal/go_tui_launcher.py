@@ -1632,6 +1632,16 @@ def _open_session_client(
     _maybe_restore_go_session_transcript(bridge, client, session_file_to_load)
 
     _emit_provider_status(bridge, client)
+    uninstalled = getattr(
+        getattr(client, "graph_metadata", None), "uninstalled_experts", None
+    )
+    if uninstalled:
+        from lobster.agents.graph import uninstalled_experts_text
+
+        bridge.send(
+            "alert",
+            {"level": "warning", "message": uninstalled_experts_text(uninstalled)},
+        )
 
     # Wire the protocol callback handler.
     from lobster.ui.callbacks.protocol_callback import (
