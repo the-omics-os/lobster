@@ -36,6 +36,6 @@ class TestDataExpertPrompt:
         assert "IN_PROGRESS → wait" not in prompt
         assert (
             "IN_PROGRESS → execute_download_from_queue: it restarts a download "
-            "whose run has stopped; if it names a live process, report that and "
-            "do not wait or poll"
+            "whose run has stopped; if it says another process or agent is "
+            "downloading it, report that and do not wait or poll"
         ) in prompt
