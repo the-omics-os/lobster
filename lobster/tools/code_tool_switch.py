@@ -92,7 +92,7 @@ def _workspace_layer(
 
     path = Path(os.fspath(workspace_path)) / CONFIG_FILE_NAME
     try:
-        data = tomllib.loads(path.read_bytes().decode("utf-8"))
+        data = tomllib.loads(path.read_bytes().decode("utf-8-sig"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
