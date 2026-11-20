@@ -703,6 +703,7 @@ def test_picked_packages_under_uv_tool_are_left_for_the_one_reinstall(
     assert direct == []
     out = capsys.readouterr().out
     assert "failed" not in out and "Installing" not in out
+    assert "already installed" not in out
     assert "research_agent" in selected and "transcriptomics_expert" in selected
     command = init_commands._build_uv_tool_init_command(None, selected)
     assert "lobster-research>=1.3.0" in command

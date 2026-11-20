@@ -269,8 +269,11 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
         if published:
             all_agents.extend(agents)
 
-    # Install missing packages
-    if packages_to_install:
+    from lobster.core.uv_tool_env import is_uv_tool_env
+
+    # Install missing packages. Under uv tool a direct install cannot work; the
+    # reinstall at the end of init adds them.
+    if packages_to_install and not is_uv_tool_env():
         from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
         console.print(
@@ -289,7 +292,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
                         pkg=pkg, msg=msg[:50]
                     )
                 )
-    elif selected_indices:
+    elif selected_indices and not packages_to_install:
         console.print(h("[dim]All selected packages already installed[/dim]"))
 
     return list(dict.fromkeys(all_agents))  # Remove duplicates preserving order
