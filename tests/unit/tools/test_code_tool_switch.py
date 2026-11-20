@@ -651,14 +651,19 @@ def test_aquadif_map_entry_for_the_code_tool(
     assert tool_map.get("execute_custom_code", "<absent>") == expected
 
 
-def test_a_config_saved_with_a_bom_keeps_its_disable(tmp_path):
+def test_a_config_saved_with_a_bom_is_read(tmp_path):
     # PowerShell 5.1's Set-Content -Encoding UTF8 and Notepad write the BOM
     ws = tmp_path / "ws"
     ws.mkdir()
-    body = "[agent_settings.supervisor]\ncode_tool = false\n"
+    body = (
+        "[agent_settings.supervisor]\ncode_tool = false\n"
+        f"[agent_settings.{AGENT}]\ncode_tool = true\n"
+    )
     (ws / "config.toml").write_bytes(b"\xef\xbb\xbf" + body.encode())
 
     assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
+    # an unreadable file is off too: only a read file turns a tool on
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is True
 
 
 # A config.toml that exists but cannot be read may hold the user's code_tool =
@@ -732,5 +737,17 @@ def test_a_file_broken_again_another_way_is_told_again(tmp_path, warnings_seen, 
     code_tool_enabled("supervisor", default=True, workspace_path=ws)
     (ws / "config.toml").write_bytes(b"\xff\xfe\x00garbage")
     code_tool_enabled("supervisor", default=True, workspace_path=ws)
+
+    assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
+
+
+def test_two_workspaces_broken_the_same_way_are_each_told(
+    tmp_path, warnings_seen, told
+):
+    for name in ("one", "two"):
+        ws = tmp_path / name
+        ws.mkdir()
+        (ws / "config.toml").write_text("[agent_settings.supervisor\n")
+        code_tool_enabled("supervisor", default=True, workspace_path=ws)
 
     assert len([w for w in warnings_seen if "code tool is off" in w]) == 2
