@@ -758,16 +758,19 @@ def _custom_read_refusal(error: Any) -> Optional[str]:
 
 
 def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
-    """SHA-256 of what a replay must leave alone, by path.
+    """What a replay must leave alone, by path.
 
-    That is every file under ``data/`` and ``exports/``, every ``.h5ad``/``.h5mu``
-    anywhere in the workspace outside ``.lamindb/`` and ``skip`` (this run's
-    folder), and ``files``.
+    The SHA-256 of every file under ``data/`` and ``exports/``, of every
+    ``.h5ad``/``.h5mu`` anywhere in the workspace outside ``.lamindb/`` and
+    ``skip`` (this run's folder), and of ``files``; the size and modification
+    time of every other file there, outside ``replays/`` (other runs' folders).
     """
     root = workspace.resolve()
     skipped = skip.resolve()
     data_roots = [(root / "data").resolve(), (root / "exports").resolve()]
+    runs_root = (root / "replays").resolve()
     paths = {p.resolve() for p in files if p.is_file()}
+    others = set()
     seen = {root}  # real folders already walked: a link back into one is not walked
     # Links are followed (data/ may be a link to a bigger disk); names stay lexical.
     for folder, dirs, names in os.walk(root, followlinks=True):
@@ -784,10 +787,19 @@ def _watched(workspace: Path, skip: Path, *files: Path) -> Dict[str, str]:
             real_here == data_root or data_root in real_here.parents
             for data_root in data_roots
         )
-        paths |= {
+        hashed = {
             here / n for n in names if in_data or n.lower().endswith(DATA_SUFFIXES)
         }
+        paths |= hashed
+        if real_here != runs_root and runs_root not in real_here.parents:
+            others |= {here / n for n in names} - hashed
     hashes = {}
+    for path in sorted(others - paths):
+        try:
+            st = path.stat()
+        except OSError:  # gone since the walk: compared as missing
+            continue
+        hashes[str(path)] = f"stat:{st.st_size}:{st.st_mtime_ns}"
     for path in sorted(paths):
         try:
             hashes[str(path)] = _sha256(path)
@@ -816,14 +828,42 @@ def _changes(before: Dict[str, str], after: Dict[str, str], workspace: Path):
 
 
 @contextlib.contextmanager
-def _working_in(folder: Path):
-    """The kernel starts in the process's directory: make that the replay folder."""
+def _working_in(folder: Path, workspace: Optional[Path] = None):
+    """The kernel starts in the process's directory with its environment: make
+    that the replay folder, and name no part of ``workspace`` in the variables a
+    cell finds a workspace or modules by."""
     previous = os.getcwd()
+    saved = {
+        name: os.environ.get(name)
+        for name in ("LOBSTER_WORKSPACE", "PWD", "OLDPWD", "PYTHONPATH")
+    }
     os.chdir(folder)
+    here = str(folder.resolve())
+    os.environ["LOBSTER_WORKSPACE"] = os.environ["PWD"] = here
+    os.environ.pop("OLDPWD", None)
+    if workspace is not None and saved["PYTHONPATH"]:
+        root = workspace.resolve()
+        kept = [
+            entry
+            for entry in saved["PYTHONPATH"].split(os.pathsep)
+            if entry
+            and not (
+                Path(entry).resolve() == root or root in Path(entry).resolve().parents
+            )
+        ]
+        if kept:
+            os.environ["PYTHONPATH"] = os.pathsep.join(kept)
+        else:
+            os.environ.pop("PYTHONPATH")
     try:
         yield
     finally:
         os.chdir(previous)
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _per_file(slots, names: List[str]) -> List[Dict[str, Any]]:
@@ -993,7 +1033,7 @@ def verify_notebook(
         pass
     try:
         # The executor logs to stdout; stdout is the result of this command.
-        with _working_in(replay_dir), contextlib.redirect_stdout(sys.stderr):
+        with _working_in(replay_dir, workspace), contextlib.redirect_stdout(sys.stderr):
             result = NotebookExecutor(None).execute(
                 notebook.resolve(),
                 input_data.resolve(),
