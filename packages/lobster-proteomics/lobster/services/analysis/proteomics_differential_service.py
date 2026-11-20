@@ -31,6 +31,11 @@ class ProteomicsDifferentialError(Exception):
     pass
 
 
+def _n_without_pvalue(results: List[Dict[str, Any]]) -> int:
+    """The tests that gave no p-value (left out of the correction)."""
+    return sum(1 for r in results if np.isnan(r["p_value"]))
+
+
 class ProteomicsDifferentialService:
     """
     Advanced differential expression service for proteomics data.
@@ -419,6 +424,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "samples_processed": adata_de.n_obs,
                     "proteins_processed": adata_de.n_vars,
                     "analysis_type": "differential_expression",
+                    "n_tests_without_pvalue": _n_without_pvalue(de_results),
                 }
             )
 
@@ -623,7 +629,12 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                 corr_dict.get(protein, 0.0) for protein in adata_corr.var_names
             ]
 
-            # Calculate statistics
+            # Calculate statistics (a flat protein has no correlation)
+            abs_correlations = [
+                abs(r["correlation"])
+                for r in correlation_results
+                if np.isfinite(r["correlation"])
+            ]
             corr_stats = {
                 "correlation_method": correlation_method,
                 "target_column": target_column,
@@ -638,12 +649,11 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     if correlation_results
                     else 0.0
                 ),
-                "median_abs_correlation": float(
-                    np.median([abs(r["correlation"]) for r in correlation_results])
+                "n_tests_without_pvalue": _n_without_pvalue(correlation_results),
+                "median_abs_correlation": (
+                    float(np.median(abs_correlations)) if abs_correlations else 0.0
                 ),
-                "max_abs_correlation": float(
-                    max([abs(r["correlation"]) for r in correlation_results])
-                ),
+                "max_abs_correlation": float(max(abs_correlations, default=0.0)),
                 "fdr_threshold": fdr_threshold,
                 "min_correlation": min_correlation,
                 "samples_processed": adata_corr.n_obs,
@@ -1062,23 +1072,30 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         if not results:
             return results
 
-        p_values = [r["p_value"] for r in results]
-
-        if method == "benjamini_hochberg":
+        # A test without a p-value (NaN: a protein with the same value in every
+        # sample) is left out: one NaN made every Benjamini-Hochberg value NaN,
+        # and Holm and Bonferroni counted it among the tests.
+        all_p = np.array([r["p_value"] for r in results], dtype=float)
+        finite = np.isfinite(all_p)
+        p_values = all_p[finite]
+        p_adjusted = np.full(len(all_p), np.nan)
+        if not len(p_values):
+            pass  # nothing to correct (statsmodels 0.14 divides by zero on [])
+        elif method == "benjamini_hochberg":
             from statsmodels.stats.multitest import fdrcorrection
 
-            _, p_adjusted = fdrcorrection(p_values, alpha=0.05, method="indep")
+            _, p_adjusted[finite] = fdrcorrection(p_values, alpha=0.05, method="indep")
         elif method == "bonferroni":
-            p_adjusted = [min(p * len(p_values), 1.0) for p in p_values]
+            p_adjusted[finite] = np.minimum(p_values * len(p_values), 1.0)
         elif method == "holm":
             from statsmodels.stats.multitest import multipletests
 
-            _, p_adjusted, _, _ = multipletests(p_values, method="holm")
+            _, p_adjusted[finite], _, _ = multipletests(p_values, method="holm")
         else:
             logger.warning(f"Unknown FDR method: {method}, using Benjamini-Hochberg")
             from statsmodels.stats.multitest import fdrcorrection
 
-            _, p_adjusted = fdrcorrection(p_values, alpha=0.05, method="indep")
+            _, p_adjusted[finite] = fdrcorrection(p_values, alpha=0.05, method="indep")
 
         # Add adjusted p-values to results
         for i, result in enumerate(results):
@@ -1336,6 +1353,11 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         # Reshape for sklearn (convert Series to array if needed)
         X = np.array(time_points).reshape(-1, 1)
         y = np.array(protein_values)
+
+        # The same value at every time point: no trend (a perfect fit of slope 0
+        # gave p = 0)
+        if np.ptp(y) == 0:
+            return 0.0, 1.0, 0.0
 
         # Fit linear regression
         reg = LinearRegression()

@@ -63,6 +63,14 @@ class ModalityNotFoundError(DEAnalysisError):
     pass
 
 
+def _without_pvalue_text(stats: dict, why: str) -> str:
+    """The reply line counting the tests that gave no p-value, or "" if none did."""
+    n = stats.get("n_tests_without_pvalue", 0)
+    if not n:
+        return ""
+    return f"- Tests without a p-value: {n:,} ({why}); left out of the FDR correction\n"
+
+
 def de_analysis_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
@@ -296,6 +304,9 @@ def de_analysis_expert(
             response += f"- Proteins tested: {de_stats.get('proteins_processed', 0)}\n"
             response += (
                 f"- Total tests performed: {de_stats.get('total_tests_performed', 0)}\n"
+            )
+            response += _without_pvalue_text(
+                de_stats, "a protein with the same value in every sample compared"
             )
             response += (
                 f"- Significant proteins: {de_stats.get('n_significant_proteins', 0)}\n"
@@ -688,6 +699,10 @@ def de_analysis_expert(
 
             response += "**Results:**\n"
             response += f"- Tests performed: {corr_stats.get('n_tests_performed', 0)}\n"
+            response += _without_pvalue_text(
+                corr_stats,
+                "a protein, or the target, with the same value in every sample",
+            )
             response += f"- Significant correlations: {corr_stats.get('n_significant_results', 0)}\n"
             response += (
                 f"- Significance rate: {corr_stats.get('significance_rate', 0):.1%}\n"
