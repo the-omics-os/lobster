@@ -730,12 +730,18 @@ def _install_later(out):
     return [line for line in out.splitlines() if "Install later:" in line]
 
 
-def test_skip_extras_under_uv_tool_prints_one_install_line(tool_env):
+@pytest.mark.parametrize("windows", [False, True])
+def test_skip_extras_under_uv_tool_prints_one_install_line(
+    tool_env, monkeypatch, windows
+):
     """Two separate commands each drop what the other adds."""
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: windows)
     result = _init("--skip-extras")
 
     assert result.exit_code == 0, result.output
     assert tool_env.installs == []
+    # printed only: nothing left for the Windows installer to run
+    assert not (global_config.CONFIG_DIR / "pending_install.json").exists()
     assert "LaminDB is not installed yet" not in result.output
     [line] = _install_later(result.output)
     assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in line
