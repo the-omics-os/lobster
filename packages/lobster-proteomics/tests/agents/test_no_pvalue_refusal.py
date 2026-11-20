@@ -223,8 +223,20 @@ def _with_target(values, protein_missing_rows=()):
             "No protein has a value in at least 5 of the 8 samples with a value of "
             "'target'",
         ),
+        (
+            [np.nan] * 7 + list(np.arange(5.0)),
+            (11,),
+            "No protein has a value in at least 5 of the 5 samples with a value of "
+            "'target'",
+        ),
     ],
-    ids=["three_values", "one_value", "no_value", "proteins_missing"],
+    ids=[
+        "three_values",
+        "one_value",
+        "no_value",
+        "proteins_missing",
+        "five_values_one_protein_missing",
+    ],
 )
 def test_a_correlation_that_tests_no_protein_refuses(
     tmp_path, monkeypatch, values, protein_missing_rows, cause
