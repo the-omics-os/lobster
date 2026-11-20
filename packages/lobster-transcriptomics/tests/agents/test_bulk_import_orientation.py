@@ -16,7 +16,7 @@ MODULE = "lobster.agents.transcriptomics.transcriptomics_expert"
 @pytest.mark.parametrize("genes_as_rows", [True, False])
 def test_csv_import_puts_samples_in_obs(tmp_path, genes_as_rows):
     samples = [f"S{i}" for i in range(1, 7)]
-    genes = [f"GENE{i:03d}" for i in range(50)]
+    genes = [f"GENE{i:04d}" for i in range(1_000)]
     counts = pd.DataFrame(
         np.arange(len(genes) * len(samples)).reshape(len(genes), len(samples)),
         index=genes,
@@ -67,9 +67,13 @@ def _assert_imported(dm, counts, reply, axis, reason, requested="auto"):
         assert recorded["genes_axis_used"] == axis
 
 
-def _assert_refused(dm, reply):
+def _assert_refused(dm, reply, rows, columns):
     assert "bulk" not in dm.list_modalities()
     assert "Cannot tell which axis of counts.csv holds the genes" in reply
+    # The agent sees the labels, so it can choose (or ask) instead of guessing.
+    assert f"Rows start: {', '.join(rows[:3])}." in reply
+    assert f"Columns start: {', '.join(columns[:3])}." in reply
+    assert "Pick the axis whose labels are genes, or ask the user" in reply
     assert "genes_axis='rows' or 'columns'" in reply
 
 
@@ -94,16 +98,18 @@ def test_a_whole_transcriptome_of_symbols_follows_the_shape(tmp_path, genes_as_r
 
 
 @pytest.mark.parametrize(
-    "n_genes,n_samples", [(500, 1_000), (5_000, 50)], ids=["panel", "filtered"]
+    "n_genes,n_samples",
+    [(500, 1_000), (5_000, 50), (8, 40)],
+    ids=["panel", "filtered", "small_panel"],
 )
 @pytest.mark.parametrize("genes_as_rows", [True, False])
 def test_symbols_that_shape_cannot_settle_are_refused(
     tmp_path, genes_as_rows, n_genes, n_samples
 ):
-    dm, _, reply = _import(
-        tmp_path, SYMBOLS[:n_genes], SAMPLES[:n_samples], genes_as_rows
-    )
-    _assert_refused(dm, reply)
+    genes, samples = SYMBOLS[:n_genes], SAMPLES[:n_samples]
+    dm, _, reply = _import(tmp_path, genes, samples, genes_as_rows)
+    rows, columns = (genes, samples) if genes_as_rows else (samples, genes)
+    _assert_refused(dm, reply, rows, columns)
 
 
 @pytest.mark.parametrize("genes_as_rows", [True, False])
