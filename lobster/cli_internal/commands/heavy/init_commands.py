@@ -1766,6 +1766,13 @@ def _install_extended_data() -> None:
         # Don't warn on failure — these all have graceful fallbacks
 
 
+def _interrupted_text() -> str:
+    """A Ctrl-C after the setup screens: init may have written some files."""
+    return h(
+        "[yellow]Interrupted while saving the setup; run lobster init --force to finish it.[/yellow]"
+    )
+
+
 def _cancelled_text() -> str:
     from lobster.i18n import t
 
@@ -3831,6 +3838,9 @@ def init_impl(
                         _tui_handled = True
                     except typer.Exit:
                         raise
+                    except KeyboardInterrupt:  # files may already be written
+                        console.print(_interrupted_text())
+                        raise typer.Exit(1)
                     except Exception as _go_exc:
                         if ui_mode == "go":
                             console.print(
@@ -3914,6 +3924,9 @@ def init_impl(
                 _tui_handled = True
             except typer.Exit:
                 raise
+            except KeyboardInterrupt:  # files may already be written
+                console.print(_interrupted_text())
+                raise typer.Exit(1)
             except ImportError:
                 # questionary not installed — fall through to classic Rich prompts silently
                 pass
