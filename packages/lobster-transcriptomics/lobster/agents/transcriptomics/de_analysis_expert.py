@@ -1268,9 +1268,9 @@ def de_analysis_expert(
                     )
                     assert_inside_workspace(data_manager.workspace_path, results_csv)
                     assert_export_allowed(data_manager.workspace_path, results_csv)
-                    data_manager._assert_save_allowed(f"{modality_name}.h5ad")
-                else:
-                    data_manager._assert_save_allowed(f"{de_modality_name}.h5ad")
+                    # deseq2 saves its result as a new modality only when saving
+                    de_modality_name = _de_result_name(modality_name, group1, group2)
+                data_manager._assert_save_allowed(f"{de_modality_name}.h5ad")
 
             logger.info(
                 f"Running DE analysis on '{modality_name}': "
@@ -1367,10 +1367,17 @@ def de_analysis_expert(
                     )
                     assert_export_allowed(data_manager.workspace_path, results_path)
                     results_df.to_csv(results_path)
-                    # Saved under the modality's own name: the results are part
-                    # of it, and replay pairs a saved file with its modality by name.
-                    save_path = f"{modality_name}.h5ad"
-                    data_manager.save_modality(modality_name, save_path)
+                    # A new file under its own modality: the input's file (which a
+                    # resumed session may have loaded) is never written, and replay
+                    # pairs the saved file with this modality by name.
+                    data_manager.store_modality(
+                        name=de_modality_name,
+                        adata=adata.copy(),
+                        parent_name=modality_name,
+                        step_summary=f"DE analysis complete: {contrast_name}",
+                    )
+                    save_path = f"{de_modality_name}.h5ad"
+                    data_manager.save_modality(de_modality_name, save_path)
 
                 # Create IR for provenance
                 from lobster.core.provenance import AnalysisStep
@@ -1472,7 +1479,10 @@ def de_analysis_expert(
 **Results stored in**: adata.uns['de_results_{contrast_name}']"""
 
                 if save_result:
-                    response += f"\n**Saved to**: {results_path} & {save_path}"
+                    response += (
+                        f"\n**Saved to**: {results_path} & {save_path}"
+                        f"\n**New modality created**: '{de_modality_name}'"
+                    )
 
             else:
                 # wilcoxon / t_test: a per-gene test on the expression values

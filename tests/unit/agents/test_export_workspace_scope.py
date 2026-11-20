@@ -707,7 +707,9 @@ def test_bulk_de_direct_with_a_slash_in_a_group_label(s, monkeypatch):
     science.run_differential_expression_analysis.assert_not_called()
     stored = s.dm.get_modality("cells").uns
     assert "de_results_condition_other_vs_CD4/CD8" in stored, response
-    assert (s.dm.data_dir / "cells.h5ad").is_file()
+    name = "cells_de_CD4%2FCD8_vs_other"
+    assert name in s.dm.list_modalities()
+    assert (s.dm.data_dir / f"{name}.h5ad").is_file()
     s.nothing_outside()
 
 
