@@ -293,11 +293,14 @@ def run_tool_install(
 
     # Stream output so the user sees resolver/download progress
     # instead of staring at a frozen terminal.
-    result = subprocess.run(cmd)  # nosec B603 # argv shown before; no shell
+    try:
+        result = subprocess.run(cmd)  # nosec B603 # argv shown before; no shell
+    except BaseException:  # uv missing, Ctrl-C: nothing was installed
+        if after is not None:
+            after(False)
+        raise
 
     # === DANGER ZONE: venv on disk has been replaced ===
-    if after is not None:
-        after(result.returncode == 0)
     color = os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
     if result.returncode == 0:
         print(f"  \033[32m{ok}\033[0m" if color else f"  {ok}")
@@ -305,5 +308,7 @@ def run_tool_install(
     else:
         print(f"  \033[31m{failed}\033[0m" if color else f"  {failed}")
         print(manual)
+    if after is not None:
+        after(result.returncode == 0)
     sys.stdout.flush()
     os._exit(result.returncode)

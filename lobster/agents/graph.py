@@ -471,7 +471,8 @@ def _create_lazy_delegation_tool(
     return enable_sync_fallback(invoke_agent_lazy)
 
 
-# shortcut: once per process, which is one session for the CLI and the TUI.
+# (workspace, names) already told: once per project in a process, which is one
+# session for the CLI and the TUI and several projects for the MCP server.
 _told_uninstalled: set = set()
 
 
@@ -489,6 +490,7 @@ def _uninstalled_experts(
     config: Optional["WorkspaceAgentConfig"],
     worker_agents: Dict,
     filtered_out_agents: List[str],
+    workspace_path: Optional[Path] = None,
 ) -> List[str]:
     """The config's experts when not one of them is installed; warns once."""
     if enabled_agents is not None or not config or worker_agents:
@@ -496,8 +498,9 @@ def _uninstalled_experts(
     if filtered_out_agents:  # installed, removed by the license tier
         return []
     names = sorted(config.effective_agents())
-    if names and tuple(names) not in _told_uninstalled:
-        _told_uninstalled.add(tuple(names))
+    told = (str(workspace_path), tuple(names))
+    if names and told not in _told_uninstalled:
+        _told_uninstalled.add(told)
         logger.warning(uninstalled_experts_text(names))
     return names
 
@@ -1106,7 +1109,7 @@ def create_bioinformatics_graph(
         subscription_tier=subscription_tier,
     )
     uninstalled = _uninstalled_experts(
-        enabled_agents, config, worker_agents, filtered_out_agents
+        enabled_agents, config, worker_agents, filtered_out_agents, workspace_path
     )
 
     # Create all agents in a single pass with lazy delegation tools

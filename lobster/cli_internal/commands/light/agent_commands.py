@@ -33,6 +33,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+from rich.text import Text
 
 from lobster.i18n import h, t
 
@@ -191,13 +192,17 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
     agents = {
         a for entry in AVAILABLE_AGENT_PACKAGES if entry[0] == package for a in entry[2]
     }
-    config = _changed_config(workspace_path, add=agents) if agents else None
+    config, said = (
+        _changed_config(workspace_path, add=agents) if agents else (None, None)
+    )
     after = None
     if config is not None:
         if windows_locks_running_tool():  # the install is left to the user
+            if said:
+                console.print(said)
             config.save(workspace_path)
         else:
-            after = _save_after_install(config, workspace_path)
+            after = _save_after_install(config, workspace_path, said)
 
     cmd = build_tool_install_command(with_packages=[_pinned_to_lobster(package, ">=")])
     cmd.insert(3, "--reinstall")
@@ -351,7 +356,8 @@ def _with_children(names: set) -> set:
 
 
 def _changed_config(workspace_path: Path, *, add=(), remove=()):
-    """The agent config with agents added or removed; None if nothing changes.
+    """(the agent config with agents added or removed, the line that says a
+    preset became a list or None); (None, None) if nothing changes.
 
     config.toml holds a preset or a list, never both: a list saved next to a
     preset is dropped, so a preset becomes the explicit list it changes.
@@ -362,28 +368,30 @@ def _changed_config(workspace_path: Path, *, add=(), remove=()):
     current = set(config.effective_agents())
     present = _with_children(current)
     if set(add) <= present and not set(remove) & present:
-        return None  # nothing to change: a preset stays a preset
+        return None, None  # nothing to change: a preset stays a preset
+    said = None
     if config.preset:
-        console.print(
-            h(
-                "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
-            ).format(preset_name=config.preset)
-        )
+        said = h(
+            "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+        ).format(preset_name=config.preset)
     config.enabled_agents = sorted((current | set(add)) - set(remove))
     config.preset = None
-    return config
+    return config, said
 
 
 def _change_enabled(workspace_path: Path, *, add=(), remove=()) -> None:
     """Add or remove agents in config.toml (see ``_changed_config``)."""
-    config = _changed_config(workspace_path, add=add, remove=remove)
+    config, said = _changed_config(workspace_path, add=add, remove=remove)
+    if said:
+        console.print(said)
     if config is not None:
         config.save(workspace_path)
 
 
-def _save_after_install(config, workspace_path: Path):
-    """Stage *config* now; the returned ``after`` puts it in place once the
-    install worked. It runs after the tool's venv is replaced: ``os`` only."""
+def _save_after_install(config, workspace_path: Path, said: Optional[str]):
+    """Stage *config* now; the returned ``after`` puts it in place, and prints
+    *said*, once the install worked. It runs after the tool's venv is
+    replaced: builtins and ``os`` only."""
     import os
     import tempfile
 
@@ -391,11 +399,14 @@ def _save_after_install(config, workspace_path: Path):
     folder = tempfile.mkdtemp(prefix=".config-", dir=workspace_path)
     staged = str(config.save(Path(folder)))
     final = os.path.join(str(workspace_path), os.path.basename(staged))
+    plain = Text.from_markup(said).plain if said else None
 
     def after(ok: bool) -> None:
         try:
             if ok:
                 os.replace(staged, final)
+                if plain:
+                    print(plain)
             else:
                 os.unlink(staged)
             os.rmdir(folder)
