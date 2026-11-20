@@ -104,3 +104,27 @@ def test_an_unreadable_user_wide_config_folder_is_skipped(tmp_path, monkeypatch)
         assert resolve_lang(["lobster"], env) == "en"
     finally:
         folder.chmod(0o755)
+
+
+def test_a_workspace_under_an_unknown_user_keeps_the_default(project):
+    assert _lang("query", "-w", "~nosuchuser/x") == "en"
+    assert _lang("query", "--workspace=~nosuchuser/x") == "en"
+    assert _lang("query", LOBSTER_WORKSPACE="~nosuchuser/x") == "en"
+
+
+BOM = b"\xef\xbb\xbf"  # PowerShell 5.1's Set-Content -Encoding UTF8
+
+
+def test_a_project_config_saved_with_a_bom_is_read(project):
+    path = project / ".lobster_workspace" / "provider_config.json"
+    path.write_bytes(BOM + json.dumps({"lang": "zh"}).encode())
+    assert _lang("query", "-w", str(project)) == "zh"
+
+
+def test_a_user_wide_config_saved_with_a_bom_is_read(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOBSTER_WORKSPACE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "xdg" / "lobster").mkdir(parents=True)
+    path = tmp_path / "xdg" / "lobster" / "providers.json"
+    path.write_bytes(BOM + json.dumps({"lang": "zh"}).encode())
+    assert resolve_lang(["lobster"], {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}) == "zh"
