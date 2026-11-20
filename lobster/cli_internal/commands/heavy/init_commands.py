@@ -170,10 +170,22 @@ def _display_agent_selection_list(
     return sorted_agents
 
 
-def _current_agent_packages(workspace_path: Optional[Path]) -> Optional[list[str]]:
-    """Packages whose experts the workspace has saved; None when it has none.
+def _packages_of(agents) -> list[str]:
+    """The published catalog packages that provide any of ``agents``, in order."""
+    agents = set(agents)
+    return [
+        name
+        for name, _, provided, published, _ in _CATALOG
+        if published and agents & set(provided)
+    ]
 
-    The init pickers start from these (`init --force`) instead of the defaults.
+
+def _starting_packages(
+    workspace_path: Optional[Path], preset: Optional[str] = None
+) -> Optional[list[str]]:
+    """The packages an init picker starts from; None: the defaults.
+
+    ``--preset`` first, then the experts the workspace has saved (`init --force`).
     """
     from lobster.config.agent_presets import expand_preset
     from lobster.config.workspace_agent_config import (
@@ -181,21 +193,55 @@ def _current_agent_packages(workspace_path: Optional[Path]) -> Optional[list[str
         WorkspaceAgentConfig,
     )
 
+    if preset:
+        return _packages_of(expand_preset(preset) or []) or None
     if workspace_path is None or not (workspace_path / CONFIG_FILE_NAME).is_file():
         return None
     saved = WorkspaceAgentConfig.load(workspace_path)
     agents = set(saved.enabled_agents)
     if saved.preset:
         agents |= set(expand_preset(saved.preset) or [])
-    packages = [
-        name
-        for name, _, provided, published, _ in _CATALOG
-        if published and agents & set(provided)
-    ]
-    return packages or None
+    return _packages_of(agents) or None
 
 
-def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
+def _kept_preset(preset: Optional[str], agents: list[str]) -> Optional[str]:
+    """``preset`` when the picked agents cover exactly its packages, else None.
+
+    A picker that started from a preset and was changed says the preset is
+    replaced by the picked experts.
+    """
+    from lobster.config.agent_presets import expand_preset
+
+    if not preset or not agents:
+        return None
+    if set(_packages_of(agents)) == set(_packages_of(expand_preset(preset) or [])):
+        return preset
+    console.print(
+        h(
+            "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+        ).format(preset_name=preset)
+    )
+    return None
+
+
+def _check_preset_or_exit(preset_flag: str, out) -> None:
+    from lobster.config.agent_presets import is_valid_preset
+
+    if not is_valid_preset(preset_flag):
+        out.print(
+            h("[red]Invalid preset: {preset_flag}[/red]").format(
+                preset_flag=preset_flag
+            )
+        )
+        out.print(
+            h("[dim]Valid presets: scrna-basic, scrna-full, multiomics-full[/dim]")
+        )
+        raise typer.Exit(1)
+
+
+def _prompt_manual_agent_selection(
+    workspace_path: Path, preset: Optional[str] = None
+) -> list[str]:
     """Interactive agent package selection. Returns list of selected agent names."""
     from rich import box
     from rich.console import Console
@@ -247,7 +293,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     console.print(h("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]"))
     console.print(h("[dim]Already installed packages will be skipped[/dim]"))
 
-    ticked = _current_agent_packages(workspace_path) or DEFAULT_AGENT_PACKAGES
+    ticked = _starting_packages(workspace_path, preset) or DEFAULT_AGENT_PACKAGES
     default = ",".join(
         str(i)
         for i, (name, *_) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
@@ -528,22 +574,13 @@ def _perform_agent_selection_non_interactive(
     """Handle non-interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
 
-    from lobster.config.agent_presets import expand_preset, is_valid_preset
+    from lobster.config.agent_presets import expand_preset
 
     console = Console()
 
     # Priority: preset > agents > auto_agents
     if preset_flag:
-        if not is_valid_preset(preset_flag):
-            console.print(
-                h("[red]Invalid preset: {preset_flag}[/red]").format(
-                    preset_flag=preset_flag
-                )
-            )
-            console.print(
-                h("[dim]Valid presets: scrna-basic, scrna-full, multiomics-full[/dim]")
-            )
-            raise typer.Exit(1)
+        _check_preset_or_exit(preset_flag, console)
 
         expanded = expand_preset(preset_flag)
         expanded = _filter_unpublished_preset_agents(expanded, console, preset_flag)
@@ -756,7 +793,7 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
 
 
 def _perform_agent_selection_interactive(
-    workspace_path: Path, *, skip_extras: bool = False
+    workspace_path: Path, *, skip_extras: bool = False, preset: Optional[str] = None
 ) -> tuple[list[str], str]:
     """Handle interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
@@ -767,7 +804,7 @@ def _perform_agent_selection_interactive(
     console.print(h("Select which agents to enable for your workspace:"))
     console.print()
 
-    selected = _prompt_manual_agent_selection(workspace_path)
+    selected = _prompt_manual_agent_selection(workspace_path, preset)
 
     if selected:
         if skip_extras:
@@ -778,7 +815,7 @@ def _perform_agent_selection_interactive(
             h("\n[green]v[/green] {len} agent(s) configured").format(len=len(selected))
         )
 
-    return selected, None
+    return selected, _kept_preset(preset, selected)
 
 
 _SMART_STD_AGENT_DISPLAY = {
@@ -1337,8 +1374,12 @@ def _postprocess_tui_init_result(
     env_path: Path,
     global_config: bool,
     skip_extras: bool,
+    preset: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Normalize, persist, and complete a Go/questionary init result."""
+    """Normalize, persist, and complete a Go/questionary init result.
+
+    ``preset`` (``--preset``) is recorded when the picked packages are its own.
+    """
     from lobster.core.uv_tool_env import is_uv_tool_env
     from lobster.ui.bridge.init_adapter import apply_tui_init_result
 
@@ -1377,6 +1418,7 @@ def _postprocess_tui_init_result(
                 normalized_agents, workspace_path
             )
     normalized_result["agents"] = normalized_agents
+    normalized_result["preset"] = _kept_preset(preset, normalized_agents)
 
     try:
         apply_tui_init_result(
@@ -3623,6 +3665,9 @@ def init_impl(
         )
         raise typer.Exit(1)
 
+    if preset:
+        _check_preset_or_exit(preset, console)
+
     # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
     # The Go binary and the questionary fallback both return the same JSON dict,
     # so a single apply_tui_init_result() call handles both paths.
@@ -3632,8 +3677,8 @@ def init_impl(
     if ui_mode != "classic" and not non_interactive:
         _tui_handled = False
         # Agents are saved in the workspace even with --global.
-        _saved_packages = _current_agent_packages(
-            _resolve_workspace_or_exit(create=False, workspace=init_ws)
+        _saved_packages = _starting_packages(
+            _resolve_workspace_or_exit(create=False, workspace=init_ws), preset
         )
 
         # ---- Try Go TUI ----
@@ -3672,6 +3717,7 @@ def init_impl(
                             env_path=_ev_path,
                             global_config=global_config,
                             skip_extras=skip_extras,
+                            preset=preset,
                         )
 
                         _print_init_summary(
@@ -3762,6 +3808,7 @@ def init_impl(
                     env_path=_ev_path,
                     global_config=global_config,
                     skip_extras=skip_extras,
+                    preset=preset,
                 )
 
                 _print_init_summary(
@@ -4259,7 +4306,7 @@ def init_impl(
         # Step 4 — Agent selection                                            #
         # ================================================================== #
         selected_agents, preset_name = _perform_agent_selection_interactive(
-            workspace_path, skip_extras=skip_extras
+            workspace_path, skip_extras=skip_extras, preset=preset
         )
         if selected_agents:
             _save_agent_config(selected_agents, workspace_path, preset_name)

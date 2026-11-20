@@ -9,6 +9,7 @@ contract::
         "api_key_secondary":  str,   # secondary key (e.g. AWS secret; empty otherwise)
         "profile":            str,   # "development"|"production"|"performance"|"max"|""
         "agents":             list[str],  # selected agent names
+        "preset":             str | None,  # set by init: --preset, kept as picked
         "ncbi_key":           str,   # optional NCBI API key
         "cloud_key":          str,   # optional Omics-OS Cloud key
         "ollama_model":       str,   # Ollama model name (empty for non-Ollama)
@@ -35,7 +36,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,7 @@ def apply_tui_init_result(
         apply_init_choice(lamin_enabled, workspace_path, previous=previous)
 
     if agents:
-        _write_agent_config(agents, workspace_path)
+        _write_agent_config(agents, workspace_path, result.get("preset"))
 
 
 # ---------------------------------------------------------------------------
@@ -311,11 +312,13 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
             raise
 
 
-def _write_agent_config(agents: list[str], workspace_path: Path) -> None:
+def _write_agent_config(
+    agents: list[str], workspace_path: Path, preset: Optional[str] = None
+) -> None:
     """Write .lobster_workspace/agent_config.json via the shared helper."""
     from lobster.cli_internal.commands.heavy.init_commands import _save_agent_config
 
-    _save_agent_config(agents, workspace_path)
+    _save_agent_config(agents, workspace_path, preset)
     logger.info(
         "Wrote agent_config.json in %s (%d agents)", workspace_path, len(agents)
     )

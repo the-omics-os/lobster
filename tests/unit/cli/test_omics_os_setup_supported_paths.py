@@ -728,7 +728,9 @@ def test_classic_skip_extras_keeps_agent_selection_and_prints_later_command(
 ):
     selected = ["data_expert_agent"]
     monkeypatch.setattr(
-        init_commands, "_prompt_manual_agent_selection", lambda path: selected
+        init_commands,
+        "_prompt_manual_agent_selection",
+        lambda path, preset=None: selected,
     )
 
     def forbidden(*args, **kwargs):
