@@ -63,6 +63,15 @@ def test_agents_next_to_a_preset_is_said_to_be_ignored(
 
 
 @pytest.mark.parametrize("mode", MODES)
+def test_a_preset_alone_says_nothing_about_agents(
+    dirs, monkeypatch, said, mode  # noqa: F811
+):
+    _run(dirs / "study", mode, monkeypatch, preset="scrna-basic")
+
+    assert "--agents" not in said()
+
+
+@pytest.mark.parametrize("mode", MODES)
 def test_agents_alone_is_not_said_to_be_ignored(
     dirs, monkeypatch, said, mode  # noqa: F811
 ):
@@ -141,6 +150,7 @@ def test_an_expert_the_list_leaves_off_its_package_is_named(
     "agents",
     [
         "transcriptomics_expert",  # its children come with it
+        "drug_discovery_expert",
         "research_agent,data_expert_agent",
         "lobster-research",
     ],
