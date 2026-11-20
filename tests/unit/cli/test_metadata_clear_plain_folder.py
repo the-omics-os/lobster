@@ -51,6 +51,7 @@ def test_a_plain_folder_shows_every_file_and_warns(tmp_path, clear):
 
     assert WARNING in shown
     assert all(name in shown for name in NAMES)
+    assert "more files" not in shown
     assert sorted(p.name for p in (workspace / "exports").iterdir()) == sorted(NAMES)
 
 
@@ -65,5 +66,13 @@ def test_a_project_shows_the_preview_as_before(tmp_path):
 
 def test_clearing_all_in_a_project_does_not_warn(tmp_path):
     workspace = _workspace(tmp_path / "study" / ".lobster_workspace", project=True)
+
+    assert WARNING not in _ask(metadata_clear_all, workspace)
+
+
+def test_clearing_all_with_no_exports_does_not_warn(tmp_path):
+    workspace = tmp_path / "docs"
+    (workspace / "metadata").mkdir(parents=True)
+    (workspace / "metadata" / "samples.json").write_text("{}")
 
     assert WARNING not in _ask(metadata_clear_all, workspace)

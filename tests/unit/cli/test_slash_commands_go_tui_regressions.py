@@ -1748,6 +1748,12 @@ def test_metadata_clear_protocol_mode_confirms_then_cancels(tmp_path):
     ]
 
 
+NOT_A_PROJECT = (
+    "This folder is not a Lobster project; "
+    "files in its exports folder may be your own."
+)
+
+
 def test_metadata_clear_exports_protocol_mode_confirms_and_succeeds(tmp_path):
     output = ConfirmingProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
@@ -1763,10 +1769,12 @@ def test_metadata_clear_exports_protocol_mode_confirms_and_succeeds(tmp_path):
     assert not (tmp_path / "exports" / "analysis_summary.csv").exists()
     assert output.messages[0][0] == "table"
     assert output.messages[0][1]["title"] == "About to Clear Export Files"
-    assert output.messages[1] == (None, "Preview")
-    assert output.messages[2] == (None, "- analysis_summary.csv (0.0 KB)")
-    assert output.messages[3] == ("confirm", "Delete all 1 export files?")
-    assert output.messages[4] == ("success", "Deleted 1 export files")
+    # the workspace is a plain folder, not a project: every file, and a warning
+    assert output.messages[1] == ("warning", NOT_A_PROJECT)
+    assert output.messages[2] == (None, "Preview")
+    assert output.messages[3] == (None, "- analysis_summary.csv (0.0 KB)")
+    assert output.messages[4] == ("confirm", "Delete all 1 export files?")
+    assert output.messages[5] == ("success", "Deleted 1 export files")
 
 
 def test_metadata_clear_all_protocol_mode_confirms_then_cancels(tmp_path):
@@ -1797,6 +1805,9 @@ def test_metadata_clear_all_protocol_mode_confirms_then_cancels(tmp_path):
                 ],
             },
         ),
+        ("warning", NOT_A_PROJECT),
+        (None, "Files"),
+        (None, "- analysis_summary.csv"),
         ("confirm", "Clear ALL 6 items? This cannot be undone!"),
         (None, "Operation cancelled"),
     ]

@@ -997,6 +997,22 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
         return None
 
 
+def _not_a_project(workspace: Path) -> bool:
+    """A workspace that is a folder of the user's (-w): its exports may be theirs."""
+    from lobster.core.runtime.workspace import _is_project_workspace
+
+    return not _is_project_workspace(workspace)
+
+
+def _not_a_project_alert() -> OutputBlock:
+    return alert_block(
+        h(
+            "This folder is not a Lobster project; files in its exports folder may be your own."
+        ),
+        level="warning",
+    )
+
+
 def metadata_clear_exports(
     client: "AgentClient", output: OutputAdapter
 ) -> Optional[str]:
@@ -1040,13 +1056,16 @@ def metadata_clear_exports(
             title=h("About to Clear Export Files"),
         )
     ]
+    plain = _not_a_project(exports_dir.parent)
+    shown = export_files if plain else export_files[:5]
+    if plain:
+        blocks.append(_not_a_project_alert())
     preview_items = [
-        f"{file.name} ({file.stat().st_size / 1024:.1f} KB)"
-        for file in export_files[:5]
+        f"{file.name} ({file.stat().st_size / 1024:.1f} KB)" for file in shown
     ]
     if preview_items:
         blocks.append(list_block(preview_items, title=h("Preview")))
-    if len(export_files) > 5:
+    if len(export_files) > len(shown):
         blocks.append(
             hint_block(
                 h("... and {count} more files").format(count=len(export_files) - 5)
@@ -1171,6 +1190,14 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
                     (h("Total"), h("{count} items").format(count=total_count)),
                 ],
                 title=h("About to Clear All Metadata"),
+            ),
+            *(
+                [
+                    _not_a_project_alert(),
+                    list_block([f.name for f in export_files], title=h("Files")),
+                ]
+                if export_files and _not_a_project(exports_dir.parent)
+                else []
             ),
         ],
     )

@@ -2246,5 +2246,6 @@
   "[yellow]--agents leaves out {names} from the same package, so they stay off; add them to --agents to turn them on.[/yellow]": "[yellow]--agents 未包含同一软件包中的 {names}，它们将保持关闭；如需启用，请将其加入 --agents。[/yellow]",
   "[dim]All installed agents run here: no choice is saved for this project.[/dim]": "[dim]此项目未保存选择，因此所有已安装的智能体都会运行。[/dim]",
   "Stopping without waiting for the running tool; a file it was writing may be incomplete.": "不再等待正在运行的工具，即将停止；它正在写入的文件可能不完整。",
-  "Stopping: waiting for the running step to finish; press Ctrl+C again to stop now.": "正在停止：等待当前步骤完成；再按一次 Ctrl+C 立即停止。"
+  "Stopping: waiting for the running step to finish; press Ctrl+C again to stop now.": "正在停止：等待当前步骤完成；再按一次 Ctrl+C 立即停止。",
+  "This folder is not a Lobster project; files in its exports folder may be your own.": "此文件夹不是 Lobster 项目；其 exports 文件夹中的文件可能是你自己的。"
 }
