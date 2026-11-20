@@ -1,10 +1,11 @@
-"""Every tool that saves a modality checks its target before it stores it.
+"""Every save site checks its target before it stores the modality.
 
 A save over a file the session loaded is refused (RecordedInputError). A tool
 must not reach that refusal after it has already replaced a modality in memory:
 before ``store_modality`` it either takes a result name no loaded file has
 (``unloaded_name``) or checks a name it was given (``assert_save_target``). New
-tools are held to it here; a site that needs neither is listed with its reason.
+tools and core saves (packages/ and lobster/) are held to it here; a site that
+needs neither is listed with its reason, and a new unlisted site fails.
 """
 
 import ast
@@ -14,12 +15,32 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 CHECKS = ("unloaded_name(", "assert_save_target(", "_unloaded_result_name(")
+DM = "lobster/core/runtime/data_manager.py"
 # (file relative to the checkout, function) -> why it needs no check
-ALLOWED = {}
+ALLOWED = {
+    (DM, "save_workspace"): (
+        "writes every modality into the named workspace folder, not into data/; "
+        "save_modality still refuses a loaded file there"
+    ),
+    (DM, "save_processed_data"): (
+        "the file name is generated (source, dataset, step, time stamp), and "
+        "save_modality refuses a loaded file before the write; nothing is "
+        "stored first"
+    ),
+    (DM, "auto_save_state"): (
+        "may update a modality's own *_autosave.h5ad snapshot; any other "
+        "loaded target is skipped with a warning, never raised"
+    ),
+    (DM, "run_notebook"): "writes a temporary input file for the notebook run",
+}
 
 
 def _save_sites():
-    for path in sorted((ROOT / "packages").glob("*/lobster/**/*.py")):
+    paths = [
+        *sorted((ROOT / "packages").glob("*/lobster/**/*.py")),
+        *sorted((ROOT / "lobster").glob("**/*.py")),
+    ]
+    for path in paths:
         source = path.read_text()
         tree = ast.parse(source)
         functions = [
@@ -52,7 +73,13 @@ SITES = list(_save_sites())
 
 
 def test_the_audit_finds_the_save_sites():
-    assert len(SITES) >= 30
+    assert len(SITES) >= 40
+
+
+def test_every_allowed_site_still_exists_and_says_why():
+    found = {(file, function) for file, function, _, _ in SITES}
+    assert set(ALLOWED) <= found, set(ALLOWED) - found
+    assert all(len(reason) > 20 for reason in ALLOWED.values())
 
 
 @pytest.mark.parametrize(
