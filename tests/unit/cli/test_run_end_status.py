@@ -886,42 +886,178 @@ def test_the_hard_exit_ends_the_run_first(monkeypatch):
     assert done == ["ended", 143]
 
 
+@pytest.fixture
+def sigint(monkeypatch):
+    """SIGINT handlers set, recorded instead of set; starts as Python's own."""
+    handlers = [signal.default_int_handler]
+    monkeypatch.setattr(signal, "getsignal", lambda sig: handlers[-1])
+    monkeypatch.setattr(signal, "signal", lambda sig, handler: handlers.append(handler))
+    return handlers
+
+
+@pytest.fixture
+def started(monkeypatch):
+    """Threads started, recorded instead of run."""
+    threads = []
+
+    class _Thread:
+        def __init__(self, target, args=(), **kw):
+            self.run = lambda: target(*args)
+            self.daemon = kw.get("daemon")
+
+        def start(self):
+            threads.append(self)
+
+    monkeypatch.setattr(factory.threading, "Thread", _Thread)
+    return threads
+
+
+def test_the_first_ctrl_c_ends_the_run_from_a_thread_and_arms_the_second(
+    monkeypatch, sigint, started, exit_hooks, capsys
+):
+    client = _client()
+    catalog = client.catalog
+    ended = []
+    catalog.end_at_exit = lambda: ended.append(catalog.status)
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
+    with pytest.raises(KeyboardInterrupt):
+        with factory.recorded_run_status(client):
+            sigint[-1](signal.SIGINT, None)  # the press, where Python calls it
+
+    assert WAITING in " ".join(capsys.readouterr().err.split())
+    assert (
+        ended == []
+    )  # not in the handler: it may run where the catalog's lock is held
+    (thread,) = started
+    assert thread.daemon
+    thread.run()
+    assert ended == ["aborted"]
+    stop_now = sigint[-1]
+    assert stop_now not in (signal.default_int_handler, signal.SIG_DFL)
+    monkeypatch.setattr(factory, "_stop_waiting", lambda text: ended.append(text))
+    stop_now(signal.SIGINT, None)
+    assert ended[-1] == STOPPING
+
+
+def test_a_command_that_goes_on_after_the_first_ctrl_c_is_still_aborted(
+    monkeypatch, sigint, started
+):
+    client = _client()
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), client.catalog))
+    with factory.recorded_run_status(client):
+        try:
+            sigint[-1](signal.SIGINT, None)
+        except KeyboardInterrupt:
+            pass  # a step that swallows it; the command ends normally
+    assert client.catalog.end == ("aborted", "Ctrl-C")
+
+
+def test_without_a_press_the_ctrl_c_handler_is_put_back(monkeypatch, sigint):
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    with factory.recorded_run_status(_client("s")):
+        assert sigint[-1] is not signal.default_int_handler
+    assert sigint[-1] is signal.default_int_handler
+
+
+@pytest.mark.parametrize("case", ["session", "no catalog", "own handler", "thread"])
+def test_the_first_ctrl_c_is_left_alone_where_it_is_not_ours(monkeypatch, sigint, case):
+    if case != "no catalog":
+        monkeypatch.setattr(factory, "_process_catalog", (Path("."), _Catalog()))
+    if case == "own handler":
+        sigint.append(signal.SIG_IGN)
+    if case == "thread":
+        monkeypatch.setattr(factory.threading, "main_thread", lambda: None)
+    before = list(sigint)
+    with factory.recorded_run_status(_client("s"), session=case == "session"):
+        pass
+    assert sigint == before
+
+
+def test_a_ctrl_c_during_the_exit_hooks_is_not_handled_twice(monkeypatch, sigint):
+    import atexit
+
+    seen = []
+    monkeypatch.setattr(atexit, "_run_exitfuncs", lambda: seen.append(sigint[-1]))
+    monkeypatch.setattr(factory.os, "_exit", lambda code: seen.append(code))
+    factory._stop_waiting("bye")
+    assert seen == [signal.SIG_IGN, 130]
+
+
+def test_the_exit_hooks_get_python_s_own_ctrl_c_back(monkeypatch, sigint):
+    import atexit
+
+    registered = []
+    monkeypatch.setattr(atexit, "register", lambda *a: registered.append(a))
+    monkeypatch.setattr(factory, "_end_run_now", lambda: None)
+    factory._exit_begins()
+    assert registered == [(signal.signal, signal.SIGINT, signal.default_int_handler)]
+
+
+def test_the_hard_exit_exits_even_when_ending_the_run_fails(monkeypatch):
+    def broken():
+        raise RuntimeError("catalog gone")
+
+    catalog = SimpleNamespace(end_at_exit=broken)
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), catalog))
+    exits = []
+    monkeypatch.setattr(factory.os, "_exit", exits.append)
+    with pytest.raises(RuntimeError):
+        factory._end_then_exit(143)
+    assert exits == [143]
+
+
 CTRL_C_CHILD = textwrap.dedent("""
     import atexit, sys, time
-    from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
     from types import SimpleNamespace
     from lobster.cli_internal.commands.heavy import query_commands
     from lobster.core.catalog import factory, thread
     thread.AT_EXIT_TIMEOUT_S = 1.0
     mode, bound = sys.argv[1], sys.argv[2]
-    class Catalog:
+    class Catalog:  # as ThreadedCatalog: the last status wins until the run ends
         status = reason = None
         ended = 0
         def set_end_status(self, status, session_id=None, reason=None, **only):
-            if self.status is None:
+            if not Catalog.ended:
                 self.status, self.reason = status, reason
         def end_at_exit(self):
-            Catalog.ended += 1
-            print("RUN", self.status, self.reason, flush=True)
+            if not Catalog.ended:
+                Catalog.ended += 1
+                print("RUN", self.status, self.reason, flush=True)
     catalog = Catalog()
     # a stdout no logging handler holds, not flushed: an exit that skips the flush
     # loses the line
     sys.stdout = open(sys.stdout.fileno(), "w", closefd=False)
-    atexit.register(lambda: print("EXIT HOOKS RAN; ended", Catalog.ended))
-    pool = ThreadPoolExecutor(1)
-    def tool(seconds):
-        time.sleep(seconds)  # a call that answers late
+    atexit.register(
+        lambda: print("EXIT HOOKS RAN; ended", Catalog.ended, "as", catalog.status)
+    )
+    # the tool runs where a real one does: in a langgraph ToolNode, whose executor
+    # waits for it before a Ctrl-C leaves the graph
+    from langchain_core.messages import AIMessage
+    from langchain_core.tools import tool
+    from langgraph.graph import START, MessagesState, StateGraph
+    from langgraph.prebuilt import ToolNode
+    @tool
+    def slow(seconds: float) -> str:
+        'A call that answers late.'
+        print("ready", flush=True)
+        time.sleep(seconds)
         Path("out.bin").write_bytes(b"x" * 1_000_000)
         print("TOOL done", flush=True)
+        return "done"
+    graph = StateGraph(MessagesState)
+    graph.add_node("tools", ToolNode([slow]))
+    graph.add_edge(START, "tools")
+    graph = graph.compile()
     class Client:
         callbacks = []
         data_manager = SimpleNamespace(catalog=catalog)
         def query(self, question, stream=False):
-            print("ready", flush=True)
             if mode == "free":
+                print("ready", flush=True)
                 time.sleep(30)  # waits in the main thread: nothing holds the exit
-            pool.submit(tool, float(mode)).result()
+            call = {"name": "slow", "args": {"seconds": float(mode)}, "id": "1"}
+            graph.invoke({"messages": [AIMessage(content="", tool_calls=[call])]})
             return {"success": True, "response": "x"}
     def init_client(*args, **kwargs):
         if bound == "catalog":
@@ -938,12 +1074,16 @@ STOPPING = (
     "Stopping without waiting for the running tool; "
     "a file it was writing may be incomplete."
 )
+WAITING = (
+    "Stopping: waiting for the running step to finish; "
+    "press Ctrl+C again to stop now."
+)
 
 
 def _signalled(tmp_path, mode, bound, presses):
     """Run the child; ``presses``: (seconds after ready, signal). Returns the exit
     code and each output line with the seconds since the first signal."""
-    pytest.importorskip("langchain_core")
+    pytest.importorskip("langgraph.prebuilt")
     child = subprocess.Popen(
         [sys.executable, "-c", CTRL_C_CHILD, mode, bound],
         stdout=subprocess.PIPE,
@@ -983,11 +1123,15 @@ def _said(lines):
 def test_a_ctrl_c_ends_the_run_while_a_tool_still_runs_and_cuts_nothing(tmp_path):
     code, lines = _signalled(tmp_path, "4", "catalog", [(0, signal.SIGINT)])
 
-    assert code == 130, _said(lines)
+    said = _said(lines)
+    assert code == 130, said
+    assert _at(lines, WAITING) < 1.0
     assert _at(lines, "RUN aborted Ctrl-C") < 1.0 + 1.0  # within the exit budget
     assert _at(lines, "RUN") < _at(lines, "TOOL done")  # the tool still ran
     assert (tmp_path / "out.bin").read_bytes() == b"x" * 1_000_000
-    assert "EXIT HOOKS RAN; ended 1" in _said(lines)
+    # the tool finishing later never turns the run completed
+    assert "EXIT HOOKS RAN; ended 1 as aborted" in said
+    assert "Traceback" not in said
 
 
 def test_a_ctrl_c_with_nothing_running_exits_at_once(tmp_path):
@@ -995,7 +1139,7 @@ def test_a_ctrl_c_with_nothing_running_exits_at_once(tmp_path):
 
     assert code == 130, _said(lines)
     assert _at(lines, "<exit>") < 1.0
-    assert "EXIT HOOKS RAN; ended 1" in _said(lines)
+    assert "EXIT HOOKS RAN; ended 1 as aborted" in _said(lines)
 
 
 def test_a_second_ctrl_c_stops_waiting_for_the_tool_without_a_traceback(tmp_path):
@@ -1005,10 +1149,10 @@ def test_a_second_ctrl_c_stops_waiting_for_the_tool_without_a_traceback(tmp_path
 
     said = _said(lines)
     assert code == 130, said
-    assert _at(lines, "RUN aborted Ctrl-C") < 2.0
-    assert STOPPING in said
+    assert _at(lines, "RUN aborted Ctrl-C") < 1.0 + 1.0
+    assert _at(lines, STOPPING) >= 2.0
     assert "Traceback" not in said and "Exception ignored" not in said
-    assert "EXIT HOOKS RAN; ended 1" in said
+    assert "EXIT HOOKS RAN; ended 1 as aborted" in said
     assert _at(lines, "<exit>") < 2.0 + 1.5
 
 
@@ -1017,7 +1161,7 @@ def test_a_ctrl_c_without_a_run_is_unchanged(tmp_path):
 
     said = _said(lines)
     assert code == 130, said
-    assert "RUN" not in said and STOPPING not in said
+    assert "RUN" not in said and STOPPING not in said and WAITING not in said
     assert _at(lines, "TOOL done") < _at(lines, "<exit>")  # it waits, as before
 
 

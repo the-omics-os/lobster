@@ -788,3 +788,22 @@ def test_a_forked_child_ends_no_run_at_exit(make_catalog, engine, tmp_path):
     catalog._forked = True  # as after os.fork: the parent ends the run
     catalog.end_at_exit()
     assert "end_run" not in engine.ops()
+
+
+def test_ending_at_exit_from_a_handler_on_the_ending_thread_does_not_hang(
+    make_catalog, engine, tmp_path
+):
+    # a Ctrl-C handler runs on the thread that may be ending the run already
+    catalog = make_catalog()
+    catalog.begin_run(_session(tmp_path))
+    catalog.set_end_status("aborted", reason="Ctrl-C")
+
+    def interrupted_end():
+        with catalog._exit_lock:  # this thread is ending it when the handler runs
+            catalog.end_at_exit()
+
+    ending = threading.Thread(target=interrupted_end, daemon=True)
+    ending.start()
+    ending.join(5)
+    assert not ending.is_alive()
+    assert engine.ops().count("end_run") == 1
