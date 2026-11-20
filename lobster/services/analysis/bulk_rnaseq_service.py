@@ -1089,7 +1089,7 @@ Next suggested step: Import quantification data with tximport for differential e
             group1_expr[0] != group2_expr[0]  # exact: each group is one value
         )
         p_values[one_value_per_group] = np.nan
-        t_stats[one_value_per_group] = np.nan  # not +-inf: it would top a sort
+        t_stats[no_variance] = np.nan  # not +-inf: it would top a table sorted by it
 
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)
