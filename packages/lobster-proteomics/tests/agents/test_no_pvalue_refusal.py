@@ -193,3 +193,88 @@ def test_a_refusal_logs_nothing(tmp_path, monkeypatch, tool, args, flat):
     logged = _logged(tmp_path, monkeypatch, _proteins(flat), tool, **args)
 
     assert logged == ([] if flat else [tool])
+
+
+# A protein is correlated over the samples with a value of both the protein and
+# the target, and needs 5 of them. With fewer the correlation ran no test and
+# still reported "Complete" (and an all-missing target raised an IndexError).
+
+
+def _with_target(values, protein_missing_rows=()):
+    adata = _proteins(flat=False)
+    adata.obs["target"] = values
+    adata.X[list(protein_missing_rows), :] = np.nan
+    return adata
+
+
+@pytest.mark.parametrize(
+    "values, protein_missing_rows, cause",
+    [
+        (
+            [np.nan] * 9 + [1.0, 2.0, 3.0],
+            (),
+            "Of 12 samples, 3 have a value of 'target'",
+        ),
+        ([np.nan] * 11 + [1.0], (), "Of 12 samples, 1 has a value of 'target'"),
+        ([np.nan] * 12, (), "Of 12 samples, 0 have a value of 'target'"),
+        (
+            [np.nan] * 4 + list(np.arange(8.0)),
+            range(4, 8),
+            "No protein has a value in at least 5 of the 8 samples with a value of "
+            "'target'",
+        ),
+    ],
+    ids=["three_values", "one_value", "no_value", "proteins_missing"],
+)
+def test_a_correlation_that_tests_no_protein_refuses(
+    tmp_path, monkeypatch, values, protein_missing_rows, cause
+):
+    logged = []
+    monkeypatch.setattr(
+        DataManagerV2,
+        "log_tool_usage",
+        lambda self, **kw: logged.append(kw["tool_name"]),
+    )
+
+    reply, stored = _call(
+        tmp_path,
+        _with_target(values, protein_missing_rows),
+        "run_correlation_analysis",
+        target_column="target",
+    )
+
+    assert reply == (
+        "**Correlation refused: no protein was tested.**\n\n"
+        f"{cause}; a correlation needs at least 5. No result modality was stored."
+    ), reply
+    assert stored == [] and logged == []
+
+
+def test_five_target_values_are_enough(tmp_path):
+    reply, stored = _call(
+        tmp_path,
+        _with_target([np.nan] * 7 + [1.0, 2.0, 3.0, 4.0, 5.0]),
+        "run_correlation_analysis",
+        target_column="target",
+    )
+
+    assert "- Tests performed: 20\n" in reply, reply
+    assert stored == ["prot_correlation"]
+
+
+def test_a_target_flat_where_the_proteins_have_values_is_named(tmp_path):
+    """The target varies only in 2 samples where no protein has a value."""
+    reply, stored = _call(
+        tmp_path,
+        _with_target([3.0, 4.0] + [1.0] * 10, protein_missing_rows=(0, 1)),
+        "run_correlation_analysis",
+        target_column="target",
+    )
+
+    assert reply.startswith(
+        "**Correlation refused: no protein has a p-value.**\n\n"
+        "Of 20 tests, none has a p-value: every value of 'target' in the samples "
+        "with a protein value is the same (1), so no protein can be correlated "
+        "with it."
+    ), reply
+    assert stored == []
