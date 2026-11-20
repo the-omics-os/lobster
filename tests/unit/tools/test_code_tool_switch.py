@@ -652,7 +652,7 @@ UNREADABLE = [
 
 @pytest.fixture
 def told(monkeypatch):
-    monkeypatch.setattr(switch, "_told_unreadable", {})
+    monkeypatch.setattr(switch, "_told", {})
 
 
 @pytest.mark.parametrize("body", UNREADABLE)
@@ -832,5 +832,19 @@ def test_a_bad_value_is_told_once_however_often_the_graph_is_built(
     for _ in range(3):  # three graph builds, each asks for every agent
         assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
         assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
+
+    assert len([w for w in warnings_seen if "must be true or false" in w]) == 2
+
+
+def test_a_bad_value_fixed_then_written_again_is_told_again(
+    tmp_path, warnings_seen, told
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for line in ('"false"', "false", '"false"'):
+        (ws / "config.toml").write_text(
+            f"[agent_settings.{AGENT}]\ncode_tool = {line}\n"
+        )
+        code_tool_enabled(AGENT, default=True, workspace_path=ws)
 
     assert len([w for w in warnings_seen if "must be true or false" in w]) == 2

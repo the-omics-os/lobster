@@ -39,9 +39,9 @@ GLOBAL_MODES = ("default", "all", "none")
 #: The supervisor has no AGENT_CONFIG; its code tool is on unless switched off.
 SUPERVISOR_CODE_TOOL_DEFAULT = True
 
-# file -> the warning already given: every agent of a graph asks for the same file.
-# A read that works forgets it, so a file broken again is told again.
-_told_unreadable: dict = {}
+# file -> (what it held, the warnings given for that): every graph build asks for
+# every agent, so each warning is given once. A file that changes is told again.
+_told: dict = {}
 
 
 def agent_env_var(agent_name: str) -> str:
@@ -92,57 +92,70 @@ def _workspace_layer(agent_name: str, workspace_path: Any) -> Optional[bool]:
 
     path = Path(os.fspath(workspace_path)) / CONFIG_FILE_NAME
     try:
-        data = tomllib.loads(path.read_bytes().decode("utf-8-sig"))
+        raw = path.read_bytes()
+        data = tomllib.loads(raw.decode("utf-8-sig"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as error:
         _tell_once(
-            path,
+            _told_for(path, str(error)),
             h(
                 "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
             ).format(file=path, error=error),
         )
         return False
+    said = _told_for(path, raw)
     all_settings = data.get("agent_settings")
     if all_settings is not None and not isinstance(all_settings, dict):
         _tell_once(
-            path,
+            said,
             h(
                 "{file}: agent_settings must be a table (found {kind}); the code tool is off for every agent until it is fixed."
             ).format(file=path, kind=type(all_settings).__name__),
         )
         return False
-    _told_unreadable.pop(str(path), None)
     if all_settings is None:
         return None
     settings = all_settings.get(agent_name)
     if settings is None:
         return None
     if not isinstance(settings, dict):
-        _tell_not_a_bool(path, f"agent_settings.{agent_name}", settings, agent_name)
+        _tell_once(
+            said,
+            _not_a_bool(path, f"agent_settings.{agent_name}", settings, agent_name),
+        )
         return False
     value = settings.get("code_tool")
     if value is None or isinstance(value, bool):
         return value
-    _tell_not_a_bool(path, f"agent_settings.{agent_name}.code_tool", value, agent_name)
+    _tell_once(
+        said,
+        _not_a_bool(path, f"agent_settings.{agent_name}.code_tool", value, agent_name),
+    )
     return False
 
 
-def _tell_once(path: Path, message: str) -> None:
-    if _told_unreadable.get(str(path)) == message:
-        return
-    _told_unreadable[str(path)] = message
-    logger.warning(message)
+def _told_for(path: Path, held: Any) -> set:
+    """The warnings already given for ``path`` while it holds ``held``."""
+    before, said = _told.get(str(path), (None, set()))
+    if before != held:
+        said = set()
+        _told[str(path)] = (held, said)
+    return said
 
 
-def _tell_not_a_bool(path: Path, key: str, value: Any, agent_name: str) -> None:
+def _tell_once(said: set, message: str) -> None:
+    if message not in said:
+        said.add(message)
+        logger.warning(message)
+
+
+def _not_a_bool(path: Path, key: str, value: Any, agent_name: str) -> str:
     from lobster.i18n import h
 
-    logger.warning(
-        h(
-            "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed."
-        ).format(file=path, key=key, kind=type(value).__name__, agent=agent_name)
-    )
+    return h(
+        "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed."
+    ).format(file=path, key=key, kind=type(value).__name__, agent=agent_name)
 
 
 def code_tool_enabled(
