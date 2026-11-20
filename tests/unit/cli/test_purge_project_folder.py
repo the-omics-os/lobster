@@ -403,3 +403,40 @@ def test_the_global_lobster_folders_are_still_removed(home):
 
     assert result.success, result.errors
     assert not any(f.exists() for f in folders)
+
+
+def test_purge_from_inside_a_project_removes_the_project_s_workspace(
+    project, monkeypatch
+):
+    # the workspace every other command uses from here
+    inner = project / "data" / "raw"
+    inner.mkdir()
+    monkeypatch.chdir(inner)
+
+    result = purge("--force")
+
+    assert result.exit_code == 0, result.output
+    assert not (project / ".lobster_workspace").exists()
+    assert not (inner / ".lobster_workspace").exists()
+    assert_user_files_kept(project)
+
+
+def test_purging_a_project_s_workspace_forgets_the_project(project, tmp_path):
+    other = tmp_path / "other"
+    projects.init_project(other)
+    assert {e.root for e in projects.registered_projects()} == {
+        str(project),
+        str(other),
+    }
+
+    result = purge("-w", str(project), "--force")
+
+    assert result.exit_code == 0, result.output
+    assert [e.root for e in projects.registered_projects()] == [str(other)]
+
+
+def test_a_dry_run_forgets_no_project(project):
+    result = purge("-w", str(project), "--dry-run")
+
+    assert result.exit_code == 0, result.output
+    assert [e.root for e in projects.registered_projects()] == [str(project)]
