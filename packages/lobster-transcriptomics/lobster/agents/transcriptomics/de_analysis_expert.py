@@ -1511,9 +1511,8 @@ def de_analysis_expert(
                 short = [
                     f"'{group}'"
                     for group, n in replicate_validation["group_counts"].items()
-                    if method == "deseq2"
-                    and n < min_replicates
-                    and group not in (group1, group2)
+                    # only deseq2 checked groups beyond the two compared
+                    if n < min_replicates and group not in (group1, group2)
                 ]
                 if short:
                     its = "it is" if len(short) == 1 else "they are"
