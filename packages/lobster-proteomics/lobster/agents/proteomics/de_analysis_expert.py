@@ -545,6 +545,9 @@ def de_analysis_expert(
 
             response += "**Results:**\n"
             response += f"- Tests performed: {tc_stats.get('n_tests_performed', 0)}\n"
+            response += _without_pvalue_text(
+                tc_stats, "a protein with the same value at every time point"
+            )
             response += f"- Significant time-dependent proteins: {tc_stats.get('n_significant_results', 0)}\n"
             response += (
                 f"- Significance rate: {tc_stats.get('significance_rate', 0):.1%}\n"

@@ -525,6 +525,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                 "n_time_points": len(time_points.unique()),
                 "time_range": (float(time_points.min()), float(time_points.max())),
                 "n_tests_performed": len(tc_results),
+                "n_tests_without_pvalue": _n_without_pvalue(tc_results),
                 "n_significant_results": len(significant_tc),
                 "significance_rate": (
                     len(significant_tc) / len(tc_results) if tc_results else 0.0
@@ -1354,10 +1355,10 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         X = np.array(time_points).reshape(-1, 1)
         y = np.array(protein_values)
 
-        # The same value at every time point: no trend (a perfect fit of slope 0
-        # gave p = 0)
+        # The same value at every time point: the slope's t is 0 / 0, so there is
+        # no p-value (a perfect fit of slope 0 gave p = 0)
         if np.ptp(y) == 0:
-            return 0.0, 1.0, 0.0
+            return 0.0, np.nan, np.nan
 
         # Fit linear regression
         reg = LinearRegression()
@@ -1401,6 +1402,11 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         """Perform polynomial trend test for time course analysis."""
         from sklearn.metrics import r2_score
         from sklearn.preprocessing import PolynomialFeatures
+
+        # The same value at every time point: F is 0 / 0, so there is no p-value
+        # (p = 1 came from the mse > 0 guard)
+        if np.ptp(np.asarray(protein_values)) == 0:
+            return np.nan, np.nan, np.nan
 
         # Fit polynomial regression (degree 2), convert Series to array if needed
         poly_features = PolynomialFeatures(degree=2)
