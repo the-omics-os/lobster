@@ -22,6 +22,20 @@ from lobster.testing.provenance_replay import factory_tools
 
 DE = "lobster.agents.proteomics.de_analysis_expert"
 T_TESTS = ["t_test", "welch_t_test", "anova"]
+# the advice after "...gives it no p-value"; limma_like borrows variance from
+# 10 proteins tested or more
+ADVICE = (
+    "; check {it} with limma_like, which borrows variance from the other "
+    "proteins, or with Mann-Whitney\n"
+)
+FEW_ADVICE = (
+    "; check {it} with Mann-Whitney (fewer than 10 proteins tested: limma_like "
+    "has no variance to borrow)\n"
+)
+LIMMA_FEW_ADVICE = (
+    " (fewer than 10 proteins tested: no variance to borrow); check {it} with "
+    "Mann-Whitney\n"
+)
 
 
 def _proteins(split):
@@ -108,25 +122,29 @@ def test_limma_like_with_a_prior_gives_a_split_protein_its_p_value():
 
 
 @pytest.mark.parametrize(
-    "method, adata, test",
+    "method, adata, test, advice",
     [
-        ("welch_t_test", _proteins(split=True), "Welch t-test"),
-        ("limma_like", _few(_proteins(split=True)), "limma-like test"),
+        ("welch_t_test", _proteins(split=True), "Welch t-test", ADVICE),
+        ("t_test", _few(_proteins(split=True)), "t-test", FEW_ADVICE),
+        (
+            "limma_like",
+            _few(_proteins(split=True)),
+            "limma-like test",
+            LIMMA_FEW_ADVICE,
+        ),
     ],
-    ids=["welch", "limma_without_prior"],
+    ids=["welch", "t_test_few_proteins", "limma_without_prior"],
 )
-def test_the_reply_names_the_test_that_ran(tmp_path, method, adata, test):
+def test_the_reply_names_the_test_that_ran_and_advises_for_it(
+    tmp_path, method, adata, test, advice
+):
     reply = _reply(tmp_path, adata, method)
 
     line = (
         "- Of the proteins tested, 1 has the same value in every sample of each "
         f"group (different between the groups): the {test} gives it no p-value"
     )
-    assert line in reply, reply
-    if method == "limma_like":
-        assert line + " (fewer than 10 proteins: no variance to borrow)\n" in reply
-    else:
-        assert line + "; check it with limma_like" in reply
+    assert line + advice.format(it="it") in reply, reply
 
 
 def test_mann_whitney_gives_a_split_protein_its_p_value():
@@ -165,10 +183,8 @@ def test_the_reply_names_a_split_protein(tmp_path, split):
 
     line = (
         "- Of the proteins tested, 1 has the same value in every sample of each "
-        "group (different between the groups): the t-test gives it no p-value; "
-        "check it with limma_like, which borrows variance from the other proteins "
-        "(it needs at least 10 proteins)\n"
-    )
+        "group (different between the groups): the t-test gives it no p-value"
+    ) + ADVICE.format(it="it")
     assert (line in reply) is split, reply
     assert ("the same value in every sample of each group" in reply) is split
 
@@ -208,7 +224,7 @@ def test_the_reply_counts_two_split_proteins(tmp_path):
 
     assert (
         "- Of the proteins tested, 2 have the same value in every sample of each "
-        "group (different between the groups): the t-test gives them no p-value; "
-        "check them with limma_like, which borrows variance from the other "
-        "proteins (it needs at least 10 proteins)\n" in reply
+        "group (different between the groups): the t-test gives them no p-value"
+        + ADVICE.format(it="them")
+        in reply
     ), reply
