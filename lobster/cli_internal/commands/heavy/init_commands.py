@@ -1252,8 +1252,7 @@ def _uv_tool_env_handoff(
 
     info = detect_uv_tool_env()
     if not info:
-        if not skip_extras:
-            console.print(f"  {_bold_command(_next_chat_text())}")
+        console.print(f"  {_bold_command(_next_chat_text())}")
         return  # Not in a tool env — nothing to do
 
     cmd = _build_uv_tool_init_command(
@@ -1269,8 +1268,7 @@ def _uv_tool_env_handoff(
     existing_cmd = _build_uv_tool_init_command(None, None)
     existing_cmd.insert(3, "--reinstall")
     if cmd == existing_cmd:
-        if not skip_extras:
-            console.print(f"  {_bold_command(_next_chat_text())}")
+        console.print(f"  {_bold_command(_next_chat_text())}")
         return
 
     if skip_extras:
@@ -1281,6 +1279,7 @@ def _uv_tool_env_handoff(
             markup=False,
             soft_wrap=True,
         )
+        console.print(f"  {_bold_command(_next_chat_text())}")
         return
 
     # The project first: the install ends the process, and Ctrl-C at the
@@ -1890,11 +1889,14 @@ def _print_init_summary(
         console.print(f"  {_bold_command(_next_chat_text())}")
 
 
-def _tool_install_follows(skip_extras: bool) -> bool:
-    """True when init ends with the uv tool install, which owns the next step."""
+def _tool_install_follows() -> bool:
+    """True when init ends with the uv tool command, which owns the next step.
+
+    The command is run, or with --skip-extras printed as "Install later".
+    """
     from lobster.core.uv_tool_env import is_uv_tool_env
 
-    return is_uv_tool_env() and not skip_extras
+    return is_uv_tool_env()
 
 
 def _failed_install_lines() -> List[str]:
@@ -3662,7 +3664,7 @@ def init_impl(
                 config_dict,
                 workspace_path,
                 summary_extras,
-                next_step=not _tool_install_follows(skip_extras),
+                next_step=not _tool_install_follows(),
             )
 
         _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
@@ -3782,7 +3784,7 @@ def init_impl(
                         _print_init_summary(
                             _tui_result,
                             _ws_path,
-                            next_step=not _tool_install_follows(skip_extras),
+                            next_step=not _tool_install_follows(),
                         )
                         if lamin_skipped:
                             console.print(
@@ -3873,7 +3875,7 @@ def init_impl(
                 _print_init_summary(
                     _q_result,
                     _ws_path,
-                    next_step=not _tool_install_follows(skip_extras),
+                    next_step=not _tool_install_follows(),
                 )
                 if is_uv_tool_env():
                     _uv_tool_env_handoff(
@@ -4515,8 +4517,8 @@ def init_impl(
             success_message += "\n".join(
                 f"[yellow]{_markup_escape(line)}[/yellow]" for line in failed_installs
             )
-        elif _in_uv_tool and not skip_extras:
-            pass  # the install says the next step
+        elif _in_uv_tool:
+            pass  # the uv tool command, run or printed, says the next step
         elif _in_other_folder():
             success_message += _bold_command(_next_chat_text())
         else:
