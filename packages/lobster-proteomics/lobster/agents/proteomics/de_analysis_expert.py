@@ -71,6 +71,21 @@ def _without_pvalue_text(stats: dict, why: str) -> str:
     return f"- Tests without a p-value: {n:,} ({why}); left out of the FDR correction\n"
 
 
+def _no_pvalue_refusal(what: str, n: int, stats: dict, cause: str, advice: str):
+    """The refusal when none of the ``n`` tests has a p-value, else None: there is
+    no result, so nothing is stored or logged."""
+    if not n or stats.get("n_tests_without_pvalue", 0) < n:
+        return None
+    tests = "test" if n == 1 else "tests"
+    return (
+        f"**{what} refused: no protein has a p-value.**\n\n"
+        f"Of {n:,} {tests}, none has a p-value: {cause}. {advice} "
+        "No result modality was stored."
+    )
+
+
+_FLAT_ADVICE = "Check the values loaded for this modality."
+
 _SPLIT_TEST_NAMES = {"welch_t_test": "Welch t-test", "limma_like": "limma-like test"}
 
 
@@ -280,6 +295,16 @@ def de_analysis_expert(
                     fold_change_threshold=fold_change_threshold,
                 )
             )
+
+            refusal = _no_pvalue_refusal(
+                "DE",
+                de_stats.get("total_tests_performed", 0),
+                de_stats,
+                "every protein has the same value in every sample compared",
+                _FLAT_ADVICE,
+            )
+            if refusal:
+                return refusal
 
             # Store result as new modality
             de_modality_name = f"{modality_name}_de_analysis"
@@ -518,6 +543,16 @@ def de_analysis_expert(
                 )
             )
 
+            refusal = _no_pvalue_refusal(
+                "Time course",
+                tc_stats.get("n_tests_performed", 0),
+                tc_stats,
+                "every protein has the same value at every time point",
+                _FLAT_ADVICE,
+            )
+            if refusal:
+                return refusal
+
             # Store result as new modality
             tc_modality_name = f"{modality_name}_time_course"
             data_manager.store_modality(
@@ -672,6 +707,30 @@ def de_analysis_expert(
                     min_correlation=correlation_threshold,
                 )
             )
+
+            # as the service reads it
+            target = adata_copy.obs[target_column].astype(float).dropna()
+            if target.nunique() > 1:
+                cause = "every protein has the same value in every sample"
+                advice = _FLAT_ADVICE
+            elif target.empty:
+                cause = f"'{target_column}' has no value"
+                advice = "Choose a target with a value in each sample."
+            else:
+                cause = (
+                    f"every value of '{target_column}' is the same "
+                    f"({target.iloc[0]:g}), so no protein can be correlated with it"
+                )
+                advice = "Choose a target that varies across samples."
+            refusal = _no_pvalue_refusal(
+                "Correlation",
+                corr_stats.get("n_tests_performed", 0),
+                corr_stats,
+                cause,
+                advice,
+            )
+            if refusal:
+                return refusal
 
             # Store result as new modality
             corr_modality_name = f"{modality_name}_correlation"
