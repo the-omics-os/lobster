@@ -484,6 +484,7 @@ class ProvenanceTracker:
         parameters: Optional[Dict[str, Any]] = None,
         description: Optional[str] = None,
         ir: Optional["AnalysisStep"] = None,
+        stored_modalities: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
         Create a new provenance activity record.
@@ -496,6 +497,8 @@ class ProvenanceTracker:
             parameters: Parameters used in the activity
             description: Human-readable description
             ir: Optional AnalysisStep Intermediate Representation for notebook export
+            stored_modalities: The modalities (``name``, ``parent``) the session
+                stored while the tool ran; recorded only when given
 
         Returns:
             str: Unique activity ID
@@ -541,6 +544,8 @@ class ProvenanceTracker:
             "description": description,
             "software_versions": self._get_software_versions(),
         }
+        if stored_modalities:
+            activity["stored_modalities"] = [dict(entry) for entry in stored_modalities]
 
         # Store IR if provided (serialize to dict for JSON compatibility)
         if ir is not None:

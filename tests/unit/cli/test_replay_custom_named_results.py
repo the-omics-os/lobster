@@ -67,13 +67,8 @@ def _ran(out):
     assert out["verdict"] != "NOTEBOOK_FAILED", out
 
 
-def _custom_slot_diffs(out, name):
-    return [
-        d
-        for slot in out["report"]["slots"]
-        if name in json.dumps(slot.get("name", slot))
-        for d in slot.get("diffs", [])
-    ]
+def _diffs(out):
+    return [d for slot in out["report"]["slots"] for d in slot.get("diffs", [])]
 
 
 def _cells(tmp_path, monkeypatch):
@@ -125,7 +120,10 @@ def test_a_read_of_the_saved_markers_replays(tmp_path, monkeypatch):
         "result = {'n_groups': len(names.dtype.names), 'first': str(names[0][0])}\n",
         "transcriptomics_expert",
     )
-    _ran(_replay(dm, source))
+    out = _replay(dm, source)
+    _ran(out)
+    # MATCH, or only the PCA variances' float noise every clustered session shows
+    assert all("/uns/pca/variance" in d for d in _diffs(out)), _diffs(out)
 
 
 def _bulk(tmp_path, monkeypatch, resumed=False):

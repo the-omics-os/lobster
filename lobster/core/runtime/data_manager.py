@@ -933,6 +933,10 @@ class DataManagerV2:
         # then, per anchored import, the entity and the sample modalities it merged
         self._geo_sample_files: List[Tuple[str, str]] = []
         self._anchored_samples: Dict[str, Tuple[str, set]] = {}
+        # (name, parent) of the modalities stored since the last tool was logged:
+        # that tool's activity records them, so an export knows which modality a
+        # step made when its IR names its result only by a variable
+        self._stored_since_log: List[Dict[str, Optional[str]]] = []
 
         # Client session identity shown in notebook exports. Only the owning client
         # binds it (bind_client_session); the timestamp session_id above is not it.
@@ -2102,6 +2106,10 @@ class DataManagerV2:
             if hasattr(self.modalities, "move_to_end"):
                 self.modalities.move_to_end(name)
             self._evict_lru_if_needed()
+        if isinstance(getattr(self, "_stored_since_log", None), list):
+            self._stored_since_log.append(
+                {"name": str(name), "parent": str(parent_name) if parent_name else None}
+            )
 
         if self._modality_backend is not None:
             try:
@@ -3652,6 +3660,10 @@ class DataManagerV2:
             incrementally, and
             ``tests/unit/core/test_provenance_attribution_contract.py`` holds the audited set.
         """
+        stored = None
+        if tool_name != "save_dataset":  # a tool saves what it stored, then logs
+            stored = getattr(self, "_stored_since_log", None) or None
+            self._stored_since_log = []
         if self.provenance:
             activity_id = self.provenance.create_activity(
                 activity_type=tool_name,
@@ -3659,6 +3671,7 @@ class DataManagerV2:
                 parameters=parameters,
                 description=description or f"{tool_name} operation",
                 ir=ir,
+                **({"stored_modalities": stored} if stored else {}),
             )
 
             # AQUADIF monitoring: observe provenance call (fail-open)

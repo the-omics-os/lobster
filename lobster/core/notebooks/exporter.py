@@ -110,13 +110,20 @@ print(f"Saved processed data to: {{output_path}}")
 """
 
 
-def _keep_cell(names: List[str], first: bool) -> NotebookNode:
+def _keep_cell(
+    names: List[str], first: bool, sources: Optional[Dict[str, str]] = None
+) -> NotebookNode:
     """Keep a copy of each named modality: a later step starts from it, or the
-    session saved it before later steps changed it."""
+    session saved it before later steps changed it. ``sources`` names the
+    variable a step left a modality in, when not ``adata``."""
+    sources = sources or {}
     lines = ["# Keep a copy for a later step that starts from it, or for the save."]
     if first:
         lines.append("_kept_modalities = {}")
-    lines += [f"_kept_modalities[{name!r}] = adata.copy()" for name in names]
+    lines += [
+        f"_kept_modalities[{name!r}] = {sources.get(name, 'adata')}.copy()"
+        for name in names
+    ]
     return new_code_cell("\n".join(lines))
 
 
@@ -620,7 +627,7 @@ class NotebookExporter:
             and id(activity) not in unrun
             and isinstance(ir.parameters.get("code"), str)  # else rendered as recorded
         }
-        keep, rebind, save_at, read_plans = self._lineage(
+        keep, rebind, save_at, read_plans, keep_vars = self._lineage(
             [activity for _, activity, _ in steps], list(saves), custom
         )
         placed = set()
@@ -649,7 +656,13 @@ class NotebookExporter:
                     notebook.cells.append(cell)
                     placed.add(name)
             if position in keep:
-                notebook.cells.append(_keep_cell(keep[position], first=not kept_any))
+                notebook.cells.append(
+                    _keep_cell(
+                        keep[position],
+                        first=not kept_any,
+                        sources=keep_vars.get(position),
+                    )
+                )
                 kept_any = True
 
         after(-1)
@@ -1594,6 +1607,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         Dict[int, str],
         Dict[int, List[str]],
         Dict[int, Dict[str, str]],
+        Dict[int, Dict[str, str]],
     ]:
         """Where the step cells must keep, restore and save modalities.
 
@@ -1615,7 +1629,13 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         reads comes from as of that step: ``input`` (the loaded input, not remade
         since), ``adata``, ``kept`` (a copy kept where it was last made) or
         ``missing``; under -1, the custom steps' ``modality_name`` the notebook
-        does not compute.
+        does not compute. For a custom step only, a step whose recorded output
+        is not ``adata`` made the modality its parameters name as the result
+        (``result_modality_name``, ...) or else the one modality the session
+        stored during it; it is kept from the variable the step's code assigns
+        that output to, else from ``adata`` (the fifth result: position ->
+        name -> variable). A step neither names stays unknown: the custom step
+        stops on a read of it.
         """
         custom = custom or {}
         held: Optional[str] = None  # the modality adata holds
@@ -1626,13 +1646,24 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         plans: Dict[int, Dict[str, str]] = {-1: {}}
         loaded: Optional[str] = None
         self_kept: set = set()  # kept by the custom cell that made them
+        named_at: Dict[str, Tuple[int, str]] = {}  # non-adata results: (where, var)
+        keep_vars: Dict[int, Dict[str, str]] = {}
 
-        def keep_at(where: int, name: str) -> None:
+        def keep_at(where: int, name: str, var: str = "adata") -> None:
             if name in self_kept:
                 return
             names = keep.setdefault(where, [])
             if name not in names:
                 names.append(name)
+            if var != "adata":
+                keep_vars.setdefault(where, {})[name] = var
+
+        def latest(name: str) -> Optional[Tuple[int, str]]:
+            """Where the notebook last made ``name`` and in which variable."""
+            found = [(made_at[name], "adata")] if name in made_at else []
+            if name in named_at:
+                found.append(named_at[name])
+            return max(found) if found else None
 
         for position, activity in enumerate(steps):
             if position in custom:
@@ -1647,6 +1678,10 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             if source and source != held and source in made_at:
                 keep_at(made_at[source], source)
                 rebind[position] = held = source
+            elif position in custom and source and source != held and latest(source):
+                where, var = latest(source)
+                keep_at(where, source, var)
+                rebind[position] = held = source
             if position in custom:
                 if source and source != held:  # not computed by this notebook
                     plans[-1][source] = "missing"
@@ -1656,8 +1691,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                         plan[name] = "input"
                     elif name == held:
                         plan[name] = "adata"
-                    elif name in made_at:
-                        keep_at(made_at[name], name)
+                    elif latest(name):
+                        where, var = latest(name)
+                        keep_at(where, name, var)
                         plan[name] = "kept"
                     else:
                         plan[name] = "missing"
@@ -1669,6 +1705,10 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 if written_back:
                     made_at[written_back] = saved_made_at[written_back] = position
                     self_kept.add(written_back)
+            elif position not in custom:
+                named = cls._named_result(activity, source)
+                if named:
+                    named_at[named] = (position, cls._result_var(activity))
             if result:
                 self_kept.discard(result)
                 held, made_at[result] = result, position
@@ -1681,7 +1721,47 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         for name in saved:
             if name in saved_made_at:
                 save_at.setdefault(saved_made_at[name], []).append(name)
-        return keep, rebind, save_at, plans
+        return keep, rebind, save_at, plans, keep_vars
+
+    @staticmethod
+    def _named_result(activity: Dict[str, Any], source: Optional[str]) -> Optional[str]:
+        """The modality a step made under its own name: the result its parameters
+        name, else the one modality the session stored during the step as made
+        from the step's input (``source``, else its ``modality_name`` parameter;
+        ``stored_modalities``, recorded since 1.3.0 b7). None when neither says,
+        or more than one was made."""
+        from lobster.core.provenance.provenance import ProvenanceTracker
+
+        params = activity.get("parameters") or {}
+        for key in ProvenanceTracker._OUTPUT_PARAM_KEYS:
+            if isinstance(params.get(key), str) and params[key]:
+                return params[key]
+        if not source and isinstance(params.get("modality_name"), str):
+            source = params["modality_name"]
+        made = {
+            str(entry.get("name"))
+            for entry in activity.get("stored_modalities") or []
+            if isinstance(entry, dict)
+            and source
+            and entry.get("parent") == source
+            and entry.get("name") not in (None, source)
+        }
+        return made.pop() if len(made) == 1 else None
+
+    @classmethod
+    def _result_var(cls, activity: Dict[str, Any]) -> str:
+        """The variable a step's code leaves its result in: its recorded output
+        when the code assigns it (``adata_x, stats, _ = ...``), else ``adata``."""
+        outputs = cls._ir_field(activity, "output_entities") or []
+        template = str(cls._ir_field(activity, "code_template") or "")
+        for output in outputs[:1]:
+            if isinstance(output, str) and output.isidentifier():
+                target = (
+                    rf"^[ \t]*(?:[\w ]+,\s*)*{re.escape(output)}\s*(?:,[\w ,]*)?=[^=]"
+                )
+                if re.search(target, template, re.M):
+                    return output
+        return "adata"
 
     @staticmethod
     def _split_saves(emitted_irs: Optional[List[AnalysisStep]]) -> set:
