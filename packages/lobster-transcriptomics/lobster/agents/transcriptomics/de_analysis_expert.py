@@ -173,6 +173,20 @@ def _unmodelled_covariates_text(obs, groupby) -> str:
     )
 
 
+def _no_gene_tested_refusal(adata, adata_de, floor: float):
+    """No gene passed the service's expression pre-filter: there is no DE result."""
+    if adata_de.n_vars:
+        return None
+    return (
+        "**DE refused: no gene was tested.**\n\n"
+        f"Of {adata.n_vars:,} genes, no gene has a value above {floor} in at least "
+        "2 samples, so the expression pre-filter kept none. Wilcoxon and t-test "
+        "expect counts or log-scale values; these look scaled or fractional. "
+        "Use deseq2 on raw counts, or run on unscaled values. "
+        "No result modality was stored."
+    )
+
+
 def _plain(value: Any) -> Any:
     """Convert numpy scalars/containers into plain Python for IR literals."""
     if isinstance(value, dict):
@@ -1510,6 +1524,7 @@ def de_analysis_expert(
                 # every bulk sample: off on every path here (samples, pseudobulk,
                 # a prepared design), so every gene is tested and reported.
                 bulk_filters = {
+                    "min_expression_threshold": 1.0,
                     "min_fold_change": 1.0,
                     "min_pct_expressed": 0.0,
                     "max_out_pct_expressed": 1.0,
@@ -1526,6 +1541,11 @@ def de_analysis_expert(
                     )
                 )
 
+                refusal = _no_gene_tested_refusal(
+                    adata, adata_de, bulk_filters["min_expression_threshold"]
+                )
+                if refusal:
+                    return refusal
                 adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
                 ir = _with_current_de_ir(ir, de_stats["de_results_key"])
                 # Save as new modality (name derived and checked before the analysis)
