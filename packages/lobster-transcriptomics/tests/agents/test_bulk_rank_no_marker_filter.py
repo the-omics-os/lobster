@@ -121,3 +121,34 @@ def test_single_cell_markers_keep_their_filters(tmp_path):
     assert "Positive log2FC > 1.5" in reply, reply
     assert "In-group expression fraction > 0.25" in reply
     assert "Out-group expression fraction < 0.5" in reply
+
+
+@pytest.mark.parametrize("save", [False, True])
+@pytest.mark.parametrize("method", ["wilcoxon", "t_test"])
+def test_no_gene_tested_is_refused_with_its_cause(tmp_path, monkeypatch, method, save):
+    """Every value <= 1 (c2 / 1e4): the expression pre-filter keeps no gene. That is
+    no DE result: refused, naming the pre-filter, nothing stored or saved."""
+    monkeypatch.chdir(tmp_path)
+    adata = _c2()
+    adata.X = adata.X / 1e4
+    adata.layers["counts"] = adata.X.copy()
+    adata.uns["is_pseudobulk"] = True
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.store_modality("bulk", adata)
+    tools = factory_tools(de_analysis_expert, DE, dm)
+    reply = tools["run_differential_expression"].invoke(
+        {
+            "modality_name": "bulk",
+            "groupby": "condition",
+            "group1": "ctrl",
+            "group2": "treat",
+            "method": method,
+            "save_result": save,
+        }
+    )
+    assert reply.startswith("**DE refused: no gene was tested.**"), reply
+    assert "no gene has a value above 1.0 in at least 2 samples" in reply
+    assert "2,000 genes" in reply
+    assert "Complete" not in reply
+    assert dm.list_modalities() == ["bulk"]
+    assert not list(dm.data_dir.glob("*.h5ad"))
