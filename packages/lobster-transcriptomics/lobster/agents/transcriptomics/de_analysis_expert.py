@@ -183,10 +183,10 @@ def _no_gene_tested_refusal(adata, adata_de, de_stats, floor: float):
         )
     elif passed:
         cause = (
-            f"{passed:,} passed the expression pre-filter, but none has a finite "
-            "fold change: the fold change log2((mean2 + 1) / (mean1 + 1)) is not "
-            "a number when one group's mean is below -1, as with centred or "
-            "signed values. So no result can be reported"
+            f"{passed:,} passed the expression pre-filter, but none has a fold "
+            "change that is a number: the fold change log2((mean2 + 1) / "
+            "(mean1 + 1)) is not a number when one group's mean is below -1, as "
+            "with centred or signed values. So no result can be reported"
         )
     else:
         cause = (

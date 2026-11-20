@@ -124,7 +124,7 @@ def test_single_cell_markers_keep_their_filters(tmp_path):
 
 
 PREFILTER = "no gene has a value above 1.0 in at least 2 samples"
-FOLD_CHANGE = "none has a finite fold change"
+FOLD_CHANGE = "none has a fold change that is a number"
 
 
 def _no_gene_case(case):
@@ -183,7 +183,8 @@ def test_no_gene_tested_is_refused_with_its_cause(
         assert FOLD_CHANGE in reply and PREFILTER not in reply, reply
         assert (
             "Of 2,000 genes, 2,000 passed the expression pre-filter, but none has "
-            "a finite fold change: the fold change log2((mean2 + 1) / (mean1 + 1)) "
+            "a fold change that is a number: the fold change "
+            "log2((mean2 + 1) / (mean1 + 1)) "
             "is not a number when one group's mean is below -1, as with centred or "
             "signed values. So no result can be reported. Wilcoxon and t-test "
             "expect counts or log-scale values. Use deseq2 on raw counts, or run "
