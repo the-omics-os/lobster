@@ -8,6 +8,7 @@ loaded target is skipped with a warning, never overwritten, never raised.
 
 import hashlib
 import logging
+import os
 
 import anndata as ad
 import numpy as np
@@ -582,3 +583,75 @@ def test_no_validation_split_needs_no_validation_name(ws):
 
     assert "Successfully created ML data splits" in reply, reply
     assert {"x_train", "x_test"} <= set(dm.list_modalities())
+
+
+def _given_inode(monkeypatch, path, ino):
+    """``path`` reports inode ``ino``: ext4 and overlay hand a freed inode (a
+    loaded file deleted, or rewritten by os.replace as the H5AD backend saves)
+    straight to the next new file."""
+    real = os.stat
+
+    def stat(p, *args, **kwargs):
+        st = real(p, *args, **kwargs)
+        if os.path.abspath(p) != os.path.abspath(path):
+            return st
+        fields = list(st)
+        fields[1] = ino  # st_ino
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(os, "stat", stat)
+
+
+def test_a_new_file_given_a_deleted_loaded_files_inode_is_not_loaded(ws, monkeypatch):
+    dm = DataManagerV2(workspace_path=ws)
+    loaded = dm.data_dir / "x.h5ad"
+    ino = os.stat(loaded).st_ino
+    loaded.unlink()
+    other = dm.data_dir / "y.h5ad"
+    _adata().write_h5ad(other)
+    _given_inode(monkeypatch, other, ino)
+
+    assert dm.recorded_input("y.h5ad") is None
+
+
+def test_a_file_given_the_inode_a_rewrite_freed_can_be_saved_again(ws, monkeypatch):
+    dm = DataManagerV2(workspace_path=ws)
+    loaded = dm.data_dir / "x.h5ad"
+    ino = os.stat(loaded).st_ino
+    _adata(shift=3.0).write_h5ad(dm.data_dir / "x.tmp")
+    os.replace(
+        dm.data_dir / "x.tmp", loaded
+    )  # the loaded path stays; its inode is freed
+    dm.modalities["y"] = _adata(shift=4.0)
+    dm.save_modality("y", "y.h5ad")
+    _given_inode(monkeypatch, dm.data_dir / "y.h5ad", ino)
+
+    assert dm.recorded_input("y.h5ad") is None
+    assert dm.recorded_input("x.h5ad") == "x"  # still caught by its path
+    dm.modalities["y"] = _adata(shift=5.0)
+    dm.save_modality("y", "y.h5ad")
+    assert ad.read_h5ad(dm.data_dir / "y.h5ad").X[0, 0] == _adata(5.0).X[0, 0]
+
+
+def test_a_hard_link_of_a_loaded_file_is_the_loaded_file(ws):
+    dm = DataManagerV2(workspace_path=ws)
+    os.link(dm.data_dir / "x.h5ad", dm.data_dir / "alias.h5ad")
+    dm.modalities["y"] = _adata(shift=2.0)
+
+    assert dm.recorded_input("alias.h5ad") == "x"
+    with pytest.raises(RecordedInputError):
+        dm.save_modality("y", "alias.h5ad")
+
+
+def test_a_file_loaded_again_by_another_name_is_known_by_the_latest(ws):
+    dm = DataManagerV2(workspace_path=ws)
+    os.link(dm.data_dir / "x.h5ad", dm.data_dir / "alias.h5ad")
+    dm.load_modality(
+        "z",
+        str(dm.data_dir / "alias.h5ad"),
+        adapter="transcriptomics_bulk",
+        validate=False,
+    )
+
+    assert dm.recorded_input("x.h5ad") == "z"
+    assert dm.recorded_input("alias.h5ad") == "z"

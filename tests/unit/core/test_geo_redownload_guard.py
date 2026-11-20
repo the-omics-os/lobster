@@ -171,3 +171,19 @@ def test_a_single_sample_into_its_loaded_file_is_refused_before_it_is_stored(
 
     assert "data/gsm7_sample.h5ad is a file this session loaded" in reply, reply
     assert _state(dm) == before
+
+
+def test_a_required_import_with_a_sample_file_loaded_is_refused_before_a_download(
+    tmp_path, no_network
+):
+    dm = _resumed_with_sample_file(tmp_path)
+    before = _state(dm)
+    service = GEOService(data_manager=dm, cache_dir=str(tmp_path / "cache"))
+
+    with pytest.raises(ImportRequirementNotMet) as refused:
+        service.download_dataset("GSE1", data_requirement="gene_counts")
+
+    assert "already partly loaded: sample GSM2 as modality 'gse1_gsm2_raw'" in str(
+        refused.value
+    )
+    assert _state(dm) == before
