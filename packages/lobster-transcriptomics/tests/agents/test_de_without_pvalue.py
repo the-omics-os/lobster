@@ -18,6 +18,20 @@ from .test_bulk_de_empty_filter import counts
 from .test_bulk_rank_no_marker_filter import _c2
 from .test_de_genes_tested_line import _run, _stored_rows, _tested_line
 
+MISSING = (
+    "Remove the genes with missing values, or fill them, before testing; or "
+    "import complete raw counts and use deseq2. No result modality was stored."
+)
+SIGNED = (
+    "Wilcoxon and t-test expect counts or log-scale values. Use deseq2 on raw "
+    "counts, or run on unscaled values. No result modality was stored."
+)
+BOTH = (
+    "Remove the genes with missing values, and run on counts or log-scale values "
+    "rather than centred or scaled ones; deseq2 on complete raw counts avoids "
+    "both. No result modality was stored."
+)
+
 FILTERS = {
     "min_expression_threshold": 1.0,
     "min_fold_change": 1.0,
@@ -155,8 +169,7 @@ def test_a_refusal_for_both_reasons_counts_each(tmp_path, monkeypatch):
         "Of 500 genes, 500 passed the expression pre-filter, but none can be "
         "reported: 200 have no p-value (a t-test gives none for a gene with the "
         "same value in every sample) and the fold change of the other 300 is not "
-        "a number (a missing value, or one group's mean below -1, as with centred "
-        "or signed values)." in reply
+        "a number (300 with a group mean below -1). " + SIGNED in reply
     ), reply
 
 
@@ -238,9 +251,12 @@ def test_a_refusal_for_missing_values_names_them(tmp_path, monkeypatch, method):
 
     assert reply.startswith("**DE refused: no gene was tested.**"), reply
     assert (
-        "the fold change log2((mean2 + 1) / (mean1 + 1)) is not a number when a "
-        "gene has a missing value, or when one group's mean is below -1" in reply
+        "Of 500 genes, 500 passed the expression pre-filter, but none has a fold "
+        "change that is a number (500 with a missing value): the fold change "
+        "log2((mean2 + 1) / (mean1 + 1)) is not a number when a gene has a "
+        "missing value. So no result can be reported. " + MISSING in reply
     ), reply
+    assert "below -1" not in reply and "centred" not in reply, reply
 
 
 def test_a_refusal_for_both_reasons_names_missing_values(tmp_path, monkeypatch):
@@ -251,8 +267,38 @@ def test_a_refusal_for_both_reasons_names_missing_values(tmp_path, monkeypatch):
     _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
 
     assert (
-        "the fold change of the other 300 is not a number (a missing value, or "
-        "one group's mean below -1, as with centred or signed values)" in reply
+        "the fold change of the other 300 is not a number (300 with a missing "
+        "value). " + MISSING in reply
+    ), reply
+
+
+def test_a_refusal_for_both_fold_change_causes_counts_each(tmp_path, monkeypatch):
+    adata = counts("bulk_all_expressed")
+    adata.X[0, :300] = np.nan  # 300: a missing value
+    adata.X[:3, 300:] = -5  # the other 200: a group mean below -1
+    adata.X[3:, 300:] = 10
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert (
+        "but none has a fold change that is a number (300 with a missing value, "
+        "200 with a group mean below -1): the fold change log2((mean2 + 1) / "
+        "(mean1 + 1)) is not a number when a gene has a missing value, or when "
+        "one group's mean is below -1, as with centred or signed values. So no "
+        "result can be reported. " + BOTH in reply
+    ), reply
+
+
+def test_an_input_with_every_value_missing_says_so(tmp_path, monkeypatch):
+    adata = counts("bulk_all_expressed")
+    adata.X[:] = np.nan
+
+    _, reply = _run(tmp_path, monkeypatch, adata, "t_test", pseudobulk=True)
+
+    assert (
+        "Of 500 genes, no gene has a value above 1.0 in at least 2 samples "
+        "(every value is missing), so the expression pre-filter kept none. " + MISSING
+        in reply
     ), reply
 
 
