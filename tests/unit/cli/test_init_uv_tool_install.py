@@ -708,3 +708,23 @@ def test_picked_packages_under_uv_tool_are_left_for_the_one_reinstall(
     command = init_commands._build_uv_tool_init_command(None, selected)
     assert "lobster-research>=1.3.0" in command
     assert "lobster-transcriptomics>=1.3.0" in command
+
+
+def test_lamin_under_uv_tool_is_in_the_one_reinstall_only(tool_env):
+    """A separate lamin line would drop the picked packages when run."""
+    result = _init()
+
+    assert result.exit_code == 0, result.output
+    assert "LaminDB catalog: on." in result.output
+    assert "LaminDB is not installed yet" not in result.output
+    [command] = tool_env.installs
+    assert "lobster-ai[lamin]>=1.3.0" in command
+    assert "lobster-transcriptomics>=1.3.0" in command
+
+
+def test_lamin_under_uv_tool_with_skip_extras_still_names_the_install(tool_env):
+    result = _init("--skip-extras")
+
+    assert result.exit_code == 0, result.output
+    assert tool_env.installs == []
+    assert "LaminDB is not installed yet" in result.output
