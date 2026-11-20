@@ -378,3 +378,24 @@ def test_a_pre_filter_refusal_says_every_value_is_missing_only_then(
 
     assert "the expression pre-filter kept none. " + SIGNED in reply, reply
     assert "every value is missing" not in reply, reply
+
+
+def test_a_missing_value_in_a_group_not_compared_is_not_counted(tmp_path, monkeypatch):
+    adata = _c2()
+    adata.obs["condition"] = ["ctrl"] * 4 + ["other"] * 4 + ["treat"] * 4
+    adata.X[4:8, :] = np.nan  # every value of the other group
+    monkeypatch.chdir(tmp_path)
+
+    out, stats, _ = BulkRNASeqService(
+        results_dir=str(tmp_path / "results")
+    ).run_differential_expression_analysis(
+        adata=adata,
+        groupby="condition",
+        group1="ctrl",
+        group2="treat",
+        method="t_test",
+        **FILTERS,
+    )
+
+    assert stats["n_genes_with_missing_value"] == 0
+    assert out.n_vars == 2000
