@@ -94,3 +94,23 @@ AVAILABLE_AGENT_PACKAGES = [
         True,
     ),
 ]
+
+# The child agents the graph adds with each agent above (its AgentConfig.child_agents),
+# known here before the package is installed.
+CHILD_AGENTS = {
+    "research_agent": ("metadata_assistant",),
+    "data_expert_agent": ("metadata_assistant",),
+    "transcriptomics_expert": ("annotation_expert", "de_analysis_expert"),
+    "genomics_expert": ("variant_analysis_expert",),
+    "proteomics_expert": (
+        "proteomics_de_analysis_expert",
+        "biomarker_discovery_expert",
+        "peptide_expert",
+    ),
+    "machine_learning_expert": ("feature_selection_expert", "survival_analysis_expert"),
+    "drug_discovery_expert": (
+        "cheminformatics_expert",
+        "clinical_dev_expert",
+        "pharmacogenomics_expert",
+    ),
+}

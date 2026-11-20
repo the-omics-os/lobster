@@ -187,6 +187,52 @@ def _agents_flag_list(agents_flag: Optional[str]) -> list[str]:
     )
 
 
+def _check_agents_flag(agents: Optional[str], preset: Optional[str]) -> None:
+    """Before anything is written: ``--agents`` next to ``--preset`` is ignored, and
+    a name that is no expert is refused."""
+    if not agents:
+        return
+    if preset:
+        console.print(
+            h("[yellow]--agents is ignored because --preset is given.[/yellow]")
+        )
+        return
+    known = {a for _, _, provided, _, _ in _CATALOG for a in provided}
+    unknown = [a for a in _agents_flag_list(agents) if a not in known]
+    if unknown:  # an expert from a package of the user's own
+        unknown = [a for a in unknown if a not in _get_installed_agents()]
+    if unknown:
+        console.print(
+            h(
+                "[red]--agents names an unknown expert: {names}. Nothing was changed; lobster agents list shows the experts.[/red]"
+            ).format(names=_markup_escape(", ".join(unknown))),
+            soft_wrap=True,
+        )
+        raise typer.Exit(1)
+
+
+def _say_left_out(agents: list[str]) -> None:
+    """Name the experts of the list's packages that the list leaves off; child
+    agents come with their parent."""
+    from lobster.cli_internal.agent_packages import CHILD_AGENTS
+
+    present = set(agents).union(*(CHILD_AGENTS.get(a, ()) for a in agents))
+    left_out = [
+        a
+        for _, _, provided, _, _ in _CATALOG
+        if present & set(provided)
+        for a in provided
+        if a not in present
+    ]
+    if left_out:
+        console.print(
+            h(
+                "[yellow]--agents leaves out {names} from the same package, so they stay off; add them to --agents to turn them on.[/yellow]"
+            ).format(names=", ".join(left_out)),
+            soft_wrap=True,
+        )
+
+
 def _starting_packages(
     workspace_path: Optional[Path],
     preset: Optional[str] = None,
@@ -249,6 +295,7 @@ def _kept_choice(
     if not agents or not picked:
         return picked, None
     if set(_packages_of(picked)) == set(_packages_of(agents)):
+        _say_left_out(agents)
         return agents, None
     console.print(h("[dim]--agents is replaced by the packages you picked.[/dim]"))
     return picked, None
@@ -627,8 +674,7 @@ def _perform_agent_selection_non_interactive(
         return expanded, preset_flag
 
     elif agents_flag:
-        # Parse comma-separated list
-        agents = [a.strip() for a in agents_flag.split(",") if a.strip()]
+        agents = _agents_flag_list(agents_flag)
         if not agents:
             console.print(h("[red]No agents specified in --agents flag[/red]"))
             raise typer.Exit(1)
@@ -638,6 +684,7 @@ def _perform_agent_selection_non_interactive(
                 len=len(agents), join=", ".join(agents)
             )
         )
+        _say_left_out(agents)
         return agents, None
 
     elif auto_agents_flag:
@@ -2938,6 +2985,7 @@ def init_impl(
             auto_agents,
             lamin,
         )
+    _check_agents_flag(agents, preset)
 
     # Determine paths based on global vs workspace mode
     if global_config:

@@ -2240,5 +2240,8 @@
   "Steps recorded with code this Lobster no longer writes are left out (steps: {steps}); replay cannot check this notebook.": "记录的代码此版本 Lobster 已不再写出的步骤已被略去（步骤：{steps}）；replay 无法检查此 notebook。",
   "This notebook leaves out a step recorded with code this Lobster no longer writes, so a replay cannot check it; it was not run.": "此 notebook 略去了一个记录的代码此版本 Lobster 已不再写出的步骤，因此 replay 无法检查它；notebook 未运行。",
   "None of this project's experts ({names}) are installed; run lobster agents install <package> or lobster init --force.": "此项目的专家（{names}）均未安装；请运行 lobster agents install <package> 或 lobster init --force。",
-  "[yellow]Interrupted while saving the setup; run lobster init --force to finish it.[/yellow]": "[yellow]保存设置时被中断；请运行 lobster init --force 完成设置。[/yellow]"
+  "[yellow]Interrupted while saving the setup; run lobster init --force to finish it.[/yellow]": "[yellow]保存设置时被中断；请运行 lobster init --force 完成设置。[/yellow]",
+  "[yellow]--agents is ignored because --preset is given.[/yellow]": "[yellow]已指定 --preset，因此忽略 --agents。[/yellow]",
+  "[red]--agents names an unknown expert: {names}. Nothing was changed; lobster agents list shows the experts.[/red]": "[red]--agents 指定了未知的专家：{names}。未做任何更改；运行 lobster agents list 可查看所有专家。[/red]",
+  "[yellow]--agents leaves out {names} from the same package, so they stay off; add them to --agents to turn them on.[/yellow]": "[yellow]--agents 未包含同一软件包中的 {names}，它们将保持关闭；如需启用，请将其加入 --agents。[/yellow]"
 }
