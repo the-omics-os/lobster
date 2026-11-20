@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Optional, Sequence
 
 from lobster.cli_internal.agent_packages import DEFAULT_AGENT_PACKAGES
 from lobster.i18n import h
@@ -89,12 +89,17 @@ def _has_omics_os_account(questionary) -> bool:
 
 
 def run_questionary_init(
-    manifest: WizardManifest, *, lamin_default: Optional[bool] = None
+    manifest: WizardManifest,
+    *,
+    lamin_default: Optional[bool] = None,
+    agent_packages: Optional[Sequence[str]] = None,
 ) -> dict:
     """Run questionary-based init wizard using WizardManifest data.
 
     Returns the same dict structure as the Go TUI wizard. The LaminDB question is
     asked only when ``lamin_default`` is given (the answer it starts at).
+    ``agent_packages`` are the packages ticked at the start (default: the
+    DEFAULT_AGENT_PACKAGES).
 
     Raises:
         ImportError: when ``questionary`` is not installed.
@@ -294,6 +299,7 @@ def run_questionary_init(
         # ================================================================== #
         # Step 5 — Agent packages (from manifest)                            #
         # ================================================================== #
+        ticked = DEFAULT_AGENT_PACKAGES if agent_packages is None else agent_packages
         agent_choices = []
         for pkg in manifest.agent_packages:
             exp_tag = " [experimental]" if pkg.experimental else ""
@@ -301,7 +307,7 @@ def run_questionary_init(
                 f"({len(pkg.agents)} agent{'s' if len(pkg.agents) != 1 else ''})"
             )
             label = f"{pkg.package_name}{exp_tag:<26} {pkg.description} {agents_str}"
-            checked = pkg.package_name in DEFAULT_AGENT_PACKAGES
+            checked = pkg.package_name in ticked
             agent_choices.append(
                 questionary.Choice(label, value=pkg.package_name, checked=checked)
             )

@@ -278,6 +278,10 @@ const askLangEnv = "LOBSTER_INIT_ASK_LANG"
 // starts at. Unset: not asked, and the result carries no answer.
 const laminEnv = "LOBSTER_INIT_LAMIN"
 
+// packagesEnv names the agent packages ticked at the start, comma-separated
+// (the workspace's saved experts). Unset or empty: each package's Default.
+const packagesEnv = "LOBSTER_INIT_PACKAGES"
+
 const laminTitle = "LaminDB catalog"
 
 // laminText is the same English text as lamin_commands.init_question (one zh entry).
@@ -662,8 +666,19 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 // buildAgentSelect builds the agent package list in the current language.
 func buildAgentSelect(activeTheme *lobsterTheme.Theme) multiSelectModel {
 	warningStyle := lipgloss.NewStyle().Foreground(activeTheme.Colors.Warning).Bold(true)
+	var saved map[string]bool
+	if env := os.Getenv(packagesEnv); env != "" {
+		saved = map[string]bool{}
+		for _, name := range strings.Split(env, ",") {
+			saved[strings.TrimSpace(name)] = true
+		}
+	}
 	items := make([]multiSelectItem, 0, len(initAgentPackages()))
 	for _, pkg := range initAgentPackages() {
+		selected := pkg.Default
+		if saved != nil {
+			selected = saved[pkg.Name]
+		}
 		agentCount := len(pkg.Agents)
 		agentLabel := i18n.P("agents")
 		if agentCount == 1 {
@@ -676,7 +691,7 @@ func buildAgentSelect(activeTheme *lobsterTheme.Theme) multiSelectModel {
 		items = append(items, multiSelectItem{
 			label:    label,
 			value:    pkg.Name,
-			selected: pkg.Default,
+			selected: selected,
 		})
 	}
 	return multiSelectModel{

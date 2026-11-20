@@ -10,7 +10,7 @@ import subprocess  # nosec B404 # used only to launch the terminal UI binary wit
 import tempfile
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from lobster.cli_internal.process_group import new_group_popen_kwargs, signal_group
 from lobster.ui.bridge.protocol import (
@@ -255,6 +255,7 @@ def run_init_wizard(
     theme: str = "",
     timeout: Optional[int] = None,
     lamin_default: Optional[bool] = None,
+    agent_packages: Optional[Sequence[str]] = None,
 ) -> dict:
     """Run one-shot Go init wizard and parse its JSON result file.
 
@@ -301,6 +302,11 @@ def run_init_wizard(
     child_env.pop("LOBSTER_INIT_LAMIN", None)
     if lamin_default is not None:
         child_env["LOBSTER_INIT_LAMIN"] = "1" if lamin_default else "0"
+    # The agent packages ticked at the start (default: the wizard's own). Older
+    # binaries ignore it.
+    child_env.pop("LOBSTER_INIT_PACKAGES", None)
+    if agent_packages is not None:
+        child_env["LOBSTER_INIT_PACKAGES"] = ",".join(agent_packages)
     try:
         proc = subprocess.run(  # nosec B603 # argv list for the bundled TUI binary; no shell
             cmd,

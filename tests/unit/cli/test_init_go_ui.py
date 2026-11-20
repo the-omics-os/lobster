@@ -26,7 +26,7 @@ def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path)
         raise AssertionError("Confirm.ask should not be called for --force")
 
     def _fake_run_init_wizard(
-        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None
+        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None, **_
     ):
         seen["binary_path"] = binary_path
         seen["theme"] = theme
@@ -112,7 +112,7 @@ def test_init_go_cancel_exits_without_classic_fallback(monkeypatch, tmp_path):
     )
 
     def _fake_run_init_wizard(
-        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None
+        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None, **_
     ):
         return {"cancelled": True}
 

@@ -170,6 +170,31 @@ def _display_agent_selection_list(
     return sorted_agents
 
 
+def _current_agent_packages(workspace_path: Optional[Path]) -> Optional[list[str]]:
+    """Packages whose experts the workspace has saved; None when it has none.
+
+    The init pickers start from these (`init --force`) instead of the defaults.
+    """
+    from lobster.config.agent_presets import expand_preset
+    from lobster.config.workspace_agent_config import (
+        CONFIG_FILE_NAME,
+        WorkspaceAgentConfig,
+    )
+
+    if workspace_path is None or not (workspace_path / CONFIG_FILE_NAME).is_file():
+        return None
+    saved = WorkspaceAgentConfig.load(workspace_path)
+    agents = set(saved.enabled_agents)
+    if saved.preset:
+        agents |= set(expand_preset(saved.preset) or [])
+    packages = [
+        name
+        for name, _, provided, published, _ in _CATALOG
+        if published and agents & set(provided)
+    ]
+    return packages or None
+
+
 def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     """Interactive agent package selection. Returns list of selected agent names."""
     from rich import box
@@ -222,10 +247,11 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     console.print(h("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]"))
     console.print(h("[dim]Already installed packages will be skipped[/dim]"))
 
+    ticked = _current_agent_packages(workspace_path) or DEFAULT_AGENT_PACKAGES
     default = ",".join(
         str(i)
         for i, (name, *_) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
-        if name in DEFAULT_AGENT_PACKAGES
+        if name in ticked
     )
     selection = Prompt.ask(h("[bold white]Selection[/bold white]"), default=default)
 
@@ -3605,6 +3631,10 @@ def init_impl(
     # =========================================================================
     if ui_mode != "classic" and not non_interactive:
         _tui_handled = False
+        # Agents are saved in the workspace even with --global.
+        _saved_packages = _current_agent_packages(
+            _resolve_workspace_or_exit(create=False, workspace=init_ws)
+        )
 
         # ---- Try Go TUI ----
         if not _tui_handled and ui_mode in ("auto", "go"):
@@ -3620,6 +3650,7 @@ def init_impl(
                             _tui_result = run_init_wizard(
                                 _binary,
                                 lamin_default=_lamin_default(lamin, global_config),
+                                agent_packages=_saved_packages,
                             )
                         except KeyboardInterrupt:
                             _tui_result = {"cancelled": True}
@@ -3713,6 +3744,7 @@ def init_impl(
                 _q_result = run_questionary_init(
                     build_init_manifest(),
                     lamin_default=_lamin_default(lamin, global_config),
+                    agent_packages=_saved_packages,
                 )
                 if lamin is not None:
                     _q_result["lamin_enabled"] = lamin
