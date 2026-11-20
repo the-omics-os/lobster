@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
@@ -18,6 +19,16 @@ func (h *transcriptHarness) commandListing(parts ...string) {
 	}
 }
 
+// The turn is not over when the question opens: what it printed is not marked
+// as cut short.
+func (h *transcriptHarness) notMarkedIncomplete() {
+	h.t.Helper()
+	title, _, _ := strings.Cut(incompleteResponseNotice(), ":") // the alert's heading
+	if strings.Contains(h.joined(), title) {
+		h.t.Fatalf("output before a question marked incomplete:\n%s", h.joined())
+	}
+}
+
 func TestTextBeforeAConfirmIsShownBeforeTheQuestion(t *testing.T) {
 	h := newTranscriptHarness(t)
 	h.commandListing("FILE-1\n", "FILE-2\n", "FILE-3\n")
@@ -28,6 +39,7 @@ func TestTextBeforeAConfirmIsShownBeforeTheQuestion(t *testing.T) {
 	}
 	h.expectOnce("FILE-1", "FILE-2", "FILE-3")
 	h.order("FILE-1", "FILE-2", "FILE-3")
+	h.notMarkedIncomplete()
 
 	h.done()
 	h.settle()
@@ -58,6 +70,7 @@ func TestTextBeforeAFormIsShownBeforeTheForm(t *testing.T) {
 		t.Fatal("the form must be open")
 	}
 	h.expectOnce("FORM-CONTEXT")
+	h.notMarkedIncomplete()
 }
 
 func TestATableBeforeAConfirmIsShownBeforeTheQuestion(t *testing.T) {

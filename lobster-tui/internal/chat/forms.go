@@ -333,6 +333,7 @@ func (f inlineFormModel) toFormResult() formResult {
 // handleFormMessage creates an inline form from a protocol form request.
 // It sets the activeForm field and returns a blink command for text inputs.
 func (m Model) handleFormMessage(payload protocol.FormPayload, msgID string) (Model, tea.Cmd) {
+	m.queueTurnOutput(false) // as before a question: the form is filled in on it
 	fm := newInlineFormModel(payload, msgID)
 	m.activeForm = &fm
 	return m, textinput.Blink

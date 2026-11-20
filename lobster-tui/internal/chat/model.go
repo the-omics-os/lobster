@@ -2659,6 +2659,8 @@ func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
 // BioComp component from the registry. Unknown components fall back to
 // text_input with the fallback prompt.
 func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID string) (tea.Model, tea.Cmd) {
+	// The question is answered on what was sent before it: print that first.
+	m.queueTurnOutput(false)
 	// Close existing component if any.
 	if m.activeComponent != nil {
 		m.sendComponentResponse(m.activeComponent.MsgID, "cancel", map[string]any{"reason": "replaced"})
