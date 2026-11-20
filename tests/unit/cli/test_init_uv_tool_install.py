@@ -521,7 +521,7 @@ def test_windows_install_later_quotes_for_powershell_and_cmd(
 ):
     monkeypatch.setattr("sys.platform", "win32")
 
-    init_commands._print_deferred_agent_install(["transcriptomics_expert"])
+    init_commands._uv_tool_env_handoff(None, ["transcriptomics_expert"], True)
 
     out = capsys.readouterr().out
     # Single quotes are literal in cmd.exe; ">=" bare is a redirect in both.
@@ -726,9 +726,30 @@ def test_lamin_under_uv_tool_is_in_the_one_reinstall_only(tool_env):
     assert "lobster-transcriptomics>=1.3.0" in command
 
 
-def test_lamin_under_uv_tool_with_skip_extras_still_names_the_install(tool_env):
+def _install_later(out):
+    return [line for line in out.splitlines() if "Install later:" in line]
+
+
+def test_skip_extras_under_uv_tool_prints_one_install_line(tool_env):
+    """Two separate commands each drop what the other adds."""
     result = _init("--skip-extras")
 
     assert result.exit_code == 0, result.output
     assert tool_env.installs == []
-    assert "LaminDB is not installed yet" in result.output
+    assert "LaminDB is not installed yet" not in result.output
+    [line] = _install_later(result.output)
+    assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in line
+    assert "--with 'lobster-transcriptomics>=1.3.0'" in line
+
+
+@pytest.mark.parametrize("ui_mode", ["go", "auto", "classic"])
+def test_interactive_skip_extras_under_uv_tool_prints_one_install_line(
+    tool_env, monkeypatch, capsys, ui_mode
+):
+    out = _run_interactive(monkeypatch, capsys, ui_mode, skip_extras=True, lamin=True)
+
+    assert tool_env.installs == []
+    assert "LaminDB is not installed yet" not in out
+    [line] = _install_later(out)
+    assert "uv tool install --reinstall 'lobster-ai[lamin]>=1.3.0'" in line
+    assert "--with 'lobster-transcriptomics>=1.3.0'" in line
