@@ -837,10 +837,12 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     g1_clean, g2_clean, test_method
                 )
 
-            # One value in each group, different between them: a t-test has no
-            # variance to test against (t = inf, p = 0). No p-value, flagged.
+            # One value in each group, different between them: a t-test, or
+            # limma_like with no variance to borrow, has no variance to test
+            # against (t = inf, p = 0; or p = 1). No p-value, flagged.
             split = (
-                test_method not in ("mann_whitney", "limma_like")
+                test_method != "mann_whitney"
+                and prior_variance is None  # set only for limma_like, >= 10 proteins
                 and np.ptp(g1_clean) == 0
                 and np.ptp(g2_clean) == 0
                 and g1_clean[0] != g2_clean[0]
@@ -970,7 +972,8 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
 
         # Avoid division by zero
         if se < 1e-10:
-            return 0.0, 1.0
+            # no variance to test against: no p-value (p = 1 kept it in m)
+            return float("nan"), float("nan")
 
         t_stat = (mean1 - mean2) / se
 
