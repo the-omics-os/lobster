@@ -25,45 +25,51 @@ ROOT = Path(__file__).resolve().parents[3]
 SAFE_CALLS = {"unloaded_name", "_unloaded_result_name"}
 DM = "lobster/core/runtime/data_manager.py"
 TX = "packages/lobster-transcriptomics/lobster/agents/transcriptomics"
-# (file relative to the checkout, function) -> why it is safe without the proof
+ML = "packages/lobster-ml/lobster/agents/machine_learning/machine_learning_expert.py"
+ML_SPLITS = (
+    "assert_save_target() of the three split names (f-strings) before the "
+    "input is annotated or any store_modality"
+)
+DE_BRANCH = (
+    "de_modality_name from _unloaded_result_name() in the branch that will run "
+    "(two branches)"
+)
+# (file relative to the checkout, function, saved-name expression) -> why it is
+# safe without the proof. A new save in the same function is audited.
 ALLOWED = {
-    (DM, "store_modality"): (
+    (DM, "store_modality", "name"): (
         "legacy auto_save: assert_save_target(name) under `if auto_save` before "
         "the store, and the save under the same condition after it"
     ),
-    (DM, "save_workspace"): (
+    (DM, "save_workspace", "modality_name"): (
         "writes every modality into the named workspace folder, not into data/; "
         "save_modality still refuses a loaded file there"
     ),
-    (DM, "save_processed_data"): (
+    (DM, "save_processed_data", "modality_name"): (
         "the file name is generated (source, dataset, step, time stamp), and "
         "save_modality refuses a loaded file before the write; nothing is "
         "stored first"
     ),
-    (DM, "auto_save_state"): (
+    (DM, "auto_save_state", "modality_name"): (
         "may update a modality's own *_autosave.h5ad snapshot; any other "
         "loaded target is skipped with a warning, never raised"
     ),
-    (DM, "run_notebook"): "writes a temporary input file for the notebook run",
-    (
-        "packages/lobster-ml/lobster/agents/machine_learning/machine_learning_expert.py",
-        "create_ml_splits",
-    ): (
-        "assert_save_target() of the three split names (f-strings) before the "
-        "input is annotated or any store_modality"
+    (DM, "run_notebook", "input_modality"): (
+        "writes a temporary input file for the notebook run"
     ),
+    (ML, "create_ml_splits", "train_modality"): ML_SPLITS,
+    (ML, "create_ml_splits", "test_modality"): ML_SPLITS,
+    (ML, "create_ml_splits", "val_modality"): ML_SPLITS,
     (
         "packages/lobster-proteomics/lobster/agents/proteomics/shared_tools.py",
         "import_affinity_data",
+        "name",
     ): (
         "unloaded_name() on the derived name, assert_save_target() under "
         "`if save_result` for an explicit name"
     ),
-    (f"{TX}/de_analysis_expert.py", "_two_group_de"): (
-        "de_modality_name from _unloaded_result_name() in the branch that will "
-        "run (two branches)"
-    ),
-    (f"{TX}/de_analysis_expert.py", "run_de_with_formula"): (
+    (f"{TX}/de_analysis_expert.py", "_two_group_de", "de_modality_name"): DE_BRANCH,
+    (f"{TX}/de_analysis_expert.py", "run_de_with_formula", "pseudobulk_modality"): (
         "saves an existing modality to a new PATH built with unloaded_name()"
     ),
 }
@@ -184,9 +190,17 @@ def tool(dm, m):
     name = dm.unloaded_name(f"{m}_marked")
     dm.save_modality(name, "x.h5ad")
 """,
-    "or_unloaded": """
+    "or_unloaded_given_checked": """
 def tool(dm, m, given):
+    dm.assert_save_target(given)
     name = given or dm.unloaded_name(f"{m}_marked")
+    dm.save_modality(name, "x.h5ad")
+""",
+    "safe_rebound_in_a_branch_after": """
+def tool(dm, m, other):
+    name = dm.unloaded_name(f"{m}_a")
+    if other:
+        name = dm.unloaded_name(f"{m}_b")
     dm.save_modality(name, "x.h5ad")
 """,
     "asserted": """
@@ -204,6 +218,87 @@ def tool(dm, m, remove):
     dm.save_modality(name, "x.h5ad")
 """,
 }
+
+
+# Each rebinds the name after its last safe event, or takes it unchecked.
+UNPROVED_SHAPES = {
+    "debris": DEBRIS_SHAPE,
+    "aug_assign": """
+def tool(dm, m):
+    name = dm.unloaded_name(f"{m}_x")
+    name += "_v2"
+    dm.save_modality(name, "x.h5ad")
+""",
+    "plain_in_a_branch_after": """
+def tool(dm, m, other):
+    name = dm.unloaded_name(f"{m}_x")
+    if other:
+        name = f"{m}_y"
+    dm.save_modality(name, "x.h5ad")
+""",
+    "for_target": """
+def tool(dm, m, names):
+    name = dm.unloaded_name(f"{m}_x")
+    for name in names:
+        pass
+    dm.save_modality(name, "x.h5ad")
+""",
+    "with_target": """
+def tool(dm, m, ctx):
+    name = dm.unloaded_name(f"{m}_x")
+    with ctx() as name:
+        dm.save_modality(name, "x.h5ad")
+""",
+    "walrus": """
+def tool(dm, m):
+    name = dm.unloaded_name(f"{m}_x")
+    if (name := f"{m}_y"):
+        pass
+    dm.save_modality(name, "x.h5ad")
+""",
+    "unpack": """
+def tool(dm, m, pair):
+    name = dm.unloaded_name(f"{m}_x")
+    name, other = pair
+    dm.save_modality(name, "x.h5ad")
+""",
+    "annotated": """
+def tool(dm, m):
+    name = dm.unloaded_name(f"{m}_x")
+    name: str = f"{m}_y"
+    dm.save_modality(name, "x.h5ad")
+""",
+    "or_unloaded_given_unchecked": """
+def tool(dm, m, given):
+    name = given or dm.unloaded_name(f"{m}_marked")
+    dm.save_modality(name, "x.h5ad")
+""",
+    "rebound_later_in_the_loop": """
+def tool(dm, m, items):
+    name = dm.unloaded_name(f"{m}_x")
+    for item in items:
+        dm.save_modality(name, "x.h5ad")
+        name = item
+""",
+}
+
+
+@pytest.mark.parametrize("shape", list(UNPROVED_SHAPES))
+def test_a_name_rebound_or_unchecked_is_not_proved(shape):
+    assert [s[-1] for s in _sites_in(UNPROVED_SHAPES[shape])] == [False]
+
+
+def test_a_new_save_in_an_allowed_function_is_audited():
+    """ALLOWED names the saved expression: another save in the same function is
+    held to the proof."""
+    file, function, name = next(iter(ALLOWED))
+    source = f"""
+def {function}(self, other):
+    self.save_modality({name}, "a.h5ad")
+    self.save_modality(other, "b.h5ad")
+"""
+    sites = [(file, *site) for site in _sites_in(source)]
+    assert _unproved(sites) == [(file, function, 4, "other")]
 
 
 def test_a_plain_name_above_a_safe_branch_is_not_proved():
