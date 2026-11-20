@@ -84,3 +84,60 @@ def test_a_resumed_required_import_is_refused_before_a_download(tmp_path, no_net
     assert "already loaded as modality 'my_series'" in str(refused.value)
     assert "nothing was downloaded" in str(refused.value)
     assert _state(dm) == before
+
+
+def _resumed_with_sample_file(tmp_path, gsm="GSM2"):
+    """A workspace an interrupted per-sample import left: one of its sample files."""
+    data = tmp_path / "ws" / "data"
+    data.mkdir(parents=True)
+    rng = np.random.default_rng(1)
+    ad.AnnData(
+        X=rng.poisson(5, (1, 20)).astype(np.float32),
+        obs=pd.DataFrame(index=[gsm]),
+        var=pd.DataFrame(index=[f"G{i}" for i in range(20)]),
+    ).write_h5ad(data / f"gse1_{gsm.lower()}_raw.h5ad")
+    return DataManagerV2(workspace_path=tmp_path / "ws")
+
+
+def test_a_re_download_with_a_sample_file_loaded_names_it(tmp_path, no_network):
+    """Some sample files of the series are loaded: the download is refused whole,
+    naming them; nothing is fetched, stored or logged."""
+    dm = _resumed_with_sample_file(tmp_path)
+    before = _state(dm)
+    service = GEOService(data_manager=dm, cache_dir=str(tmp_path / "cache"))
+
+    reply = service.download_dataset("GSE1")
+
+    assert reply == (
+        "Dataset GSE1 is already partly loaded: sample GSM2 as modality "
+        "'gse1_gsm2_raw' (from data/gse1_gsm2_raw.h5ad); nothing was downloaded. "
+        "Use the loaded samples, or start a new workspace to import the series "
+        "again."
+    ), reply
+    assert _state(dm) == before
+
+
+def test_samples_are_stored_all_or_none(tmp_path, monkeypatch):
+    """Reached with one of three sample files loaded, the per-sample store keeps
+    none of them: never a series of only the samples not loaded."""
+    from lobster.agents.data_expert import assistant
+
+    monkeypatch.setattr(
+        assistant.DataExpertAssistant, "detect_modality", lambda *a, **k: None
+    )
+    dm = _resumed_with_sample_file(tmp_path)
+    before = _state(dm)
+    service = GEOService(data_manager=dm, cache_dir=str(tmp_path / "cache"))
+    matrices = {
+        gsm: pd.DataFrame(
+            np.arange(20, dtype=float),
+            index=[f"G{i}" for i in range(20)],
+            columns=[gsm],
+        )
+        for gsm in ("GSM1", "GSM2", "GSM3")
+    }
+
+    stored = service._store_samples_as_anndata(matrices, "GSE1", {"samples": {}})
+
+    assert stored == []
+    assert _state(dm) == before
