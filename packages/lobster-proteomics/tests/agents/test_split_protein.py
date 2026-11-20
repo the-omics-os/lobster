@@ -86,7 +86,7 @@ def _few(adata):
 
 def test_limma_like_without_a_prior_flags_a_split_protein_and_drops_a_flat_one():
     adata = _few(_proteins(split=True))
-    adata.X[:, -2] = 3.0  # P48: one value in every sample
+    adata.X[:, -2] = 3.0  # one value in every sample
 
     results, _, stats = _run(adata, "limma_like")
 
