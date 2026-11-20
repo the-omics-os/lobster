@@ -39,7 +39,7 @@ GLOBAL_MODES = ("default", "all", "none")
 #: The supervisor has no AGENT_CONFIG; its code tool is on unless switched off.
 SUPERVISOR_CODE_TOOL_DEFAULT = True
 
-# file -> the reason already told: every agent of a graph asks for the same file.
+# file -> the warning already given: every agent of a graph asks for the same file.
 # A read that works forgets it, so a file broken again is told again.
 _told_unreadable: dict = {}
 
@@ -76,27 +76,19 @@ def _global_env_layer() -> Optional[str]:
     return None
 
 
-def _workspace_layer(
-    agent_name: str, workspace_path: Any, default: Any
-) -> Optional[bool]:
+def _workspace_layer(agent_name: str, workspace_path: Any) -> Optional[bool]:
     """``agent_settings.<agent_name>.code_tool`` from the workspace config.toml only.
 
     Reads that one key; the rest of the file is not validated here. A missing file or
-    key is silent. Anything unusable warns and falls through to the default.
+    key is silent. A file, an ``agent_settings`` or an entry of this agent's that is
+    there but unusable may hold the user's off-switch: it warns and turns the tool off.
     """
     if workspace_path is None or not isinstance(workspace_path, (str, os.PathLike)):
         return None
     import tomllib
 
     from lobster.config.workspace_agent_config import CONFIG_FILE_NAME
-
-    def ignore(reason: str) -> None:
-        logger.warning(
-            "Ignoring the workspace code_tool setting for %s (%s); using its default: %s",
-            agent_name,
-            reason,
-            "on" if default is True else "off",
-        )
+    from lobster.i18n import h
 
     path = Path(os.fspath(workspace_path)) / CONFIG_FILE_NAME
     try:
@@ -104,14 +96,24 @@ def _workspace_layer(
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as error:
-        _tell_unreadable(path, error)
+        _tell_once(
+            path,
+            h(
+                "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
+            ).format(file=path, error=error),
+        )
+        return False
+    all_settings = data.get("agent_settings")
+    if all_settings is not None and not isinstance(all_settings, dict):
+        _tell_once(
+            path,
+            h(
+                "{file}: agent_settings must be a table (found {kind}); the code tool is off for every agent until it is fixed."
+            ).format(file=path, kind=type(all_settings).__name__),
+        )
         return False
     _told_unreadable.pop(str(path), None)
-    all_settings = data.get("agent_settings")
     if all_settings is None:
-        return None
-    if not isinstance(all_settings, dict):
-        ignore("agent_settings is not a table")
         return None
     settings = all_settings.get(agent_name)
     if settings is None:
@@ -126,17 +128,11 @@ def _workspace_layer(
     return False
 
 
-def _tell_unreadable(path: Path, error: Exception) -> None:
-    if _told_unreadable.get(str(path)) == str(error):
+def _tell_once(path: Path, message: str) -> None:
+    if _told_unreadable.get(str(path)) == message:
         return
-    _told_unreadable[str(path)] = str(error)
-    from lobster.i18n import h
-
-    logger.warning(
-        h(
-            "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}"
-        ).format(file=path, error=error)
-    )
+    _told_unreadable[str(path)] = message
+    logger.warning(message)
 
 
 def _tell_not_a_bool(path: Path, key: str, value: Any, agent_name: str) -> None:
@@ -168,7 +164,7 @@ def code_tool_enabled(
         return True
     if mode == "none":
         return False
-    value = _workspace_layer(agent_name, workspace_path, default)
+    value = _workspace_layer(agent_name, workspace_path)
     if value is not None:
         return value
     if isinstance(default, bool):

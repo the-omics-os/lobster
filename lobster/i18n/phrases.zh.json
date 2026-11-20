@@ -2250,5 +2250,6 @@
   "This folder is not a Lobster project; files in its exports folder may be your own.": "此文件夹不是 Lobster 项目；其 exports 文件夹中的文件可能是你自己的。",
   "This folder is not a Lobster project; files in its metadata folder may be your own.": "此文件夹不是 Lobster 项目；其 metadata 文件夹中的文件可能是你自己的。",
   "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}": "无法读取 {file}，因此在修复之前所有智能体的代码工具均已关闭：{error}",
-  "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed.": "{file}：{key} 必须是 true 或 false（实际为 {kind}）；在修复之前 {agent} 的代码工具已关闭。"
+  "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed.": "{file}：{key} 必须是 true 或 false（实际为 {kind}）；在修复之前 {agent} 的代码工具已关闭。",
+  "{file}: agent_settings must be a table (found {kind}); the code tool is off for every agent until it is fixed.": "{file}：agent_settings 必须是一个表（实际为 {kind}）；在修复之前所有智能体的代码工具均已关闭。"
 }

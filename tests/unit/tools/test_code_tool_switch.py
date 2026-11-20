@@ -308,22 +308,6 @@ def test_the_switch_does_not_depend_on_the_whole_config_loading(tmp_path, monkey
     assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is False
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        pytest.param("agent_settings = 5\n", id="agent_settings_not_a_table"),
-    ],
-)
-def test_an_unusable_config_warns_and_falls_through(tmp_path, warnings_seen, body):
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    target = ws / "config.toml"
-    target.write_bytes(body) if isinstance(body, bytes) else target.write_text(body)
-    for default in (True, False):
-        assert code_tool_enabled(AGENT, default=default, workspace_path=ws) is default
-    assert len([w for w in warnings_seen if AGENT in w]) == 2, warnings_seen
-
-
 def test_a_missing_config_or_key_is_silent(tmp_path, warnings_seen):
     ws = _workspace(tmp_path)
     assert code_tool_enabled(AGENT, default=True, workspace_path=ws) is True
@@ -824,3 +808,13 @@ def test_agent_settings_that_is_not_a_table_turns_the_tool_off_for_every_agent(
     assert len(said) == 1, warnings_seen
     assert str(ws / "config.toml") in said[0] and f"(found {kind})" in said[0]
     assert "every agent" in said[0]
+
+
+def test_a_config_without_agent_settings_keeps_the_defaults(tmp_path, warnings_seen):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "config.toml").write_text('enabled_agents = ["research_agent"]\n')
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is True
+    assert code_tool_enabled(AGENT, default=False, workspace_path=ws) is False
+    assert warnings_seen == []
