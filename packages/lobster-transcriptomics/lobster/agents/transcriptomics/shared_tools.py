@@ -537,7 +537,9 @@ Proceed with filtering and normalization for downstream analysis."""
             )
 
             # Save as new modality
-            filtered_modality_name = f"{modality_name}_filtered_normalized"
+            filtered_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_filtered_normalized"
+            )
             data_manager.store_modality(
                 name=filtered_modality_name,
                 adata=adata_processed,
@@ -548,7 +550,7 @@ Proceed with filtering and normalization for downstream analysis."""
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_filtered_normalized.h5ad"
+                save_path = f"{filtered_modality_name}.h5ad"
                 data_manager.save_modality(filtered_modality_name, save_path)
 
             # Log the operation

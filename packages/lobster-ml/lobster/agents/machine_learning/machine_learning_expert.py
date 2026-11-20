@@ -424,7 +424,9 @@ def machine_learning_expert(
             )
 
             # Save as new modality
-            ml_modality_name = f"{modality_name}_ml_features"
+            ml_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_ml_features"
+            )
             data_manager.store_modality(
                 name=ml_modality_name,
                 adata=adata_ml,
@@ -433,7 +435,7 @@ def machine_learning_expert(
             )
 
             if save_result:
-                save_path = f"{modality_name}_ml_features.h5ad"
+                save_path = f"{ml_modality_name}.h5ad"
                 data_manager.save_modality(ml_modality_name, save_path)
 
             # Log the operation
@@ -591,6 +593,14 @@ def machine_learning_expert(
 
             train_modality = f"{modality_name}_train"
             test_modality = f"{modality_name}_test"
+            if save_result:
+                # The split names are fixed (the notebook export finds the split
+                # files by them): refused before any modality in memory changes.
+                splits = [train_modality, test_modality]
+                if len(val_idx) > 0:
+                    splits.append(f"{modality_name}_validation")
+                for split in splits:
+                    data_manager.assert_save_target(split)
 
             data_manager.store_modality(
                 name=train_modality,

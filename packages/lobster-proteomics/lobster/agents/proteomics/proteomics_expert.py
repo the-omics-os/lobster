@@ -246,7 +246,9 @@ def proteomics_expert(
                 adata_validated.var.loc[protein_i, "cross_reactive"] = True
                 adata_validated.var.loc[protein_j, "cross_reactive"] = True
 
-            validated_name = f"{modality_name}_antibody_validated"
+            validated_name = data_manager.unloaded_name(
+                f"{modality_name}_antibody_validated"
+            )
             data_manager.store_modality(
                 name=validated_name,
                 adata=adata_validated,
@@ -255,7 +257,7 @@ def proteomics_expert(
             )
 
             if save_result:
-                save_path = f"{modality_name}_antibody_validated.h5ad"
+                save_path = f"{validated_name}.h5ad"
                 data_manager.save_modality(validated_name, save_path)
 
             ir = AnalysisStep(
@@ -463,7 +465,9 @@ for i, j, _ in cross_reactive_pairs:
                 logger.warning(f"Post-correction validation failed: {val_err}")
                 validation_msg = "\n**Post-Correction Validation:** Could not compute (insufficient data)\n"
 
-            corrected_name = f"{modality_name}_plate_corrected"
+            corrected_name = data_manager.unloaded_name(
+                f"{modality_name}_plate_corrected"
+            )
             data_manager.store_modality(
                 name=corrected_name,
                 adata=corrected_adata,
@@ -472,7 +476,7 @@ for i, j, _ in cross_reactive_pairs:
             )
 
             if save_result:
-                save_path = f"{modality_name}_plate_corrected.h5ad"
+                save_path = f"{corrected_name}.h5ad"
                 data_manager.save_modality(corrected_name, save_path)
 
             data_manager.log_tool_usage(

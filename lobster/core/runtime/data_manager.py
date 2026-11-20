@@ -2093,6 +2093,9 @@ class DataManagerV2:
         """
         # The name becomes part of file names: it must be one plain name.
         check_modality_name(name)
+        if auto_save and self._modality_backend is None:
+            # refused before the modality in memory changes
+            self.assert_save_target(name)
         from lobster.core.lineage import (
             attach_lineage,
             create_lineage_metadata,
@@ -2170,6 +2173,31 @@ class DataManagerV2:
             return self._recorded_inputs.get(target.resolve())
         except (OSError, RuntimeError):
             return None
+
+    def assert_save_target(
+        self, name: str, path: Union[str, Path, None] = None
+    ) -> None:
+        """Raise RecordedInputError if saving ``name`` (to ``path``, by default
+        ``<name>.h5ad``) would overwrite a file this session loaded.
+
+        A tool saving under a name it was given calls this before it stores the
+        result, so a refusal leaves the session's modalities and record unchanged.
+        """
+        self._assert_not_recorded_input(name, path or f"{name}.h5ad")
+
+    def unloaded_name(self, name: str) -> str:
+        """``name``, or the next ``name_<n>`` whose ``data/<name>.h5ad`` is not a
+        file this session loaded.
+
+        A tool deriving its result name (``<input>_filtered``) calls this before it
+        stores the result: rerun in a resumed session, the result takes a new name
+        instead of replacing the loaded modality and having its save refused.
+        """
+        candidate, n = name, 1
+        while self.recorded_input(f"{candidate}.h5ad") is not None:
+            n += 1
+            candidate = f"{name}_{n}"
+        return candidate
 
     def _assert_not_recorded_input(
         self, name: str, *paths: Union[str, Path], own_snapshot: bool = False

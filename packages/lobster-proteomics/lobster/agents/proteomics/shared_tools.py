@@ -113,7 +113,9 @@ def create_shared_tools(
             )
 
             # Generate modality name
-            name = modality_name or f"{modality_prefix}_generic_{Path(file_path).stem}"
+            name = modality_name or data_manager.unloaded_name(
+                f"{modality_prefix}_generic_{Path(file_path).stem}"
+            )
 
             # Tag as generic import in uns
             adata.uns["import_method"] = "generic_matrix"
@@ -125,6 +127,8 @@ def create_shared_tools(
                 "confidence": classification.confidence,
             }
 
+            if save_result:  # refused before the modality in memory changes
+                data_manager.assert_save_target(name)
             data_manager.store_modality(
                 name=name,
                 adata=adata,
@@ -687,7 +691,7 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                     adata_filtered = adata_filtered[:, quality_filter].copy()
 
             # Update modality
-            filtered_name = f"{modality_name}_filtered"
+            filtered_name = data_manager.unloaded_name(f"{modality_name}_filtered")
             data_manager.store_modality(
                 name=filtered_name,
                 adata=adata_filtered,
@@ -697,7 +701,7 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
 
             # Save if requested
             if save_result:
-                save_path = f"{modality_name}_filtered.h5ad"
+                save_path = f"{filtered_name}.h5ad"
                 data_manager.save_modality(filtered_name, save_path)
 
             # Create IR for provenance tracking
@@ -873,7 +877,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             # Update modality
-            normalized_name = f"{modality_name}_normalized"
+            normalized_name = data_manager.unloaded_name(f"{modality_name}_normalized")
             data_manager.store_modality(
                 name=normalized_name,
                 adata=normalized_adata,
@@ -883,7 +887,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 
             # Save if requested
             if save_result:
-                save_path = f"{modality_name}_normalized.h5ad"
+                save_path = f"{normalized_name}.h5ad"
                 data_manager.save_modality(normalized_name, save_path)
 
             # Log operation
@@ -1008,7 +1012,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 ir = pca_ir
 
             # Update modality
-            analyzed_name = f"{modality_name}_analyzed"
+            analyzed_name = data_manager.unloaded_name(f"{modality_name}_analyzed")
             data_manager.store_modality(
                 name=analyzed_name,
                 adata=final_adata,
@@ -1018,7 +1022,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 
             # Save if requested
             if save_result:
-                save_path = f"{modality_name}_analyzed.h5ad"
+                save_path = f"{analyzed_name}.h5ad"
                 data_manager.save_modality(analyzed_name, save_path)
 
             # Log operation
@@ -1115,7 +1119,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 preprocessing_service.impute_missing_values(adata, method=method)
             )
 
-            imputed_name = f"{modality_name}_imputed"
+            imputed_name = data_manager.unloaded_name(f"{modality_name}_imputed")
             data_manager.store_modality(
                 name=imputed_name,
                 adata=imputed_adata,
@@ -1124,7 +1128,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             if save_result:
-                save_path = f"{modality_name}_imputed.h5ad"
+                save_path = f"{imputed_name}.h5ad"
                 data_manager.save_modality(imputed_name, save_path)
 
             data_manager.log_tool_usage(
@@ -1210,7 +1214,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 min_detection_rate=min_detection_rate,
             )
 
-            result_name = f"{modality_name}_hvp_selected"
+            result_name = data_manager.unloaded_name(f"{modality_name}_hvp_selected")
             data_manager.store_modality(
                 name=result_name,
                 adata=result_adata,
@@ -1219,7 +1223,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             )
 
             if save_result:
-                save_path = f"{modality_name}_hvp_selected.h5ad"
+                save_path = f"{result_name}.h5ad"
                 data_manager.save_modality(result_name, save_path)
 
             data_manager.log_tool_usage(
@@ -1408,8 +1412,12 @@ adata = parser.parse({{ file_path | tojson }})""",
 
             # Generate modality name if not provided
             parser_name = parser.__class__.__name__.replace("Parser", "").lower()
-            name = modality_name or f"ms_{parser_name}_{Path(file_path).stem}"
+            name = modality_name or data_manager.unloaded_name(
+                f"ms_{parser_name}_{Path(file_path).stem}"
+            )
 
+            if save_result:  # refused before the modality in memory changes
+                data_manager.assert_save_target(name)
             data_manager.store_modality(
                 name=name,
                 adata=adata,
@@ -1502,8 +1510,12 @@ adata = parser.parse({{ file_path | tojson }})""",
                 filter_contaminants=filter_contaminants,
             )
 
-            name = modality_name or f"ptm_{ptm_type}_{Path(file_path).stem}"
+            name = modality_name or data_manager.unloaded_name(
+                f"ptm_{ptm_type}_{Path(file_path).stem}"
+            )
 
+            if save_result:  # refused before the modality in memory changes
+                data_manager.assert_save_target(name)
             data_manager.store_modality(
                 name=name,
                 adata=adata,
@@ -1600,7 +1612,9 @@ adata = parser.parse({{ file_path | tojson }})""",
                 )
             )
 
-            corrected_name = f"{modality_name}_batch_corrected"
+            corrected_name = data_manager.unloaded_name(
+                f"{modality_name}_batch_corrected"
+            )
             data_manager.store_modality(
                 name=corrected_name,
                 adata=corrected_adata,
@@ -1609,7 +1623,7 @@ adata = parser.parse({{ file_path | tojson }})""",
             )
 
             if save_result:
-                save_path = f"{modality_name}_batch_corrected.h5ad"
+                save_path = f"{corrected_name}.h5ad"
                 data_manager.save_modality(corrected_name, save_path)
 
             data_manager.log_tool_usage(
@@ -1687,7 +1701,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 )
             )
 
-            rollup_name = f"{modality_name}_protein_rollup"
+            rollup_name = data_manager.unloaded_name(f"{modality_name}_protein_rollup")
             data_manager.store_modality(
                 name=rollup_name,
                 adata=protein_adata,
@@ -1696,7 +1710,7 @@ adata = parser.parse({{ file_path | tojson }})""",
             )
 
             if save_result:
-                save_path = f"{modality_name}_protein_rollup.h5ad"
+                save_path = f"{rollup_name}.h5ad"
                 data_manager.save_modality(rollup_name, save_path)
 
             data_manager.log_tool_usage(
@@ -1782,7 +1796,9 @@ adata = parser.parse({{ file_path | tojson }})""",
                 )
             )
 
-            normalized_name = f"{ptm_modality_name}_ptm_normalized"
+            normalized_name = data_manager.unloaded_name(
+                f"{ptm_modality_name}_ptm_normalized"
+            )
             data_manager.store_modality(
                 name=normalized_name,
                 adata=normalized_adata,
@@ -1791,7 +1807,7 @@ adata = parser.parse({{ file_path | tojson }})""",
             )
 
             if save_result:
-                save_path = f"{ptm_modality_name}_ptm_normalized.h5ad"
+                save_path = f"{normalized_name}.h5ad"
                 data_manager.save_modality(normalized_name, save_path)
 
             data_manager.log_tool_usage(
@@ -2012,7 +2028,10 @@ adata = parser.parse({{ file_path | tojson }})""",
                     name = f"{platform_prefix}_{panel_info}".replace(" ", "_").lower()
                 else:
                     name = f"{platform_prefix}_{file_p.stem}".lower()
+                name = data_manager.unloaded_name(name)
 
+            if save_result:  # refused before the modality in memory changes
+                data_manager.assert_save_target(name)
             data_manager.store_modality(
                 name=name,
                 adata=adata,
@@ -2433,7 +2452,9 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
             }
 
             # Store result
-            result_name = f"{modality_name}_bridge_normalized"
+            result_name = data_manager.unloaded_name(
+                f"{modality_name}_bridge_normalized"
+            )
             data_manager.store_modality(
                 name=result_name,
                 adata=adata_result,
@@ -2442,7 +2463,7 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
             )
 
             if save_result:
-                save_path = f"{modality_name}_bridge_normalized.h5ad"
+                save_path = f"{result_name}.h5ad"
                 data_manager.save_modality(result_name, save_path)
 
             # Create IR

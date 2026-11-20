@@ -254,6 +254,7 @@ class TestPseudobulkTools:
         data_manager.workspace_path = tmp_path
         data_manager.list_modalities.return_value = ["single_cell"]
         data_manager.get_modality.return_value = single_cell
+        data_manager.unloaded_name.side_effect = lambda name: name
         module = "lobster.agents.transcriptomics.de_analysis_expert"
 
         with (

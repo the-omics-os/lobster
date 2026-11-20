@@ -1011,7 +1011,9 @@ def de_analysis_expert(
             )
 
             # Save as new modality
-            pseudobulk_modality_name = f"{modality_name}_pseudobulk"
+            pseudobulk_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_pseudobulk"
+            )
             data_manager.store_modality(
                 name=pseudobulk_modality_name,
                 adata=pseudobulk_adata,
@@ -1021,7 +1023,7 @@ def de_analysis_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_pseudobulk.h5ad"
+                save_path = f"{pseudobulk_modality_name}.h5ad"
                 data_manager.save_modality(pseudobulk_modality_name, save_path)
 
             # Get aggregation statistics
@@ -2303,7 +2305,12 @@ def de_analysis_expert(
                 assert_export_allowed(data_manager.workspace_path, results_path)
                 results_df.to_csv(results_path)
 
-                modality_path = f"{pseudobulk_modality}_with_formula_results.h5ad"
+                modality_path = (
+                    data_manager.unloaded_name(
+                        f"{pseudobulk_modality}_with_formula_results"
+                    )
+                    + ".h5ad"
+                )
                 data_manager.save_modality(pseudobulk_modality, modality_path)
 
             # Format response

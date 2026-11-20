@@ -395,7 +395,9 @@ def transcriptomics_expert(
             applied = clustering_stats["applied_parameters"]
 
             # Save as new modality
-            clustered_modality_name = f"{modality_name}_clustered"
+            clustered_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_clustered"
+            )
             data_manager.store_modality(
                 name=clustered_modality_name,
                 adata=adata_clustered,
@@ -405,7 +407,7 @@ def transcriptomics_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_clustered.h5ad"
+                save_path = f"{clustered_modality_name}.h5ad"
                 data_manager.save_modality(clustered_modality_name, save_path)
 
             # Log the operation
@@ -953,7 +955,9 @@ Please check:
             )
 
             # Save as new modality
-            marker_modality_name = f"{modality_name}_markers"
+            marker_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_markers"
+            )
             data_manager.store_modality(
                 name=marker_modality_name,
                 adata=adata_markers,
@@ -963,7 +967,7 @@ Please check:
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_markers.h5ad"
+                save_path = f"{marker_modality_name}.h5ad"
                 data_manager.save_modality(marker_modality_name, save_path)
 
             # Log the operation

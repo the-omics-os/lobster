@@ -208,7 +208,9 @@ def annotation_expert(
             )
 
             # Save as new modality
-            annotated_modality_name = f"{modality_name}_annotated"
+            annotated_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_annotated"
+            )
             data_manager.store_modality(
                 name=annotated_modality_name,
                 adata=adata_annotated,
@@ -218,7 +220,7 @@ def annotation_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_annotated.h5ad"
+                save_path = f"{annotated_modality_name}.h5ad"
                 data_manager.save_modality(annotated_modality_name, save_path)
 
             # Log the operation
@@ -379,7 +381,9 @@ def annotation_expert(
             )
 
             # Save as new modality
-            annotated_modality_name = f"{modality_name}_manually_annotated"
+            annotated_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_manually_annotated"
+            )
             data_manager.store_modality(
                 name=annotated_modality_name,
                 adata=adata_copy,
@@ -389,7 +393,7 @@ def annotation_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_manually_annotated.h5ad"
+                save_path = f"{annotated_modality_name}.h5ad"
                 data_manager.save_modality(annotated_modality_name, save_path)
 
             # Log the operation
@@ -487,7 +491,9 @@ def annotation_expert(
             total_cells_collapsed = collapse_stats["n_cells_collapsed"]
 
             # Save as new modality
-            collapsed_modality_name = f"{modality_name}_collapsed"
+            collapsed_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_collapsed"
+            )
             data_manager.store_modality(
                 name=collapsed_modality_name,
                 adata=adata_copy,
@@ -497,7 +503,7 @@ def annotation_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_collapsed.h5ad"
+                save_path = f"{collapsed_modality_name}.h5ad"
                 data_manager.save_modality(collapsed_modality_name, save_path)
 
             # Log the operation
@@ -602,7 +608,9 @@ def annotation_expert(
             # Save as new modality
             debris_modality_name = f"{modality_name}_debris_marked"
             if remove_debris:
-                debris_modality_name = f"{modality_name}_debris_removed"
+                debris_modality_name = data_manager.unloaded_name(
+                    f"{modality_name}_debris_removed"
+                )
 
             data_manager.store_modality(
                 name=debris_modality_name,
@@ -923,7 +931,9 @@ def annotation_expert(
             )
 
             # Save as new modality
-            template_modality_name = f"{modality_name}_template_{tissue_type}"
+            template_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_template_{tissue_type}"
+            )
             data_manager.store_modality(
                 name=template_modality_name,
                 adata=adata_copy,
@@ -933,7 +943,7 @@ def annotation_expert(
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_template_{tissue_type}.h5ad"
+                save_path = f"{template_modality_name}.h5ad"
                 data_manager.save_modality(template_modality_name, save_path)
 
             # Log the operation
@@ -1231,7 +1241,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
                 return "Mapping file does not contain cluster-to-celltype information."
 
             # Save as new modality
-            imported_modality_name = f"{modality_name}_imported_annotations"
+            imported_modality_name = data_manager.unloaded_name(
+                f"{modality_name}_imported_annotations"
+            )
             data_manager.store_modality(
                 name=imported_modality_name,
                 adata=adata_copy,
@@ -1241,7 +1253,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
 
             # Save to file if requested
             if save_result:
-                save_path = f"{modality_name}_imported_annotations.h5ad"
+                save_path = f"{imported_modality_name}.h5ad"
                 data_manager.save_modality(imported_modality_name, save_path)
 
             # Log the operation

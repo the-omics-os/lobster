@@ -63,6 +63,12 @@ class RecordingDataManager:
     def save_modality(self, name: str, path: Any = None, **_: Any) -> Any:
         return path
 
+    def unloaded_name(self, name: str) -> str:
+        return name  # nothing was loaded from a file here
+
+    def assert_save_target(self, name: str, path: Any = None) -> None:
+        return None  # nothing is saved here
+
     def anchored_import(self, name: str) -> None:
         return None  # nothing is saved here, so no import is anchored
 
