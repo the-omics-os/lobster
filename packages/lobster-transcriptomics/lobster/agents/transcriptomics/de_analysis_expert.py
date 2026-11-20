@@ -116,6 +116,27 @@ def _is_pseudobulk(adata) -> bool:
     )
 
 
+# obs column names that usually hold a covariate a ~group design leaves out
+_COVARIATE_HINTS = ("batch", "donor", "patient", "subject", "individual", "sex", "lane")
+
+
+def _unmodelled_covariates_text(obs, groupby) -> str:
+    """Name covariate-like obs columns a simple ~groupby design did not model."""
+    left_out = [
+        col
+        for col in obs.columns
+        if col != groupby
+        and any(hint in str(col).lower() for hint in _COVARIATE_HINTS)
+        and obs[col].nunique() > 1
+    ]
+    if not left_out:
+        return ""
+    return (
+        f"\n\nNot modelled: {', '.join(left_out)}. For a design with it, use "
+        "run_de_with_formula (e.g. ~" + " + ".join([*left_out, groupby]) + ")."
+    )
+
+
 def _empty_bulk_de_refusal(adata_de, de_stats):
     """An empty filtered table is not a successful biological DE result."""
     if adata_de.n_vars:
@@ -779,7 +800,7 @@ def de_analysis_expert(
         from lobster.core.utils.count_matrix import is_whole_number_matrix as is_counts
 
         hint = (
-            "DESeq2 needs raw integer counts. Was this pseudobulk matrix "
+            "DESeq2 needs raw integer counts. Was this matrix normalized, or "
             "aggregated from normalized values? Rebuild it from raw counts, "
             "using layer 'counts' (or load the count matrix), and run again."
         )
@@ -793,7 +814,7 @@ def de_analysis_expert(
         if is_counts(adata.X):
             return None, None
         return None, (
-            "**Raw counts required**: the pseudobulk expression matrix does not "
+            "**Raw counts required**: the expression matrix does not "
             "hold raw integer counts (non-finite, negative, normalized or "
             "log-transformed values), and there is no 'counts' layer. "
             f"{hint}"
@@ -1109,9 +1130,7 @@ def de_analysis_expert(
                 status = (
                     "OK"
                     if count >= 4
-                    else "LOW POWER"
-                    if count >= 3
-                    else "INSUFFICIENT"
+                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
                 )
                 response += f"\n- {group}: {count} replicates ({status})"
             response += _replicate_summary_text(replicate_validation)
@@ -1159,8 +1178,8 @@ def de_analysis_expert(
         Run differential expression analysis (simple 2-group comparison).
 
         Works for both pseudobulk (from single-cell) and direct bulk RNA-seq data.
-        Auto-detects whether the data is pseudobulk (via adata.uns['pseudobulk_design']
-        or adata.uns['formula_design']) and routes to the appropriate analysis method.
+        method='deseq2' runs pyDESeq2 (design ~groupby) on either; wilcoxon and
+        t_test run a per-gene test on the expression values.
 
         CRITICAL: For pyDESeq2, require finite non-negative whole-number counts
         from layer 'counts', or X if no counts layer is present; refuse other
@@ -1178,6 +1197,46 @@ def de_analysis_expert(
             alpha: Significance threshold for adjusted p-values
             shrink_lfc: Whether to apply log fold change shrinkage (DESeq2 only)
             save_result: Whether to save the results
+        """
+        record: Dict[str, Any] = {}
+        response = _two_group_de(
+            modality_name,
+            groupby,
+            group1,
+            group2,
+            method,
+            alpha,
+            shrink_lfc,
+            save_result,
+            record,
+        )
+        if record:
+            data_manager.log_tool_usage(
+                tool_name="run_differential_expression",
+                parameters=record["parameters"],
+                description=record["description"],
+                ir=record["ir"],
+                agent=agent_name,
+            )
+        return response
+
+    def _two_group_de(
+        modality_name: str,
+        groupby: str,
+        group1: str,
+        group2: str,
+        method: str,
+        alpha: float,
+        shrink_lfc: bool,
+        save_result: bool,
+        record: Dict[str, Any],
+        min_replicates: int = 3,
+        tool_name: str = "run_differential_expression",
+    ) -> str:
+        """Two-group DE for run_differential_expression and run_bulk_de_direct.
+
+        Fills ``record`` (parameters, description, ir) for the calling tool's
+        provenance entry when a result was stored; refusals leave it empty.
         """
         try:
             # Ensure group IDs are strings (cluster IDs from Leiden are often integers)
@@ -1197,21 +1256,19 @@ def de_analysis_expert(
             # The result name carries the group labels (data values, which may hold
             # '/'): encoded into one plain name, checked before any analysis.
             de_modality_name = None
-            if not (_is_pseudobulk(adata) and method == "deseq2"):
+            if method != "deseq2":
                 de_modality_name = _de_result_name(modality_name, group1, group2)
 
             # Every save target of the branch that will run is checked before the
             # data changes or any analysis runs.
             if save_result:
-                if _is_pseudobulk(adata) and method == "deseq2":
+                if method == "deseq2":
                     results_csv = (
                         data_manager.exports_dir / f"{modality_name}_de_results.csv"
                     )
                     assert_inside_workspace(data_manager.workspace_path, results_csv)
                     assert_export_allowed(data_manager.workspace_path, results_csv)
-                    data_manager._assert_save_allowed(
-                        f"{modality_name}_with_de_results.h5ad"
-                    )
+                    data_manager._assert_save_allowed(f"{modality_name}.h5ad")
                 else:
                     data_manager._assert_save_allowed(f"{de_modality_name}.h5ad")
 
@@ -1243,12 +1300,12 @@ def de_analysis_expert(
 
             # Validate replicate counts
             replicate_validation = _validate_replicate_counts(
-                adata.obs, groupby, min_replicates=3
+                adata.obs, groupby, min_replicates=min_replicates
             )
 
             if not replicate_validation["valid"]:
                 error_msg = "; ".join(replicate_validation["errors"])
-                return f"**Insufficient replicates**: {error_msg}\n\nMinimum 3 replicates per group required for stable variance estimation."
+                return f"**Insufficient replicates**: {error_msg}\n\nMinimum {min_replicates} replicates per group required for stable variance estimation."
 
             # Get group counts for response
             group1_count = (adata.obs[groupby] == group1).sum()
@@ -1257,8 +1314,8 @@ def de_analysis_expert(
             # Auto-detect pseudobulk vs direct bulk
             is_pseudobulk = _is_pseudobulk(adata)
 
-            if is_pseudobulk and method == "deseq2":
-                # Pseudobulk path: use pyDESeq2 via formula design
+            if method == "deseq2":
+                # pyDESeq2 on whole-number counts, for pseudobulk and direct bulk
                 formula = f"~{groupby}"
                 contrast = [groupby, group2, group1]
 
@@ -1310,7 +1367,9 @@ def de_analysis_expert(
                     )
                     assert_export_allowed(data_manager.workspace_path, results_path)
                     results_df.to_csv(results_path)
-                    save_path = f"{modality_name}_with_de_results.h5ad"
+                    # Saved under the modality's own name: the results are part
+                    # of it, and replay pairs a saved file with its modality by name.
+                    save_path = f"{modality_name}.h5ad"
                     data_manager.save_modality(modality_name, save_path)
 
                 # Create IR for provenance
@@ -1318,7 +1377,7 @@ def de_analysis_expert(
 
                 ir = AnalysisStep(
                     operation="pydeseq2.differential_expression",
-                    tool_name="run_differential_expression",
+                    tool_name=tool_name,
                     description=(
                         f"pyDESeq2 DE: {group2} vs {group1} in {groupby}; "
                         f"whole-number counts from {count_source}"
@@ -1335,6 +1394,7 @@ def de_analysis_expert(
                         "count_source": count_source,
                         "formula": formula,
                         "contrast": contrast,
+                        "results_key": f"de_results_{contrast_name}",
                     },
                     parameter_schema={},
                     code_template=(
@@ -1347,14 +1407,28 @@ def de_analysis_expert(
                         "    alpha={{ alpha | repr }},\n"
                         "    shrink_lfc={{ shrink_lfc | repr }},\n"
                         "    n_cpus=1,\n"
-                        ")"
+                        ")\n"
+                        # The same entry the tool stores, in the object the save cell writes.
+                        "adata.uns[{{ results_key | repr }}] = {\n"
+                        "    'results_df': results_df,\n"
+                        "    'analysis_stats': de_stats,\n"
+                        "    'parameters': {\n"
+                        "        'alpha': {{ alpha | repr }},\n"
+                        "        'shrink_lfc': {{ shrink_lfc | repr }},\n"
+                        "        'formula': {{ formula | repr }},\n"
+                        "        'contrast': {{ contrast | repr }},\n"
+                        "        'used_integer_counts': True,\n"
+                        "        'count_layer': {{ count_layer | repr }},\n"
+                        "        'count_source': {{ count_source | repr }},\n"
+                        "        'method': 'pydeseq2',\n"
+                        "    },\n"
+                        "}"
                     ),
                     imports=[],
                 )
 
                 ir = _with_current_de_ir(ir, f"de_results_{contrast_name}")
-                data_manager.log_tool_usage(
-                    tool_name="run_differential_expression",
+                record.update(
                     parameters={
                         "modality_name": modality_name,
                         "groupby": groupby,
@@ -1371,12 +1445,11 @@ def de_analysis_expert(
                         f"whole-number counts from {count_source}"
                     ),
                     ir=ir,
-                    agent=agent_name,
                 )
 
                 response = f"""## Differential Expression Analysis Complete for '{modality_name}'
 
-**pyDESeq2 Analysis Results (pseudobulk detected):**
+**pyDESeq2 Analysis Results{" (pseudobulk detected)" if is_pseudobulk else ""}:**
 - Contrast: {group2} vs {group1} in {groupby}
 - Genes tested: {analysis_stats["n_genes_tested"]:,}
 - Significant genes: {analysis_stats["n_significant_genes"]:,} (alpha={alpha})
@@ -1391,7 +1464,7 @@ def de_analysis_expert(
 {chr(10).join([f"- {gene}" for gene in analysis_stats["top_downregulated"][:5]])}
 
 **Analysis Parameters:**
-- Method: pyDESeq2 (pseudobulk)
+- Method: pyDESeq2{" (pseudobulk)" if is_pseudobulk else ""}, design ~{groupby}
 - LFC shrinkage: {"Yes" if shrink_lfc else "No"}
 - Significance threshold: {alpha}
 - Used whole-number counts from: {count_source}
@@ -1402,13 +1475,20 @@ def de_analysis_expert(
                     response += f"\n**Saved to**: {results_path} & {save_path}"
 
             else:
-                # Direct bulk / simple 2-group DE path
-                method_map = {
-                    "deseq2": "deseq2_like",
-                    "wilcoxon": "wilcoxon",
-                    "t_test": "t_test",
-                }
-                internal_method = method_map.get(method, method)
+                # wilcoxon / t_test: a per-gene test on the expression values
+                internal_method = method
+                # The service's marker-style post-filters (out-group expression
+                # cap, min fraction, min fold change) remove genes expressed in
+                # every bulk sample: off for bulk, so every gene is tested.
+                bulk_filters = (
+                    {}
+                    if is_pseudobulk
+                    else {
+                        "min_fold_change": 1.0,
+                        "min_pct_expressed": 0.0,
+                        "max_out_pct_expressed": 1.0,
+                    }
+                )
 
                 adata_de, de_stats, ir = (
                     bulk_rnaseq_service.run_differential_expression_analysis(
@@ -1417,6 +1497,7 @@ def de_analysis_expert(
                         group1=group1,
                         group2=group2,
                         method=internal_method,
+                        **bulk_filters,
                     )
                 )
 
@@ -1424,11 +1505,7 @@ def de_analysis_expert(
                 if refusal:
                     return refusal
                 adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
-                ir = _with_current_de_ir(
-                    ir,
-                    de_stats["de_results_key"],
-                    "adata_de" if internal_method == "deseq2_like" else "adata",
-                )
+                ir = _with_current_de_ir(ir, de_stats["de_results_key"])
                 # Save as new modality (name derived and checked before the analysis)
                 data_manager.store_modality(
                     name=de_modality_name,
@@ -1441,8 +1518,7 @@ def de_analysis_expert(
                     save_path = f"{de_modality_name}.h5ad"
                     data_manager.save_modality(de_modality_name, save_path)
 
-                data_manager.log_tool_usage(
-                    tool_name="run_differential_expression",
+                record.update(
                     parameters={
                         "modality_name": modality_name,
                         "groupby": groupby,
@@ -1452,7 +1528,6 @@ def de_analysis_expert(
                     },
                     description=f"DE analysis: {de_stats['n_significant_genes']} significant genes found",
                     ir=ir,
-                    agent=agent_name,
                 )
 
                 analysis_stats = de_stats
@@ -1483,6 +1558,7 @@ def de_analysis_expert(
                 response += f"\n**Access detailed results**: adata.uns['{de_stats['de_results_key']}']\n"
 
             response += _replicate_summary_text(replicate_validation)
+            response += _unmodelled_covariates_text(adata.obs, groupby)
 
             # Add replicate warnings if any
             if replicate_validation["warnings"]:
@@ -1927,9 +2003,7 @@ def de_analysis_expert(
                 status = (
                     "OK"
                     if count >= 4
-                    else "LOW POWER"
-                    if count >= 3
-                    else "INSUFFICIENT"
+                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
                 )
                 response += f"- {group}: {count} replicates ({status})\n"
             response += _replicate_summary_text(replicate_validation)
@@ -3178,6 +3252,7 @@ def de_analysis_expert(
     ) -> str:
         """One-shot DE for simple bulk RNA-seq comparisons. Use when bulk data is already imported
         and you want quick 2-group DE without pseudobulk aggregation or formula complexity.
+        Runs pyDESeq2 (design ~group_key) on whole-number counts (layer 'counts', else X).
 
         Args:
             modality_name: Name of bulk RNA-seq modality
@@ -3188,190 +3263,30 @@ def de_analysis_expert(
             alpha: Significance threshold for adjusted p-values (default: 0.05)
             save_result: Whether to save result modality
         """
-        try:
-            # Validate modality exists
-            if modality_name not in data_manager.list_modalities():
-                raise ModalityNotFoundError(
-                    f"Modality '{modality_name}' not found. "
-                    f"Available: {data_manager.list_modalities()}"
-                )
-
-            adata = data_manager.get_modality(modality_name)
-            logger.info(
-                f"Running bulk DE direct on '{modality_name}': "
-                f"{adata.n_obs} samples x {adata.n_vars} genes"
-            )
-
-            # Verify raw counts availability
-            has_counts = "counts" in adata.layers if adata.layers else False
-            has_raw = adata.raw is not None
-            count_warning = ""
-            if not has_counts and not has_raw:
-                count_warning = (
-                    "\n\n**WARNING**: No raw counts layer ('counts') or adata.raw found. "
-                    "DESeq2 requires raw integer counts for accurate results."
-                )
-
-            # Validate group_key exists
-            if group_key not in adata.obs.columns:
-                available_cols = [
-                    col for col in adata.obs.columns if not col.startswith("_")
-                ]
-                return f"Group key '{group_key}' not found in obs columns. Available: {available_cols}"
-
-            # Validate groups exist
-            available_groups = list(adata.obs[group_key].unique())
-            available_groups_str = [str(g) for g in available_groups]
-            group1 = str(group1)
-            group2 = str(group2)
-
-            if group1 not in available_groups_str:
-                return f"Group '{group1}' not found in '{group_key}'. Available: {available_groups}"
-            if group2 not in available_groups_str:
-                return f"Group '{group2}' not found in '{group_key}'. Available: {available_groups}"
-
-            # The result name carries the group labels: encoded and checked first.
-            de_modality_name = _de_result_name(modality_name, group1, group2)
-
-            # Ensure string type matching
-            if group1 not in available_groups:
-                adata.obs[group_key] = adata.obs[group_key].astype(str)
-
-            # Check replicate counts
-            replicate_validation = _validate_replicate_counts(
-                adata.obs, group_key, min_replicates=min_replicates
-            )
-
-            if not replicate_validation["valid"]:
-                error_msg = "; ".join(replicate_validation["errors"])
-                return (
-                    f"**Insufficient replicates**: {error_msg}\n\n"
-                    f"Minimum {min_replicates} replicates per group required."
-                )
-
-            group1_count = (adata.obs[group_key] == group1).sum()
-            group2_count = (adata.obs[group_key] == group2).sum()
-
-            # Run DE via BulkRNASeqService
-            adata_de, de_stats, ir_from_service = (
-                bulk_rnaseq_service.run_differential_expression_analysis(
-                    adata=adata,
-                    groupby=group_key,
-                    group1=group1,
-                    group2=group2,
-                    method="deseq2_like",
-                )
-            )
-
-            refusal = _empty_bulk_de_refusal(adata_de, de_stats)
-            if refusal:
-                return refusal
-            adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
-            # Store result modality (name derived and checked before the analysis)
-            data_manager.store_modality(
-                name=de_modality_name,
-                adata=adata_de,
-                parent_name=modality_name,
-                step_summary=f"Bulk DE: {group1} vs {group2}",
-            )
-
-            if save_result:
-                save_path = f"{de_modality_name}.h5ad"
-                data_manager.save_modality(de_modality_name, save_path)
-
-            # Create IR
-            from lobster.core.provenance import AnalysisStep as ProvAnalysisStep
-
-            ir = ProvAnalysisStep(
-                operation="pydeseq2.differential_expression",
-                tool_name="run_bulk_de_direct",
-                description=f"Direct bulk DE: {group2} vs {group1} in {group_key}",
-                library="pydeseq2",
-                parameters={
-                    "modality_name": modality_name,
-                    "group_key": group_key,
-                    "group1": group1,
-                    "group2": group2,
-                    "alpha": alpha,
-                },
-                parameter_schema={},
-                code_template=(
-                    "from pydeseq2.dds import DeseqDataSet\n"
-                    "from pydeseq2.ds import DeseqStats\n"
-                    "dds = DeseqDataSet(adata=adata, design_factors={{ group_key | string | repr }})\n"
-                    "dds.deseq2()\n"
-                    "stat_res = DeseqStats(dds, contrast=[{{ group_key | string | repr }}, {{ group2 | string | repr }}, {{ group1 | string | repr }}])\n"
-                    "stat_res.summary()\n"
-                    "results_df = stat_res.results_df"
-                ),
-                imports=[],
-            )
-
-            ir = _with_current_de_ir(ir, de_stats["de_results_key"])
+        # The same pyDESeq2 run as run_differential_expression(method="deseq2").
+        record: Dict[str, Any] = {}
+        response = _two_group_de(
+            modality_name,
+            group_key,
+            group1,
+            group2,
+            method="deseq2",
+            alpha=alpha,
+            shrink_lfc=True,
+            save_result=save_result,
+            record=record,
+            min_replicates=min_replicates,
+            tool_name="run_bulk_de_direct",
+        )
+        if record:
             data_manager.log_tool_usage(
                 tool_name="run_bulk_de_direct",
-                parameters={
-                    "modality_name": modality_name,
-                    "group_key": group_key,
-                    "group1": group1,
-                    "group2": group2,
-                    "alpha": alpha,
-                },
-                description=f"Bulk DE: {de_stats['n_significant_genes']} significant genes",
-                ir=ir,
+                parameters=record["parameters"],
+                description=record["description"],
+                ir=record["ir"],
                 agent=agent_name,
             )
-
-            # Get DEG counts at alpha threshold
-            n_sig = de_stats.get("n_significant_genes", 0)
-            n_up = de_stats.get("n_upregulated", 0)
-            n_down = de_stats.get("n_downregulated", 0)
-            top_up = de_stats.get("top_upregulated", [])[:10]
-            top_down = de_stats.get("top_downregulated", [])[:10]
-
-            response = f"""## Bulk DE Analysis Complete for '{modality_name}'
-
-**Comparison:** {group2} ({group2_count} samples) vs {group1} ({group1_count} samples) in {group_key}
-**Method:** DESeq2-like bulk differential expression
-
-**Results:**
-- Genes tested: {de_stats.get("n_genes_tested", "N/A"):,}
-- Significant genes (padj < {alpha}): {n_sig:,}
-- Upregulated in {group2}: {n_up:,}
-- Downregulated in {group2}: {n_down:,}
-
-**Top 10 Upregulated Genes ({group2} > {group1}):**
-{chr(10).join([f"- {gene}" for gene in top_up]) if top_up else "- None found"}
-
-**Top 10 Downregulated Genes ({group2} < {group1}):**
-{chr(10).join([f"- {gene}" for gene in top_down]) if top_down else "- None found"}
-
-**New modality created**: '{de_modality_name}'{count_warning}"""
-
-            if save_result:
-                response += f"\n**Saved to**: {save_path}"
-
-            response += _replicate_summary_text(replicate_validation)
-
-            # Add replicate warnings
-            if replicate_validation["warnings"]:
-                response += "\n\n**Statistical Power Warnings:**"
-                for warning in replicate_validation["warnings"]:
-                    response += f"\n- {warning}"
-
-            response += "\n\n**Next steps**: filter_de_results, run_gsea_analysis, or extract_and_export_de_results"
-
-            return response
-
-        except InvalidModalityNameError as e:
-            # The derived result name is not one plain name (fixed reason).
-            return f"Error: {e}"
-        except (BulkRNASeqError, ModalityNotFoundError) as e:
-            logger.error(f"Error in bulk DE direct: {e}")
-            return f"Error in bulk DE analysis: {str(e)}"
-        except Exception as e:
-            logger.error(f"Unexpected error in bulk DE direct: {e}")
-            return f"Unexpected error: {str(e)}"
+        return response
 
     run_bulk_de_direct.metadata = {"categories": ["ANALYZE"], "provenance": True}
     run_bulk_de_direct.tags = ["ANALYZE"]

@@ -900,7 +900,7 @@ def test_lane_b_pseudobulk_de_refuses_every_save_target_before_analysis(de, whic
     if which == "csv":
         _link(s.dm.exports_dir / "de_results_de_results.csv", _rev_file(s))
     else:
-        _link(s.dm.data_dir / "de_results_with_de_results.h5ad", _rev_file(s))
+        _link(s.dm.data_dir / "de_results.h5ad", _rev_file(s))
     dtype = s.dm.get_modality("de_results").obs["condition"].dtype
     modalities, before = list(s.dm.list_modalities()), _tree(s)
     response = _de_tools(s)["run_differential_expression"].invoke(DE_ARGS)
@@ -980,7 +980,7 @@ def test_lane_b_ordinary_pseudobulk_and_direct_saves_are_unchanged(de, monkeypat
     s = de
     response = _de_tools(s)["run_differential_expression"].invoke(DE_ARGS)
     assert (s.dm.exports_dir / "de_results_de_results.csv").is_file(), response
-    assert (s.dm.data_dir / "de_results_with_de_results.h5ad").is_file()
+    assert (s.dm.data_dir / "de_results.h5ad").is_file()
     assert "run_differential_expression" in [k["tool_name"] for k in s.logged]
 
     adata, results = _de_modality(pseudobulk=False)

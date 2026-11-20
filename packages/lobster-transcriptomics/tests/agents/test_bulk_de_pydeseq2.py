@@ -118,6 +118,26 @@ def test_the_exported_cells_reproduce_the_stored_results(tmp_path, monkeypatch, 
     activity = [a for a in dm.provenance.activities if a["type"] == tool][-1]
     replayed = replay_ir(AnalysisStep.from_dict(activity["ir"]), adata=original)
     pd.testing.assert_frame_equal(pd.DataFrame(replayed["results_df"]), _stored(dm))
+    # The cells store the result in the object the save cell writes, as the tool
+    # stored it: replay compares that object with the session's saved file.
+    stored, written = dm.get_modality("bulk").uns, replayed["adata"].uns
+    key = stored["de_current_results_key"]
+    assert written["de_current_results_key"] == key
+    pd.testing.assert_frame_equal(written[key]["results_df"], stored[key]["results_df"])
+    assert written[key]["parameters"] == stored[key]["parameters"]
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_the_saved_file_carries_the_modality_name(tmp_path, monkeypatch, tool):
+    """Replay pairs a saved file with its modality by name: <modality>.h5ad."""
+    dm = _dm(tmp_path, monkeypatch, _bulk())
+    reply = _simple_de(dm, tool, save_result=True)
+    assert "Complete" in reply and "error" not in reply.lower(), reply
+    assert "bulk.h5ad" in reply
+    assert sorted(p.name for p in dm.data_dir.glob("*.h5ad")) == ["bulk.h5ad"]
+    assert (dm.exports_dir / "bulk_de_results.csv").is_file()
+    saved = ad.read_h5ad(dm.data_dir / "bulk.h5ad")
+    assert saved.uns["de_current_results_key"] in saved.uns
 
 
 @pytest.mark.parametrize("tool", TOOLS)

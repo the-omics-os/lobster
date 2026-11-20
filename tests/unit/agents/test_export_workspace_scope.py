@@ -702,10 +702,12 @@ def test_bulk_de_direct_with_a_slash_in_a_group_label(s, monkeypatch):
             "group2": "other",
         }
     )
-    science.run_differential_expression_analysis.assert_called_once()
-    name = "cells_de_CD4%2FCD8_vs_other"
-    assert name in s.dm.list_modalities(), response
-    assert (s.dm.data_dir / f"{name}.h5ad").is_file()
+    # pyDESeq2 stores the result in the input modality; the label stays data.
+    science.run_pydeseq2_from_pseudobulk.assert_called_once()
+    science.run_differential_expression_analysis.assert_not_called()
+    stored = s.dm.get_modality("cells").uns
+    assert "de_results_condition_other_vs_CD4/CD8" in stored, response
+    assert (s.dm.data_dir / "cells.h5ad").is_file()
     s.nothing_outside()
 
 

@@ -884,9 +884,6 @@ class TestDECurrentResultsAndPersistence:
         adata = dm.modalities["pb"]
         if path == "pseudobulk":
             adata.uns["is_pseudobulk"] = True
-        else:
-            # A success fixture must survive the marker-style out-group cap.
-            adata.X[adata.obs["condition"] == "treated", :10] = 1
         if path == "bulk_direct":
             name = "run_bulk_de_direct"
             args = {
@@ -907,30 +904,13 @@ class TestDECurrentResultsAndPersistence:
             }
         response = tools[name].invoke(args)
         assert "Complete" in response and "Error" not in response, response
-        output = dm.modalities[
-            "pb" if path == "pseudobulk" else "pb_de_control_vs_treated"
-        ]
-        assert output.n_vars > 0
-        expected_key = (
-            "de_results_condition_treated_vs_control"
-            if path == "pseudobulk"
-            else "de_results_control_vs_treated"
-        )
+        # deseq2 runs pyDESeq2 for pseudobulk and direct bulk alike: the result
+        # is stored in the input modality.
+        output = dm.modalities["pb"]
+        expected_key = "de_results_condition_treated_vs_control"
         assert output.uns["de_current_results_key"] == expected_key
-        assert expected_key in output.uns
-        assert (
-            len(
-                pd.DataFrame(
-                    output.uns[expected_key]["results_df"]
-                    if path == "pseudobulk"
-                    else output.uns[expected_key]
-                )
-            )
-            > 0
-        )
+        assert len(pd.DataFrame(output.uns[expected_key]["results_df"])) > 0
         _assert_real_ir(dm.last_ir(name))
-        # Legacy non-formula templates have independent replay/format debt; this
-        # asserts runtime identity, not parity of those inherited algorithms.
 
     @pytest.mark.parametrize(
         "tool_name",
@@ -1120,9 +1100,6 @@ def test_the_bulk_de_notebook_cells_run_as_exported(de_setup):
     from lobster.core.provenance.analysis_ir import extract_unique_imports
 
     original, dm, tools = de_setup
-    dm.modalities["pb"].X[
-        (dm.modalities["pb"].obs["condition"] == "treated").to_numpy(), :10
-    ] = 1
     response = tools["run_bulk_de_direct"].invoke(
         {
             "modality_name": "pb",
@@ -1136,8 +1113,18 @@ def test_the_bulk_de_notebook_cells_run_as_exported(de_setup):
     ir = dm.last_ir("run_bulk_de_direct")
     lines = extract_unique_imports([ir])
     assert all(line.startswith(("import ", "from ")) for line in lines), lines
-    scope = {"adata": dm.modalities["pb"].copy()}
+    scope = {"adata": original.copy()}
     exec(
         compile("\n".join(lines) + "\n" + ir.render(), "<cells>", "exec"), scope
     )  # nosec B102
-    assert len(scope["results_df"]) > 0
+    # The cells write what the tool stored, into the object the save cell writes.
+    stored, replayed = dm.modalities["pb"].uns, scope["adata"].uns
+    key = stored["de_current_results_key"]
+    assert replayed["de_current_results_key"] == key
+    pd.testing.assert_frame_equal(
+        replayed[key]["results_df"], stored[key]["results_df"]
+    )
+    assert replayed[key]["parameters"] == stored[key]["parameters"]
+    assert (
+        replayed[key]["analysis_stats"].keys() == stored[key]["analysis_stats"].keys()
+    )

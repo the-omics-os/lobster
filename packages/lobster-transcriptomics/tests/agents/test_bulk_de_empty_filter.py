@@ -1,4 +1,8 @@
-"""Empty marker-style bulk filters must not masquerade as a biological DE result."""
+"""Empty marker-style filters must not masquerade as a biological DE result.
+
+The filters still run for wilcoxon / t_test on a pseudobulk modality; direct
+bulk turns them off and deseq2 runs pyDESeq2 (test_bulk_de_pydeseq2.py).
+"""
 
 from importlib import import_module
 from pathlib import Path
@@ -15,7 +19,7 @@ from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 from lobster.testing.provenance_replay import factory_tools
 
 MODULE = "lobster.agents.transcriptomics.de_analysis_expert"
-TOOLS = ["run_bulk_de_direct", "run_differential_expression"]
+METHODS = ["wilcoxon", "t_test"]
 
 
 def counts(kind):
@@ -39,9 +43,10 @@ def counts(kind):
     )
 
 
-def invoke(tmp_path, monkeypatch, tool_name, kind, save):
+def invoke(tmp_path, monkeypatch, method, kind, save):
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     original = counts(kind)
+    original.uns["is_pseudobulk"] = True
     dm.store_modality("bulk", original)
     original = dm.get_modality("bulk").copy()
     model_tools = factory_tools(de_analysis_expert, MODULE, dm)
@@ -64,23 +69,24 @@ def invoke(tmp_path, monkeypatch, tool_name, kind, save):
     monkeypatch.setattr(dm, "log_tool_usage", log)
     args = {
         "modality_name": "bulk",
+        "groupby": "condition",
         "group1": "ctrl",
         "group2": "treat",
+        "method": method,
         "save_result": save,
     }
-    args["group_key" if tool_name == "run_bulk_de_direct" else "groupby"] = "condition"
-    response = model_tools[tool_name].invoke(args)
+    response = model_tools["run_differential_expression"].invoke(args)
     assert len(calls) == 1
     return dm, original, response, calls[0], store, save_call, log
 
 
-@pytest.mark.parametrize("tool_name", TOOLS)
+@pytest.mark.parametrize("method", METHODS)
 @pytest.mark.parametrize("save", [False, True])
 def test_all_bulk_genes_filtered_is_clear_refusal_without_result_side_effects(
-    tmp_path, monkeypatch, tool_name, save
+    tmp_path, monkeypatch, method, save
 ):
     dm, original, response, (_, stats, _), store, save_call, log = invoke(
-        tmp_path, monkeypatch, tool_name, "bulk_all_expressed", save
+        tmp_path, monkeypatch, method, "bulk_all_expressed", save
     )
     assert (
         stats["pre_filter_gene_count"] == 500 and stats["post_filter_gene_count"] == 0
@@ -105,12 +111,12 @@ def test_all_bulk_genes_filtered_is_clear_refusal_without_result_side_effects(
     assert dm.get_modality("bulk").uns == original.uns
 
 
-@pytest.mark.parametrize("tool_name", TOOLS)
+@pytest.mark.parametrize("method", METHODS)
 def test_surviving_genes_with_no_significant_hits_still_complete(
-    tmp_path, monkeypatch, tool_name
+    tmp_path, monkeypatch, method
 ):
     dm, original, response, (output, stats, _), store, save_call, log = invoke(
-        tmp_path, monkeypatch, tool_name, "survivor", False
+        tmp_path, monkeypatch, method, "survivor", False
     )
     assert output.n_vars == 1 and stats["post_filter_gene_count"] == 1
     assert stats["n_significant_genes"] == 0
