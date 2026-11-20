@@ -200,3 +200,99 @@ def test_a_tool_reply_names_the_refusal(ws):
     )
     assert reply == "Error importing generic expression matrix: " + MESSAGE
     assert _sha(dm.data_dir / "x.h5ad") == before
+
+
+def _scrna():
+    rng = np.random.default_rng(0)
+    return ad.AnnData(
+        X=rng.poisson(5, (300, 400)).astype(np.float32),
+        obs=pd.DataFrame(index=[f"c{i}" for i in range(300)]),
+        var=pd.DataFrame(index=[f"G{i}" for i in range(400)]),
+    )
+
+
+def _proteins():
+    rng = np.random.default_rng(2)
+    return ad.AnnData(
+        X=(rng.random((6, 40)) * 1e6 + 1e3).astype(np.float32),
+        obs=pd.DataFrame(index=[f"s{i}" for i in range(6)]),
+        var=pd.DataFrame(index=[f"P{i:05d}" for i in range(40)]),
+    )
+
+
+RERUNS = {
+    "filter_and_normalize": (
+        "lobster.agents.transcriptomics.transcriptomics_expert",
+        "transcriptomics_expert",
+        _scrna,
+        {"modality_name": "x", "min_genes_per_cell": 10, "min_cells_per_gene": 3},
+        {"min_genes_per_cell": 20},
+        "x_filtered_normalized",
+    ),
+    "normalize_proteomics_data": (
+        "lobster.agents.proteomics.proteomics_expert",
+        "proteomics_expert",
+        _proteins,
+        {"modality_name": "x", "normalization_method": "median"},
+        {"normalization_method": "quantile"},
+        "x_normalized",
+    ),
+}
+
+
+@pytest.mark.parametrize("tool", list(RERUNS))
+def test_a_rerun_in_a_resumed_session_takes_a_new_result_name(tmp_path, tool):
+    """Session 1 saves <x>_<step>.h5ad; restarted, the same step is rerun: the
+    new result is <x>_<step>_2, named in the reply; the loaded result, in
+    memory and on disk, is as it was."""
+    module_name, factory, data, args, changed, result = RERUNS[tool]
+    module = pytest.importorskip(module_name)
+    from lobster.testing.provenance_replay import factory_tools
+
+    (tmp_path / "ws" / "data").mkdir(parents=True)
+    data().write_h5ad(tmp_path / "ws" / "data" / "x.h5ad")
+    first = DataManagerV2(workspace_path=tmp_path / "ws")
+    reply = factory_tools(getattr(module, factory), module_name, first)[tool].invoke(
+        args
+    )
+    saved = first.data_dir / f"{result}.h5ad"
+    assert saved.is_file(), reply
+
+    resumed = DataManagerV2(workspace_path=tmp_path / "ws")
+    before = _sha(saved)
+    loaded = resumed.get_modality(result).copy()
+    tools = factory_tools(getattr(module, factory), module_name, resumed)
+    reply = tools[tool].invoke({**args, **changed})
+
+    assert f"{result}_2" in reply, reply
+    assert "Error" not in reply
+    assert (resumed.data_dir / f"{result}_2.h5ad").is_file()
+    assert _sha(saved) == before
+    np.testing.assert_array_equal(resumed.get_modality(result).X, loaded.X)
+
+
+def test_an_import_refused_leaves_the_loaded_modality_and_provenance(ws):
+    """An import into the name of a loaded file is refused before anything
+    changes: the modality in memory is the loaded one, no step is logged."""
+    proteomics = pytest.importorskip("lobster.agents.proteomics.proteomics_expert")
+    from lobster.testing.provenance_replay import factory_tools
+
+    rng = np.random.default_rng(1)
+    matrix = pd.DataFrame(
+        rng.random((40, 6)) * 1e6,
+        index=[f"P{i:05d}" for i in range(40)],
+        columns=[f"s{i}" for i in range(6)],
+    )
+    matrix.index.name = "protein"
+    matrix.to_csv(ws.parent / "expr.csv")
+    dm = DataManagerV2(workspace_path=ws)
+    loaded = dm.get_modality("x").copy()
+    activities = len(dm.provenance.activities)
+    tools = factory_tools(proteomics.proteomics_expert, proteomics.__name__, dm)
+    reply = tools["import_proteomics_data"].invoke(
+        {"file_path": str(ws.parent / "expr.csv"), "modality_name": "x"}
+    )
+    assert reply.endswith(MESSAGE), reply
+    assert dm.get_modality("x").shape == loaded.shape
+    np.testing.assert_array_equal(dm.get_modality("x").X, loaded.X)
+    assert len(dm.provenance.activities) == activities
