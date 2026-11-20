@@ -393,3 +393,48 @@ def test_the_reply_names_the_file_saved_and_the_modality_stored(tmp_path, tool):
     assert (folder / f"{result}_2.h5ad").is_file()
     assert f"{result}_2" in dm.list_modalities()
     assert _sha(folder / f"{result}.h5ad") == before
+
+
+def _elsewhere_snapshot(tmp_path):
+    """z_autosave.h5ad outside data/, loaded by load_modality as 'q'."""
+    source = tmp_path / "elsewhere" / "z_autosave.h5ad"
+    source.parent.mkdir()
+    _adata(shift=6.0).write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("q", str(source), adapter="transcriptomics_bulk", validate=False)
+    return dm, source
+
+
+# (how the snapshot was loaded, name saved, path saved to)
+NOT_OWN = {
+    "another_name": ("auto", "y", "z_autosave.h5ad"),
+    "loaded_as_another_modality": ("renamed", "z", "z_autosave.h5ad"),
+    "outside_data": ("elsewhere", "z", None),
+    "outside_data_as_itself": ("elsewhere", "z_autosave", None),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_OWN))
+def test_own_snapshot_never_reaches_another_modalitys_loaded_file(tmp_path, case):
+    """The auto-save exemption covers only the modality's own data/ snapshot,
+    loaded as that modality or as its snapshot; a direct save that claims it for
+    another modality's loaded file is refused and the file is unchanged."""
+    how, name, path = NOT_OWN[case]
+    if how == "elsewhere":
+        dm, target = _elsewhere_snapshot(tmp_path)
+        path = str(target)
+    else:
+        data = tmp_path / "ws" / "data"
+        data.mkdir(parents=True)
+        target = data / "z_autosave.h5ad"
+        _adata(shift=6.0).write_h5ad(target)
+        dm = DataManagerV2(workspace_path=tmp_path / "ws")
+        if how == "renamed":  # only as 'q': the file name is z's, the modality not
+            dm.load_modality("q", str(target), adapter="transcriptomics_bulk")
+            del dm.modalities["z_autosave"]
+    dm.modalities[name] = _adata(shift=9.0)
+    before = _sha(target)
+
+    with pytest.raises(RecordedInputError):
+        dm.save_modality(name, path, own_snapshot=True)
+    assert _sha(target) == before
