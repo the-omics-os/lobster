@@ -212,8 +212,8 @@ class WorkspaceAgentConfig(BaseModel):
 
         try:
             # Parse TOML
-            with open(config_path, "rb") as f:
-                data = tomllib.load(f)
+            # utf-8-sig: a file saved with a BOM (PowerShell 5.1, Notepad) reads too
+            data = tomllib.loads(config_path.read_text(encoding="utf-8-sig"))
 
             # Extract provider settings if present
             provider_data = data.pop("provider", None)

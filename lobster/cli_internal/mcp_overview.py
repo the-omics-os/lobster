@@ -466,7 +466,7 @@ def load_provider_config(path: Path) -> Any:
 
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    return WorkspaceProviderConfig(**json.loads(path.read_text(encoding="utf-8")))
+    return WorkspaceProviderConfig(**json.loads(path.read_text(encoding="utf-8-sig")))
 
 
 def load_agent_config(path: Path) -> Any:
@@ -480,7 +480,7 @@ def load_agent_config(path: Path) -> Any:
         WorkspaceAgentConfig,
     )
 
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
     provider = data.pop("provider", None)
     if provider:
         data["provider_settings"] = ProviderSettings(**provider)

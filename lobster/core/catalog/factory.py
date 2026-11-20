@@ -100,7 +100,7 @@ def _read_global(path: Optional[Path]) -> Mapping[str, Any]:
         config_path = _global_config_path() if path is None else Path(path)
         if not config_path.is_file():
             return {}
-        data = json.loads(config_path.read_text())
+        data = json.loads(config_path.read_text(encoding="utf-8-sig"))
         return data if isinstance(data, dict) else {}
     except Exception:
         logger.debug("Catalog: could not read the global config", exc_info=True)

@@ -206,7 +206,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
         try:
             # Parse JSON
-            data = json.loads(config_path.read_text())
+            data = json.loads(config_path.read_text(encoding="utf-8-sig"))
             config = cls(**data)
             logger.info(f"Loaded workspace config from {config_path}")
             return config
