@@ -276,6 +276,17 @@ class WorkspaceAgentConfig(BaseModel):
         """
         return self.provider_settings is not None
 
+    def effective_agents(self) -> List[str]:
+        """The agents this config names: the enabled list, else the expanded preset.
+
+        Empty: no preference (every installed agent).
+        """
+        if self.enabled_agents or not self.preset:
+            return list(self.enabled_agents)
+        from lobster.config.agent_presets import expand_preset
+
+        return expand_preset(self.preset) or []
+
     def validate_enabled_agents(self) -> Tuple[List[str], List[str]]:
         """
         Validate enabled agents against installed packages.

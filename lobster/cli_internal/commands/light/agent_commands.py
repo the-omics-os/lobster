@@ -182,7 +182,6 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
     import shlex
 
     from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES
-    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.core.uv_tool_env import (
         build_tool_install_command,
         run_tool_install,
@@ -193,9 +192,7 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
         a for entry in AVAILABLE_AGENT_PACKAGES if entry[0] == package for a in entry[2]
     }
     if agents:
-        config = WorkspaceAgentConfig.load(workspace_path)
-        config.enabled_agents = sorted(set(config.enabled_agents) | agents)
-        config.save(workspace_path)
+        _change_enabled(workspace_path, add=agents)
 
     cmd = build_tool_install_command(with_packages=[_pinned_to_lobster(package, ">=")])
     cmd.insert(3, "--reinstall")
@@ -337,6 +334,28 @@ def _get_agents_for_package(package_name: str) -> list[str]:
     return matching_agents
 
 
+def _change_enabled(workspace_path: Path, *, add=(), remove=()) -> None:
+    """Add or remove agents in config.toml; a preset becomes the explicit list.
+
+    config.toml holds a preset or a list, never both: a list saved next to a
+    preset is dropped, so the change would silently not happen.
+    """
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+
+    config = WorkspaceAgentConfig.load(workspace_path)
+    if config.preset:
+        console.print(
+            h(
+                "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+            ).format(preset_name=config.preset)
+        )
+    config.enabled_agents = sorted(
+        (set(config.effective_agents()) | set(add)) - set(remove)
+    )
+    config.preset = None
+    config.save(workspace_path)
+
+
 def _get_workspace_path() -> Path:
     """Get the current workspace path."""
     from lobster.core.workspace import resolve_workspace
@@ -369,7 +388,7 @@ def agents_list(
 
     # Load current config to check enabled status
     config = WorkspaceAgentConfig.load(workspace_path)
-    enabled_set = set(config.enabled_agents)
+    enabled_set = set(config.effective_agents())
 
     # Get all installed agents (entry points only - no network)
     all_agents = component_registry.list_agents()
@@ -486,7 +505,6 @@ def agents_install(
 
     CLI-04: lobster agents install <package> installs via uv pip
     """
-    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.core.component_registry import component_registry
 
     # Resolve workspace
@@ -537,14 +555,7 @@ def agents_install(
 
     if new_agents:
         # Auto-enable new agents in config
-        config = WorkspaceAgentConfig.load(workspace_path)
-
-        # Add new agents to enabled list
-        current_enabled = set(config.enabled_agents)
-        updated_enabled = current_enabled | new_agents
-
-        config.enabled_agents = sorted(updated_enabled)
-        config.save(workspace_path)
+        _change_enabled(workspace_path, add=new_agents)
 
         console.print(
             h("[green]v[/green] Enabled {count} agent(s):").format(
@@ -573,7 +584,6 @@ def agents_uninstall(
     Removes the package via uv pip uninstall, then removes all agents
     from the package from the workspace config.toml enabled list.
     """
-    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.core.component_registry import component_registry
 
     # Resolve workspace
@@ -607,14 +617,7 @@ def agents_uninstall(
 
     # Remove package's agents from config
     if package_agents:
-        config = WorkspaceAgentConfig.load(workspace_path)
-
-        # Remove agents from enabled list
-        current_enabled = set(config.enabled_agents)
-        updated_enabled = current_enabled - package_agents
-
-        config.enabled_agents = sorted(updated_enabled)
-        config.save(workspace_path)
+        _change_enabled(workspace_path, remove=package_agents)
 
         console.print(
             h("[green]v[/green] Removed {count} agent(s) from config:").format(
