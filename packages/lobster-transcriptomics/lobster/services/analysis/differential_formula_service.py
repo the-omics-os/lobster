@@ -583,6 +583,7 @@ class DifferentialFormulaService:
             for var, info in formula_components["variable_info"].items():
                 if info["type"] == "categorical":
                     counts = metadata[var].value_counts()
+                    counts = counts[counts > 0]  # an unused category has no sample
                     min_count = counts.min()
 
                     if min_count < min_replicates:

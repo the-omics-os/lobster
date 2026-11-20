@@ -1583,6 +1583,12 @@ Next suggested step: Import quantification data with tximport for differential e
             # Validate inputs
             self._validate_deseq2_inputs(count_matrix, metadata, formula, contrast)
 
+            # A level with no sample (an unused category) would be a design
+            # column of zeros: a singular fit. Drop it, on a copy.
+            metadata = metadata.copy()
+            for column in metadata.select_dtypes("category"):
+                metadata[column] = metadata[column].cat.remove_unused_categories()
+
             # Parse formula and validate design
             design_info = self.formula_service.parse_formula(formula, metadata)
             self.formula_service.construct_design_matrix(
