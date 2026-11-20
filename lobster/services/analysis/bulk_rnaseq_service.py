@@ -1027,8 +1027,7 @@ Next suggested step: Import quantification data with tximport for differential e
         # With one value in every sample all ranks tie: the rank sum has no
         # variance, so z is 0 / 0, not 0 with p = 1. No p-value, as the t-test.
         one_value = np.ptp(np.vstack([group1_expr, group2_expr]), axis=0) == 0
-        p_values[one_value] = np.nan
-        z_stats[one_value] = np.nan
+        p_values[one_value] = np.nan  # so the gene is not reported
 
         # Multiple testing correction
         p_adjusted = _bh_over_finite(p_values)
