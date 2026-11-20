@@ -31,6 +31,21 @@ class ProteomicsDifferentialError(Exception):
     pass
 
 
+# limma_like borrows variance from the other proteins when this many are tested
+_LIMMA_PRIOR_MIN_PROTEINS = 10
+
+
+def _split_in_few_proteins(results: List[Dict[str, Any]]) -> bool:
+    """A flagged split protein is in a comparison of fewer proteins tested than
+    limma_like needs to borrow variance."""
+    tested = pd.Series([r["comparison"] for r in results]).value_counts()
+    return any(
+        tested[r["comparison"]] < _LIMMA_PRIOR_MIN_PROTEINS
+        for r in results
+        if r.get("zero_within_group_variance")
+    )
+
+
 def _n_without_pvalue(results: List[Dict[str, Any]]) -> int:
     """The tests that gave no p-value (left out of the correction), but for a
     flagged split protein: it is tested, and counted apart."""
@@ -433,6 +448,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "n_zero_within_group_variance": sum(
                         1 for r in de_results if r.get("zero_within_group_variance")
                     ),
+                    "zero_within_group_variance_in_few_proteins": (
+                        _split_in_few_proteins(de_results)
+                    ),
                 }
             )
 
@@ -796,7 +814,10 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         # For limma_like: estimate empirical Bayes prior from all protein variances
         prior_variance = None
         prior_df = None
-        if test_method == "limma_like" and len(protein_data) >= 10:
+        if (
+            test_method == "limma_like"
+            and len(protein_data) >= _LIMMA_PRIOR_MIN_PROTEINS
+        ):
             all_variances = []
             all_dfs = []
             for _, _, g1, g2 in protein_data:
