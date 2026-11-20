@@ -234,9 +234,10 @@ class TestPreDownloadOnASlowRoute:
             socket.timeout("the read stalled"),
             http.client.IncompleteRead(b"partial"),
             urllib.error.HTTPError("u", 503, "busy", {}, None),
+            urllib.error.HTTPError("u", 500, "error", {}, None),
             b"not gzip",
         ],
-        ids=["connect-timeout", "reset", "read-stall", "cut", "503", "garbled"],
+        ids=["connect-timeout", "reset", "read-stall", "cut", "503", "500", "garbled"],
     )
     def test_a_transient_failure_is_tried_again(self, opened, tmp_path, failure):
         from lobster.services.data_access.geo.soft_download import (
@@ -275,12 +276,20 @@ class TestPreDownloadOnASlowRoute:
         assert pre_download_soft_file("GSE194247", tmp_path) is None
         assert len(calls) == 1 and not sleeps
 
-    def test_a_certificate_failure_is_not_tried_again(self, opened, tmp_path):
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            Exception("CERTIFICATE_VERIFY_FAILED"),
+            ssl.SSLError(1, "[SSL: WRONG_VERSION_NUMBER] wrong version number"),
+        ],
+        ids=["certificate", "ssl"],
+    )
+    def test_a_certificate_failure_is_not_tried_again(self, opened, tmp_path, failure):
         from lobster.services.data_access.geo.soft_download import (
             pre_download_soft_file,
         )
 
-        calls, _ = opened(Exception("CERTIFICATE_VERIFY_FAILED"))
+        calls, _ = opened(failure)
 
         with pytest.raises(Exception, match="SSL certificate verification failed"):
             pre_download_soft_file("GSE194247", tmp_path)
