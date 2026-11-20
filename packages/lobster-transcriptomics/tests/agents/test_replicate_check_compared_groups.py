@@ -78,3 +78,12 @@ def test_the_power_warning_for_one_replicate_is_singular():
     result = _count_biological_replicates(_rows(1, 4), "condition", min_replicates=1)
 
     assert any(w.startswith("Group 'a' has 1 replicate. ") for w in result["warnings"])
+
+
+def test_deseq2_with_a_short_compared_group_adds_no_note(tmp_path, monkeypatch):
+    _, reply = _run(tmp_path, monkeypatch, _groups(1, 5, 6), "deseq2", pseudobulk=True)
+
+    assert reply.startswith(
+        "**Insufficient replicates**: Group 'ctrl' has only 1 replicate (minimum 3"
+    ), reply
+    assert "deseq2 fits every group" not in reply

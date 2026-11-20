@@ -202,3 +202,13 @@ def test_one_value_everywhere_has_no_p_value_whatever_the_value(
     assert stats["n_genes_without_pvalue"] == whole["n_genes_without_pvalue"]
     assert stats["n_zero_within_group_variance"] == 0
     assert not out.var["zero_within_group_variance"].iloc[-1]
+
+
+def test_one_value_everywhere_has_no_statistic(tmp_path, monkeypatch):
+    adata = _c2()[:10].copy()
+    adata.X = adata.X.astype(np.float64)
+    adata.X[:, -1] = 1.1
+
+    out, _, _ = _analysed(tmp_path, monkeypatch, adata)
+
+    assert np.isnan(out.var["stat"].iloc[-1])  # not rounding noise
