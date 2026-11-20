@@ -367,9 +367,32 @@ def test_init_agents_flag_starts_the_picker_and_is_recorded(
 
 
 @pytest.mark.parametrize("ui_mode", ["go", "auto"])
-def test_preset_wins_over_the_agents_flag(ws, monkeypatch, ui_mode):
+@pytest.mark.parametrize("picked", [SCRNA_FULL_AGENTS, FLAG_PICKED])
+def test_preset_wins_over_the_agents_flag(ws, monkeypatch, ui_mode, picked):
     packages = _drive(
-        ws, monkeypatch, ui_mode, SCRNA_FULL_AGENTS, preset="scrna-full", agents=FLAG
+        ws, monkeypatch, ui_mode, picked, preset="scrna-full", agents=FLAG
     )
     assert packages == SCRNA_FULL
-    assert WorkspaceAgentConfig.load(ws).preset == "scrna-full"
+    config = WorkspaceAgentConfig.load(ws)
+    if picked is SCRNA_FULL_AGENTS:
+        assert config.preset == "scrna-full"
+    else:  # the flag's own packages: still the picked experts, not the flag list
+        assert (config.preset, config.enabled_agents) == (None, FLAG_PICKED)
+
+
+def test_classic_init_hands_the_flags_to_the_picker(ws, monkeypatch):
+    (ws.parent / ".env").write_text("OLLAMA_BASE_URL=http://localhost:11434\n")
+    monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *a, **k: False)
+    answers = iter(["1", "1", "1", "omk_synthetic"])
+    monkeypatch.setattr("rich.prompt.Prompt.ask", lambda *a, **k: next(answers, "n"))
+    monkeypatch.setattr(init_commands, "_ask_language", lambda **_: None)
+    seen = {}
+
+    def picker(workspace_path, **kwargs):
+        seen.update(kwargs)
+        return [], None
+
+    monkeypatch.setattr(init_commands, "_perform_agent_selection_interactive", picker)
+    init_impl(**_init_kwargs(ui_mode="classic", preset="scrna-full", agents=FLAG))
+    assert (seen["preset"], seen["agents"]) == ("scrna-full", FLAG)
