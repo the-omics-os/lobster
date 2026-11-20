@@ -297,8 +297,9 @@ def test_an_input_with_every_value_missing_says_so(tmp_path, monkeypatch):
 
     assert (
         "Of 500 genes, no gene has a value above 1.0 in at least 2 samples "
-        "(every value is missing), so the expression pre-filter kept none. " + MISSING
-        in reply
+        "(every value is missing), so the expression pre-filter kept none. "
+        "No value was loaded: check the import, then import complete raw counts "
+        "and use deseq2. No result modality was stored." in reply
     ), reply
 
 

@@ -180,3 +180,25 @@ def test_a_gene_with_one_value_everywhere_is_not_split_by_rounding(
     out, stats, _ = _analysed(tmp_path, monkeypatch, adata)
 
     assert stats["n_zero_within_group_variance"] == 0
+
+
+@pytest.mark.parametrize("value", [1.1, 2.3, 0.1])
+def test_one_value_everywhere_has_no_p_value_whatever_the_value(
+    tmp_path, monkeypatch, value
+):
+    """A whole number repeated gives the t-test 0 / 0 and no p-value; a value
+    like 1.1 gave rounding noise instead (t = -1.79, p = 0.11 at 6 v 4)."""
+
+    def analysed(v):
+        adata = _c2()[:10].copy()
+        adata.X = adata.X.astype(np.float64)
+        adata.X[:, -1] = v
+        out, stats, _ = _analysed(tmp_path, monkeypatch, adata)
+        return out, stats
+
+    out, stats = analysed(value)
+    _, whole = analysed(5.0)
+
+    assert stats["n_genes_without_pvalue"] == whole["n_genes_without_pvalue"]
+    assert stats["n_zero_within_group_variance"] == 0
+    assert not out.var["zero_within_group_variance"].iloc[-1]
