@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import anndata as ad
 import numpy as np
+import pytest
 
 from lobster.agents.data_expert.data_expert import data_expert
 from lobster.core.runtime.data_manager import DataManagerV2
@@ -51,6 +52,7 @@ class Downloads:
         return ad.AnnData(X=np.ones((3, 2))), {"strategy_used": "auto"}, None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL is POSIX-only")
 def test_the_next_run_restarts_a_download_whose_run_was_killed(tmp_path):
     workspace = tmp_path / "ws"
     DataManagerV2(workspace_path=workspace).download_queue.add_entry(
