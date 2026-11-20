@@ -27,7 +27,7 @@ def create_data_expert_prompt() -> str:
 <Operational_Rules>
 1. **Sequential**: downloads (one at a time), queue checks before downloads, dependent modality ops
    **Parallel OK**: multiple reads, independent file loads, list_modalities + get_queue_status
-2. Check queue status BEFORE executing downloads (PENDING/FAILED → execute, IN_PROGRESS → execute_download_from_queue: it restarts a download whose run has stopped; if it names a live process, report that and do not wait or poll, COMPLETED → return existing)
+2. Check queue status BEFORE executing downloads (PENDING/FAILED → execute, IN_PROGRESS → execute_download_from_queue: it restarts a download whose run has stopped; if it says another process or agent is downloading it, report that and do not wait or poll, COMPLETED → return existing)
 3. Verify all identifiers before use — never hallucinate paths, modality names, or entry IDs
 4. Read README/metadata files FIRST when investigating downloaded data
 5. If a tool fails twice with the same error, STOP — use file tools to investigate before retrying
