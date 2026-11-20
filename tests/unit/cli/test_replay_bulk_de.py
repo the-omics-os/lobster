@@ -188,3 +188,36 @@ def test_a_rerun_on_a_loaded_result_replays_to_match(tmp_path, monkeypatch, tool
     out = json.loads(result.stdout)
     assert out["verdict"] == "MATCH", out
     assert _sha(loaded) == before
+
+
+@needs_kernel
+def test_a_snapshot_a_later_session_updated_never_replays_to_match(
+    tmp_path, monkeypatch
+):
+    """Session A loads data/bulk_autosave.h5ad and exports its notebook. A resumed
+    session B changes that modality (only a note) and its exit autosave updates the
+    snapshot. A's notebook, replayed on the changed bytes, is never a MATCH."""
+    monkeypatch.chdir(tmp_path)
+    snapshot = tmp_path / "ws" / "data" / "bulk_autosave.h5ad"
+    snapshot.parent.mkdir(parents=True)
+    _bulk().write_h5ad(snapshot)
+    first = DataManagerV2(workspace_path=tmp_path / "ws")
+    first.load_modality("bulk", str(snapshot), adapter="transcriptomics_bulk")
+    assert "Complete" in _run_de(first, "run_bulk_de_direct")
+    notebook = first.export_notebook("de", "bulk DE", filter_strategy="successful")
+    before = _sha(snapshot)
+    verify = ["--verify", str(notebook), "--input", str(snapshot),
+              "-w", str(tmp_path / "ws"), "--json"]  # fmt: skip
+    assert json.loads(runner.invoke(app, verify).stdout)["verdict"] == "MATCH"
+
+    later = DataManagerV2(workspace_path=tmp_path / "ws")
+    edited = later.get_modality("bulk_autosave").copy()
+    edited.uns["note"] = "seen again"
+    later.store_modality(name="bulk_autosave", adata=edited, step_summary="note")
+    later.auto_save_state()
+    assert _sha(snapshot) != before
+
+    result = runner.invoke(app, verify)
+    out = json.loads(result.stdout)
+    assert out["verdict"] in ("REFUSED", "NOT_COMPARED"), out
+    assert result.exit_code != 0, out
