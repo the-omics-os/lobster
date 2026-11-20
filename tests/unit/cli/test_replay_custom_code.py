@@ -360,3 +360,56 @@ def test_a_write_into_the_sessions_exports_is_refused(tmp_path, monkeypatch):
     out = _replay(dm, notebook, source)
     assert out["verdict"] == "REFUSED", out
     assert "exports/markers.csv" in json.dumps(out), out
+
+
+def _input_read_session(tmp_path, monkeypatch):
+    """A resumed session: x loaded from data/x.h5ad, filtered, then custom code on
+    the result reading the loaded input through WORKSPACE, its result saved."""
+    monkeypatch.chdir(tmp_path)
+    pristine = tmp_path / "in" / "x.h5ad"
+    pristine.parent.mkdir()
+    _x().write_h5ad(pristine)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.data_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(pristine, dm.data_dir / "x.h5ad")
+    dm.load_modality(
+        "x", str(dm.data_dir / "x.h5ad"), adapter="transcriptomics_single_cell"
+    )
+    tools = factory_tools(te.transcriptomics_expert, te.__name__, dm)
+    tools["filter_and_normalize"].invoke({"modality_name": "x", **PERMISSIVE})
+    _custom(
+        dm,
+        "import numpy as np, anndata\n"
+        "raw = anndata.read_h5ad(WORKSPACE / 'data' / 'x.h5ad')\n"
+        "adata.obs['raw_total'] = np.asarray(raw[adata.obs_names].X.sum(axis=1)).ravel()\n",
+    )
+    dm.save_modality(f"{STEP_A}_custom", f"{STEP_A}_custom.h5ad")
+    notebook = dm.export_notebook("custom", "custom", filter_strategy="replay")
+    return dm, pristine, notebook
+
+
+def test_the_input_read_through_workspace_is_the_bound_input(tmp_path, monkeypatch):
+    """The workspace's input file changed after the session (values doubled):
+    the replay on the pristine --input reads only that input, so the custom
+    result matches (the changed workspace file itself is not compared)."""
+    dm, pristine, notebook = _input_read_session(tmp_path, monkeypatch)
+    assert _replay(dm, notebook, dm.data_dir / "x.h5ad")["verdict"] == "MATCH"
+    doubled = ad.read_h5ad(dm.data_dir / "x.h5ad")
+    doubled.X = doubled.X * 2
+    doubled.write_h5ad(dm.data_dir / "x.h5ad")
+    out = _replay(dm, notebook, pristine)
+    assert out["verdict"] == "NOT_COMPARED", out
+    assert _diffs(out) == [], out
+    compared = out["report"]["slots"][0]["compared"]
+    assert compared > 0, out
+
+
+def test_a_changed_copy_of_the_input_is_refused(tmp_path, monkeypatch):
+    dm, pristine, notebook = _input_read_session(tmp_path, monkeypatch)
+    changed = ad.read_h5ad(pristine)
+    changed.X = changed.X + 1
+    copy = tmp_path / "changed" / "x.h5ad"
+    copy.parent.mkdir()
+    changed.write_h5ad(copy)
+    out = _replay(dm, notebook, copy)
+    assert out["verdict"] == "REFUSED", out
