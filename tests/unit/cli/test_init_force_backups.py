@@ -128,3 +128,60 @@ def test_a_run_that_ends_normally_keeps_every_backup(dirs, tmp_path):  # noqa: F
     with pytest.raises(typer.Exit):
         made(handled)(global_config=True)
     assert backup.exists()
+
+
+def test_a_backup_whose_file_is_gone_at_the_end_remains(study, monkeypatch):
+    def cancelled_after_removing(*a, **k):
+        (study / ".env").unlink()
+        return {"cancelled": True}
+
+    _wizard(monkeypatch, {})
+    monkeypatch.setattr(
+        "lobster.ui.bridge.go_tui_bridge.run_init_wizard", cancelled_after_removing
+    )
+
+    assert _init_impl(study) == 0
+
+    [env_backup] = [n for n in _backups(study) if n.startswith(".env.")]
+    assert (study / env_backup).read_bytes() == ENV
+
+
+def test_a_ctrl_c_at_the_language_question_leaves_no_backup(study, monkeypatch):
+    from lobster.cli_internal.commands.heavy import init_commands
+
+    def interrupted(**_):
+        raise KeyboardInterrupt
+
+    _wizard(monkeypatch, {"cancelled": True})
+    monkeypatch.setattr("lobster.ui.bridge.binary_finder.find_tui_binary", lambda: None)
+    monkeypatch.setattr(init_commands, "_ask_language", interrupted)
+
+    assert _init_impl(study, ui_mode="auto") == 0
+
+    assert _backups(study) == []
+
+
+def test_a_cancelled_run_leaves_an_earlier_runs_backups_alone(
+    dirs, tmp_path  # noqa: F811
+):
+    import typer
+
+    from lobster.cli_internal.commands.heavy import init_commands
+
+    source, backup = tmp_path / "a", tmp_path / "a.backup"
+    source.write_bytes(ENV)
+    backup.write_bytes(ENV)
+
+    @init_commands._creates_project
+    def first(**_):
+        init_commands._init_backups.append((source, backup))
+
+    @init_commands._creates_project
+    def second(**_):
+        raise init_commands._Cancelled(0)
+
+    first(global_config=True)
+    with pytest.raises(typer.Exit):
+        second(global_config=True)
+
+    assert backup.exists()
