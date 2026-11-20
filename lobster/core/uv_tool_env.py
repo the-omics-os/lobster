@@ -225,7 +225,7 @@ def write_pending_install(argv: list[str]) -> None:
     record = {
         "version": 1,
         "argv": argv,
-        "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "lobster": __version__,
     }
     try:
