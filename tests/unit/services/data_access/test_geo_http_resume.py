@@ -283,6 +283,7 @@ class _FakeFTP:
 
     script: list = []
     retrs: list = []  # the REST offset of each RETR
+    sock = Mock()  # the control connection
     timeouts: list = []  # the socket timeout of each connection
 
     def connect(self, host, port=21, timeout=None):
@@ -437,3 +438,140 @@ def test_progress_resets_only_when_the_peak_grows_and_stops_at_the_limit():
     assert progress.after_failure(0) and progress.after_failure(0)
     assert not progress.after_failure(149) and progress.exhausted  # the limit
     assert progress.peak == 150
+
+
+class _RealFTPServer:
+    """An FTP server on 127.0.0.1 that ftplib itself talks to. ``retr``: "stall" opens
+    the data connection, sends nothing and answers nothing more; "send" sends BODY.
+    ``answer_quit`` False: QUIT is never answered."""
+
+    def __init__(self, retr, answer_quit):
+        self.retr, self.answer_quit, self.retrs = retr, answer_quit, 0
+        self.listener = socket.create_server(("127.0.0.1", 0))
+        self.url = f"ftp://127.0.0.1:{self.listener.getsockname()[1]}/geo/f.gz"
+        self.held = []  # open until the test ends, so a stall stays a stall
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self):
+        while True:
+            try:
+                conn, _ = self.listener.accept()
+            except OSError:
+                return
+            self.held.append(conn)
+            threading.Thread(target=self._session, args=(conn,), daemon=True).start()
+
+    def _session(self, conn):
+        def say(line):
+            conn.sendall(line.encode() + b"\r\n")
+
+        say("220 ready")
+        data = None
+        for raw in conn.makefile("rb"):
+            verb = raw.decode().split(" ")[0].strip().upper()
+            if verb == "PASV":
+                data = socket.create_server(("127.0.0.1", 0))
+                self.held.append(data)
+                port = data.getsockname()[1]
+                say(f"227 Entering Passive Mode (127,0,0,1,{port // 256},{port % 256})")
+            elif verb == "RETR":
+                self.retrs += 1
+                say("150 sending")
+                sent, _ = data.accept()
+                self.held.append(sent)
+                if self.retr == "stall":
+                    return
+                sent.sendall(BODY)
+                sent.close()
+                say("226 done")
+            elif verb == "QUIT":
+                if self.answer_quit:
+                    say("221 bye")
+                return
+            else:
+                say(
+                    {
+                        "USER": "331 password",
+                        "PASS": "230 in",
+                        "SIZE": f"213 {len(BODY)}",
+                    }.get(verb, "200 ok")
+                )
+
+    def close(self):
+        for s in [self.listener, *self.held]:
+            s.close()
+
+
+@pytest.fixture
+def real_ftp(monkeypatch):
+    """A real ftplib session; records how long each QUIT waited and every session."""
+    sessions, quits = [], []
+
+    class TimedFTP(ftplib.FTP):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            sessions.append(self)
+
+        def quit(self):
+            began = time.monotonic()
+            try:
+                return super().quit()
+            finally:
+                quits.append(time.monotonic() - began)
+
+    monkeypatch.setattr(dl.ftplib, "FTP", TimedFTP)
+    monkeypatch.setattr(dl.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(dl, "_QUIT_TIMEOUT_S", 0.2, raising=False)
+    servers = []
+
+    def serve(retr, answer_quit=False):
+        servers.append(_RealFTPServer(retr, answer_quit))
+        return servers[-1], sessions, quits
+
+    yield serve
+    for server in servers:
+        server.close()
+
+
+def test_an_ftp_stall_that_gains_nothing_gets_all_its_attempts(
+    real_ftp, manager, tmp_path
+):
+    # after the stall the server never answers QUIT either
+    server, sessions, quits = real_ftp("stall")
+
+    assert manager.download_file(server.url, tmp_path / "f.gz") is False
+
+    assert server.retrs == 3
+    assert not list(tmp_path.glob("f.gz*"))
+
+
+def test_quit_on_a_stalled_control_connection_waits_only_briefly(
+    real_ftp, manager, tmp_path
+):
+    server, sessions, quits = real_ftp("stall")
+
+    manager.download_file(server.url, tmp_path / "f.gz")
+
+    assert quits and max(quits) < 0.6  # the idle bound here is 1 s
+    assert all(session.sock is None for session in sessions)  # closed all the same
+
+
+def test_a_finished_ftp_transfer_is_kept_when_quit_gets_no_answer(
+    real_ftp, manager, tmp_path
+):
+    server, sessions, quits = real_ftp("send")
+    target = tmp_path / "f.gz"
+
+    assert manager.download_file(server.url, target) is True
+
+    assert target.read_bytes() == BODY
+    assert server.retrs == 1
+    assert all(session.sock is None for session in sessions)
+
+
+def test_a_finished_ftp_transfer_says_goodbye(real_ftp, manager, tmp_path):
+    server, sessions, quits = real_ftp("send", answer_quit=True)
+
+    assert manager.download_file(server.url, tmp_path / "f.gz") is True
+
+    assert len(quits) == 1 and server.retrs == 1
