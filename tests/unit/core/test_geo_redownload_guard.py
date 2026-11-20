@@ -141,3 +141,33 @@ def test_samples_are_stored_all_or_none(tmp_path, monkeypatch):
 
     assert stored == []
     assert _state(dm) == before
+
+
+def test_a_single_sample_into_its_loaded_file_is_refused_before_it_is_stored(
+    tmp_path, monkeypatch
+):
+    """The single-sample import's file (data/<gsm>_sample.h5ad) is loaded: the
+    import is refused before the sample is registered or logged."""
+    from lobster.agents.data_expert import assistant
+
+    monkeypatch.setattr(
+        assistant.DataExpertAssistant, "detect_modality", lambda *a, **k: None
+    )
+    data = tmp_path / "ws" / "data"
+    data.mkdir(parents=True)
+    ad.AnnData(
+        X=np.ones((3, 4), dtype=np.float32),
+        obs=pd.DataFrame(index=[f"c{i}" for i in range(3)]),
+        var=pd.DataFrame(index=[f"G{i}" for i in range(4)]),
+    ).write_h5ad(data / "gsm7_sample.h5ad")
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    before = _state(dm)
+    service = GEOService(data_manager=dm, cache_dir=str(tmp_path / "cache"))
+    matrix = pd.DataFrame(
+        np.ones((3, 4)), index=[f"c{i}" for i in range(3)], columns=list("ABCD")
+    )
+
+    reply = service._store_single_sample_as_modality("GSM7", matrix, gsm=None)
+
+    assert "data/gsm7_sample.h5ad is a file this session loaded" in reply, reply
+    assert _state(dm) == before

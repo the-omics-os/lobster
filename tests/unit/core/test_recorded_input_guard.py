@@ -490,9 +490,10 @@ def test_another_file_differing_only_in_case_is_not_the_loaded_one(ws):
     assert _sha(dm.data_dir / "x.h5ad") == before
 
 
-def test_ml_splits_refused_leave_memory_provenance_and_files(ws):
+@pytest.mark.parametrize("split", ["train", "test", "validation"])
+def test_ml_splits_refused_leave_memory_provenance_and_files(ws, split):
     """create_ml_splits into a split name whose file this session loaded
-    (x_test.h5ad from a first session) is refused before anything changes:
+    (x_<split>.h5ad from a first session) is refused before anything changes:
     no split stored, the input modality not annotated, no step logged."""
     ml = pytest.importorskip("lobster.agents.machine_learning.machine_learning_expert")
     from lobster.testing.provenance_replay import factory_tools
@@ -504,7 +505,7 @@ def test_ml_splits_refused_leave_memory_provenance_and_files(ws):
         var=pd.DataFrame(index=[f"g{i}" for i in range(5)]),
     )
     adata.write_h5ad(ws / "data" / "x.h5ad")
-    adata[:4].copy().write_h5ad(ws / "data" / "x_test.h5ad")
+    adata[:4].copy().write_h5ad(ws / "data" / f"x_{split}.h5ad")
     dm = DataManagerV2(workspace_path=ws)
     modalities = sorted(dm.list_modalities())
     shas = {p.name: _sha(p) for p in (ws / "data").glob("*.h5ad")}
@@ -514,7 +515,7 @@ def test_ml_splits_refused_leave_memory_provenance_and_files(ws):
 
     reply = tools["create_ml_splits"].invoke({"modality_name": "x"})
 
-    assert "data/x_test.h5ad is a file this session loaded" in reply, reply
+    assert f"data/x_{split}.h5ad is a file this session loaded" in reply, reply
     assert sorted(dm.list_modalities()) == modalities
     assert list(dm.get_modality("x").obs.columns) == obs
     assert set(dm.get_modality("x").uns) == uns
@@ -556,3 +557,28 @@ def test_one_autosave_costs_a_bounded_number_of_stats_per_loaded_file(
     small = _stats_for_one_autosave(tmp_path, 50, monkeypatch)
     large = _stats_for_one_autosave(tmp_path, 200, monkeypatch)
     assert large <= 4 * small * 1.25, (small, large)  # linear, with slack
+
+
+def test_no_validation_split_needs_no_validation_name(ws):
+    """validation_size=0 makes no validation split: a loaded x_validation.h5ad
+    does not stop the train/test split."""
+    ml = pytest.importorskip("lobster.agents.machine_learning.machine_learning_expert")
+    from lobster.testing.provenance_replay import factory_tools
+
+    rng = np.random.default_rng(4)
+    adata = ad.AnnData(
+        X=rng.random((20, 5)).astype(np.float32),
+        obs=pd.DataFrame(index=[f"s{i}" for i in range(20)]),
+        var=pd.DataFrame(index=[f"g{i}" for i in range(5)]),
+    )
+    adata.write_h5ad(ws / "data" / "x.h5ad")
+    adata[:4].copy().write_h5ad(ws / "data" / "x_validation.h5ad")
+    dm = DataManagerV2(workspace_path=ws)
+    tools = factory_tools(ml.machine_learning_expert, ml.__name__, dm)
+
+    reply = tools["create_ml_splits"].invoke(
+        {"modality_name": "x", "validation_size": 0.0}
+    )
+
+    assert "Successfully created ML data splits" in reply, reply
+    assert {"x_train", "x_test"} <= set(dm.list_modalities())
