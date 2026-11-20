@@ -312,3 +312,21 @@ def test_later_de_on_the_same_modality_replays_to_match(
     result, out = _verify(notebook, source, dm.workspace_path)
     assert result.exit_code == 0, (result.output, result.exception, out)
     assert out["verdict"] == "MATCH", out
+
+
+@pytest.mark.parametrize("save", [False, True], ids=["no_save", "save"])
+def test_deseq2_names_the_copy_it_wrote_only_when_it_saved_one(
+    tmp_path, monkeypatch, save
+):
+    dm, _, _ = _session(tmp_path, monkeypatch, resumed=False)
+    _run_de(dm, "run_differential_expression", save_result=save)
+
+    (activity,) = [
+        a
+        for a in dm.provenance.activities
+        if "result_modality_names" in (a.get("parameters") or {})
+    ]
+    expected = ["bulk"] + ([RESULT] if save else [])
+    # list(): the recorded parameters come back as an array
+    assert list(activity["parameters"]["result_modality_names"]) == expected
+    assert [entity["name"] for entity in activity["outputs"]] == expected

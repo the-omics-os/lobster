@@ -319,6 +319,9 @@ def test_an_output_list_names_every_modality_the_step_wrote():
         {"modality_name": "raw", "result_modality_names": ["raw", "raw_de"]},
         DESEQ2_LIKE,
     )
+    assert tracker.activities[-1]["inputs"] == [
+        {"name": "raw", "resolved": True, "ir_name": "adata"}
+    ]
     assert tracker.activities[-1]["outputs"] == [
         {"name": "raw", "resolved": True, "ir_name": "adata"},
         {"name": "raw_de", "resolved": True, "ir_name": "adata"},
@@ -377,3 +380,56 @@ def test_a_step_after_a_result_starts_from_its_input_changed_in_place(tmp_path):
     assert "rank" not in written["raw_de"].uns
     assert written["raw_de"].uns["de"] == "deseq2"
     assert "de" not in written["raw_rank"].uns
+
+
+@pytest.mark.parametrize("names", [["raw", 3], ["raw", ""]], ids=["number", "empty"])
+def test_an_output_list_with_a_name_that_is_not_one_is_ignored(names):
+    tracker = ProvenanceTracker()
+    logged_step(
+        tracker,
+        "de",
+        {
+            "modality_name": "raw",
+            "result_modality_name": "raw_de",
+            "result_modality_names": names,
+        },
+        DESEQ2_LIKE,
+    )
+    assert tracker.activities[-1]["outputs"] == [
+        {"name": "raw_de", "resolved": True, "ir_name": "adata"}
+    ]
+
+
+def test_a_step_after_a_look_at_an_earlier_modality_starts_from_its_own_input(
+    tmp_path,
+):
+    """raw -> m1, a plot of raw (it writes nothing), m1 -> m2: the plot puts raw in
+    adata, so the last step starts from a kept copy of m1, not from raw."""
+    tracker = ProvenanceTracker()
+    step(tracker, "normalize", "raw", "m1", "adata.obs['m1'] = 1")
+    tracker.create_activity(
+        activity_type="plot",
+        agent="visualization_expert",
+        description="plot",
+        inputs=[{"name": "raw", "ir_name": "adata"}],
+        outputs=[],
+        ir=AnalysisStep(
+            operation="plot",
+            tool_name="plot",
+            description="plot",
+            library="anndata",
+            code_template="plotted = adata.n_obs",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=[],
+            exportable=True,
+        ),
+    )
+    step(tracker, "cluster", "m1", "m2", "adata.obs['m2'] = 1")
+    save(tracker, "m2")
+
+    written = replay(tracker, tmp_path)
+
+    assert {"m1", "m2"} <= set(written.obs.columns)  # as the session made m2
