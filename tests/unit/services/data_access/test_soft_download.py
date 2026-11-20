@@ -198,8 +198,9 @@ class TestPreDownloadOnASlowRoute:
             def urlopen(url, context=None, timeout=None):
                 calls.append(timeout)
                 result = results[min(len(calls), len(results)) - 1]
+                # a stall or a TLS error mid-body comes from read()
                 if isinstance(result, BaseException) and not isinstance(
-                    result, socket.timeout
+                    result, (socket.timeout, ssl.SSLError)
                 ):
                     raise result
                 return _Response(result)
@@ -236,8 +237,24 @@ class TestPreDownloadOnASlowRoute:
             urllib.error.HTTPError("u", 503, "busy", {}, None),
             urllib.error.HTTPError("u", 500, "error", {}, None),
             b"not gzip",
+            urllib.error.URLError(
+                "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:2406)"
+            ),
+            ssl.SSLZeroReturnError(6, "TLS/SSL connection has been closed (EOF)"),
+            ssl.SSLEOFError(8, "EOF occurred in violation of protocol"),
         ],
-        ids=["connect-timeout", "reset", "read-stall", "cut", "503", "500", "garbled"],
+        ids=[
+            "connect-timeout",
+            "reset",
+            "read-stall",
+            "cut",
+            "503",
+            "500",
+            "garbled",
+            "tls-eof",
+            "tls-closed",
+            "tls-eof-read",
+        ],
     )
     def test_a_transient_failure_is_tried_again(self, opened, tmp_path, failure):
         from lobster.services.data_access.geo.soft_download import (
@@ -253,16 +270,39 @@ class TestPreDownloadOnASlowRoute:
         assert len(calls) == 2 and len(sleeps) == 1
         assert not list(tmp_path.glob(".GSE194247_soft_*"))
 
-    def test_it_gives_up_after_three_attempts(self, opened, tmp_path):
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            ConnectionResetError("reset"),
+            b"not gzip",
+            ssl.SSLZeroReturnError(6, "TLS/SSL connection has been closed (EOF)"),
+        ],
+        ids=["reset", "garbled", "tls-closed"],
+    )
+    def test_it_gives_up_after_three_attempts(self, opened, tmp_path, failure):
         from lobster.services.data_access.geo.soft_download import (
             pre_download_soft_file,
         )
 
-        calls, sleeps = opened(ConnectionResetError("reset"))
+        calls, sleeps = opened(failure)
 
+        # GEOparse's own download comes next
         assert pre_download_soft_file("GSE194247", tmp_path) is None
         assert len(calls) == 3
         assert len(sleeps) == 2 and sleeps[0] < sleeps[1]
+        assert not list(tmp_path.glob(".GSE194247_soft_*"))
+
+    def test_an_error_not_worth_retrying_after_a_body_leaves_no_partial_file(
+        self, opened, tmp_path
+    ):
+        from lobster.services.data_access.geo.soft_download import (
+            pre_download_soft_file,
+        )
+
+        opened(b"not gzip", urllib.error.HTTPError("u", 404, "missing", {}, None))
+
+        assert pre_download_soft_file("GSE194247", tmp_path) is None
+        assert not list(tmp_path.glob(".GSE194247_soft_*"))
 
     def test_a_file_the_server_does_not_have_is_not_asked_for_again(
         self, opened, tmp_path
@@ -281,19 +321,36 @@ class TestPreDownloadOnASlowRoute:
         [
             Exception("CERTIFICATE_VERIFY_FAILED"),
             ssl.SSLError(1, "[SSL: WRONG_VERSION_NUMBER] wrong version number"),
+            urllib.error.URLError(
+                ssl.SSLCertVerificationError(1, "certificate verify failed")
+            ),
+            ssl.SSLCertVerificationError(1, "certificate verify failed"),
+            ssl.SSLError(1, "[SSL: HOSTNAME_MISMATCH] hostname mismatch"),
+            b"not gzip",  # then the certificate fails
         ],
-        ids=["certificate", "ssl"],
+        ids=[
+            "certificate",
+            "wrong-version",
+            "url-verify",
+            "verify",
+            "hostname",
+            "after-a-body",
+        ],
     )
     def test_a_certificate_failure_is_not_tried_again(self, opened, tmp_path, failure):
         from lobster.services.data_access.geo.soft_download import (
             pre_download_soft_file,
         )
 
-        calls, _ = opened(failure)
+        if failure == b"not gzip":
+            calls, sleeps = opened(failure, Exception("CERTIFICATE_VERIFY_FAILED"))
+        else:
+            calls, sleeps = opened(failure)
 
         with pytest.raises(Exception, match="SSL certificate verification failed"):
             pre_download_soft_file("GSE194247", tmp_path)
-        assert len(calls) == 1
+        assert len(calls) == len(sleeps) + 1 == (2 if failure == b"not gzip" else 1)
+        assert not list(tmp_path.glob(".GSE194247_soft_*"))
 
 
 # ---------------------------------------------------------------------------
