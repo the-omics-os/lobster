@@ -857,7 +857,8 @@ class GEODownloadManager:
 
                 # Connect to FTP server
                 ftp = ftplib.FTP()  # nosec B321 # NCBI FTP site
-                ftp.connect(hostname, parsed_url.port or 21, timeout=30)
+                # the socket timeout also bounds each read of the data connection
+                ftp.connect(hostname, parsed_url.port or 21, timeout=_idle_timeout_s())
                 ftp.login(username, password)
 
                 try:
