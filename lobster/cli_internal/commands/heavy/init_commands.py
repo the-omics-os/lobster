@@ -995,6 +995,16 @@ def _backup_init_file(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
+def _drop_unused_backups(backups: List[Tuple[Path, Path]]) -> None:
+    """Remove the backups of files this run did not replace (same bytes as now)."""
+    for source, backup in backups:
+        try:
+            if source.read_bytes() == backup.read_bytes():
+                backup.unlink()
+        except OSError:
+            pass  # a failed check keeps the backup
+
+
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
     Create workspace-scoped provider configuration from structured config dict.
@@ -2041,6 +2051,10 @@ class _Handled(typer.Exit):
     """``init`` finished and said everything itself; the project is already made."""
 
 
+class _Cancelled(typer.Exit):
+    """The user cancelled the setup screens."""
+
+
 _KEY_FLAG_NAMES = (
     "anthropic_key",
     "bedrock_access_key",
@@ -2420,6 +2434,8 @@ def _init_without_terminal(
 _finish_before_tool_install: Optional[Callable[[], None]] = None
 # The folder init configures, for the next step (None: global setup).
 _init_folder: Optional[Path] = None
+# (file, its --force backup) made by this init run.
+_init_backups: List[Tuple[Path, Path]] = []
 
 
 def _in_other_folder() -> bool:
@@ -2510,21 +2526,27 @@ def _creates_project(func):
                     kwargs.get("folder"), kwargs.get("project_name"), env_before
                 )
 
-        global _finish_before_tool_install, _init_folder
+        global _finish_before_tool_install, _init_folder, _init_backups
         _finish_before_tool_install = finish
         if not kwargs.get("global_config"):
             _init_folder = _init_target(kwargs.get("folder"))[0]
+        ended = False  # an end that is not a failure or cancel keeps every backup
         try:
             result = func(*args, **kwargs)
         except typer.Exit as exc:
+            ended = not exc.exit_code and not isinstance(exc, _Cancelled)
             if not exc.exit_code and not isinstance(exc, _Handled):
                 finish()
             raise
         else:
+            ended = True
             finish()
             return result
         finally:
+            if not ended:  # cancelled or failed
+                _drop_unused_backups(_init_backups)
             _finish_before_tool_install = _init_folder = None
+            _init_backups = []
             if pinned is not None:
                 _undo_empty_init(pinned, made)
 
@@ -3136,6 +3158,7 @@ def init_impl(
                     )
                     console.print(f"[yellow]   {destination}[/yellow]")
                 _backup_init_file(backup_source, destination)
+                _init_backups.append((backup_source, destination))
                 if backup_path is None:
                     backup_path = destination
         except Exception as e:
@@ -3761,7 +3784,7 @@ def init_impl(
                             _tui_result = {"cancelled": True}
                         if _tui_result.get("cancelled", False):
                             console.print(f"[yellow]{_cancelled_text()}[/yellow]")
-                            raise typer.Exit(0)
+                            raise _Cancelled(0)
                         # An older lobster-tui ignores the question.
                         lamin_skipped = (
                             lamin is None and "lamin_enabled" not in _tui_result
@@ -3846,7 +3869,7 @@ def init_impl(
                     _q_lang = _ask_language(use_questionary=True)
                 except KeyboardInterrupt:
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
-                    raise typer.Exit(0)
+                    raise _Cancelled(0)
                 _q_result = run_questionary_init(
                     build_init_manifest(),
                     lamin_default=_lamin_default(lamin, global_config),
@@ -3858,7 +3881,7 @@ def init_impl(
                     _q_result["lang"] = _q_lang
                 if _q_result.get("cancelled", False):
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
-                    raise typer.Exit(0)
+                    raise _Cancelled(0)
 
                 _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
                 _ev_path = init_root / ".env"
