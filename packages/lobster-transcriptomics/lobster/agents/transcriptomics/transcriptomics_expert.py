@@ -38,7 +38,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 
 # === Heavy imports below ===
 import json
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -60,6 +59,12 @@ from lobster.config.settings import get_settings
 from lobster.core import session_inputs
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.services.analysis.bulk_import import (
+    add_sample_columns,
+    read_bulk_count_table,
+    read_sample_sheet,
+    sample_sheet_content,
+)
 from lobster.services.analysis.bulk_preprocessing_service import (
     BulkPreprocessingService,
 )
@@ -108,35 +113,42 @@ SUBCLUSTER_STATS_KEYS = (
 )
 
 
-# Same stable gene-ID pattern as lobster/services/data_access/geo/parser.py.
-_GENE_ID = re.compile(r"(?:ENS[A-Z]*G\d+(?:\.\d+)?|[NX][MR]_\d+(?:\.\d+)?)$")
-
-
-def _bulk_genes_axis(df: pd.DataFrame):
-    """Return ("rows"|"columns", reason) for the axis of a count table that holds
-    genes, or (None, None) when neither gene IDs nor the shape settle it.
-
-    Gene IDs on one axis win. Shape alone decides only when the table cannot be
-    a targeted panel with more samples than genes: the larger axis is a whole
-    transcriptome (>= 10,000), or it has >= 1,000 labels and the smaller has too
-    few to be genes (< 20). A panel of under 20 genes over 1,000+ samples is out
-    of scope: shape takes it the wrong way round; genes_axis settles it.
-    """
-
-    def id_share(labels):
-        return np.mean([bool(_GENE_ID.match(str(label))) for label in labels])
-
-    rows, cols = id_share(df.index), id_share(df.columns)
-    if rows >= 0.9 and cols < 0.1:
-        return "rows", "Ensembl/RefSeq gene IDs"
-    if cols >= 0.9 and rows < 0.1:
-        return "columns", "Ensembl/RefSeq gene IDs"
-    larger, smaller = max(df.shape), min(df.shape)
-    if larger >= 2 * smaller and (
-        larger >= 10_000 or (larger >= 1_000 and smaller < 20)
-    ):
-        return ("rows" if df.shape[0] > df.shape[1] else "columns"), "shape"
-    return None, None
+def _bulk_count_table_ir(
+    source: str,
+    gene_id_column: str,
+    genes_axis: str,
+    genes_axis_used: Optional[str],
+    sep: Optional[str],
+) -> AnalysisStep:
+    """IR for a count file import: read ``input_data`` as the tool read the file."""
+    return AnalysisStep(
+        operation="transcriptomics.import_bulk_counts",
+        tool_name="import_bulk_counts",
+        description=f"Import bulk RNA-seq counts ({source})",
+        library="lobster",
+        code_template=(
+            "adata = read_bulk_count_table(\n"
+            "    input_data,\n"
+            "    source={{ source | repr }},\n"
+            "    gene_id_column={{ gene_id_column | repr }},\n"
+            "    genes_axis={{ genes_axis_used | repr }},\n"
+            "    sep={{ sep | repr }},\n"
+            ")[0]"
+        ),
+        imports=[
+            "from lobster.services.analysis.bulk_import import read_bulk_count_table"
+        ],
+        parameters={
+            "source": source,
+            "gene_id_column": gene_id_column,
+            "genes_axis": genes_axis,
+            "genes_axis_used": genes_axis_used,
+            "sep": sep,
+        },
+        parameter_schema={},
+        input_entities=[],
+        output_entities=["adata"],
+    )
 
 
 def _format_subcluster_sizes(sizes: Dict[str, int], indent: str = "  ") -> str:
@@ -1495,57 +1507,20 @@ Please check:
                         return f"Error loading {source} data: {str(e)}"
                     # Fall through to CSV/TSV handling for auto
 
-            # featureCounts format
-            if adata is None and (
-                source == "featurecounts"
-                or (
-                    source == "auto"
-                    and path.is_file()
-                    and path.suffix in (".txt", ".tsv")
-                )
-            ):
-                try:
-                    # Read and check for featureCounts header
-                    with open(path) as f:
-                        first_lines = [f.readline() for _ in range(3)]
-
-                    is_fc = any(
-                        line.startswith("#") or "Geneid" in line for line in first_lines
-                    )
-
-                    if is_fc or source == "featurecounts":
-                        df = pd.read_csv(path, sep="\t", comment="#")
-                        if "Geneid" in df.columns:
-                            df = df.set_index("Geneid")
-                        # Drop featureCounts annotation columns
-                        fc_cols = {"Chr", "Start", "End", "Strand", "Length"}
-                        df = df.drop(columns=[c for c in fc_cols if c in df.columns])
-                        # Genes as rows, samples as columns -> transpose
-                        adata = anndata.AnnData(
-                            X=df.T.values.astype(np.float32),
-                            obs=pd.DataFrame(index=df.columns),
-                            var=pd.DataFrame(index=df.index),
-                        )
-                        adata.layers["counts"] = adata.X.copy()
-                        detected_source = "featurecounts"
-                except (
-                    Exception
-                ):  # nosec B110 # Failed format detection falls through to supported CSV/TSV detection.
-                    pass  # Fall through to CSV/TSV
-
-            # Generic CSV/TSV
+            # featureCounts, or a generic CSV/TSV table with either layout
+            sep = None
             if adata is None and path.is_file():
-                sep = "\t" if path.suffix in (".tsv", ".txt") else ","
-                df = pd.read_csv(path, sep=sep, index_col=0)
-
-                # Auto-detect gene ID column if needed
-                if gene_id_column != "auto" and gene_id_column in df.columns:
-                    df = df.set_index(gene_id_column)
-
-                axis_used, axis_reason = genes_axis, "given"
-                if genes_axis == "auto":
-                    axis_used, axis_reason = _bulk_genes_axis(df)
-                if axis_used is None:
+                adata, detected_source, axis_used, axis_reason, df = (
+                    read_bulk_count_table(
+                        path,
+                        source=source,
+                        gene_id_column=gene_id_column,
+                        genes_axis=genes_axis,
+                    )
+                )
+                if detected_source in ("csv", "tsv"):
+                    sep = "," if detected_source == "csv" else "\t"
+                if adata is None and df is not None:
                     rows = ", ".join(map(str, df.index[:3]))
                     columns = ", ".join(map(str, df.columns[:3]))
                     return (
@@ -1557,17 +1532,6 @@ Please check:
                         "genes, or ask the user, then re-run import_bulk_counts with "
                         "genes_axis='rows' or 'columns'."
                     )
-                # AnnData wants samples x genes
-                if axis_used == "rows":
-                    df = df.T
-
-                adata = anndata.AnnData(
-                    X=df.values.astype(np.float32),
-                    obs=pd.DataFrame(index=df.index),
-                    var=pd.DataFrame(index=df.columns),
-                )
-                adata.layers["counts"] = adata.X.copy()
-                detected_source = "csv" if sep == "," else "tsv"
 
             if adata is None:
                 return (
@@ -1584,25 +1548,34 @@ Please check:
             )
 
             # Build IR
-            ir = AnalysisStep(
-                operation="import_bulk_counts",
-                tool_name="import_bulk_counts",
-                description=f"Imported bulk RNA-seq counts from {detected_source}",
-                library="pandas",
-                code_template=(
-                    "adata = sc.read_csv({{ file_path | string | repr }})"
-                    "  # source={{ source | repr }}"
-                ),
-                imports=["import scanpy as sc"],
-                parameters={
-                    "file_path": file_path,
-                    "source": detected_source,
-                    "gene_id_column": gene_id_column,
-                    "genes_axis": genes_axis,
-                    "genes_axis_used": axis_used,
-                },
-                parameter_schema={},
-            )
+            loaded_file = None
+            if path.is_file():
+                # The step reads the notebook's input file the way the tool read
+                # this one; the export lists this file as the one loaded.
+                ir = _bulk_count_table_ir(
+                    detected_source, gene_id_column, genes_axis, axis_used, sep
+                )
+                loaded_file = data_manager.note_file_import(modality_name, path)
+            else:
+                ir = AnalysisStep(
+                    operation="import_bulk_counts",
+                    tool_name="import_bulk_counts",
+                    description=f"Imported bulk RNA-seq counts from {detected_source}",
+                    library="pandas",
+                    code_template=(
+                        "adata = sc.read_csv({{ file_path | string | repr }})"
+                        "  # source={{ source | repr }}"
+                    ),
+                    imports=["import scanpy as sc"],
+                    parameters={
+                        "file_path": file_path,
+                        "source": detected_source,
+                        "gene_id_column": gene_id_column,
+                        "genes_axis": genes_axis,
+                        "genes_axis_used": axis_used,
+                    },
+                    parameter_schema={},
+                )
 
             # An export never overwrites the file this read.
             read_files = session_inputs.note_import(data_manager, path)
@@ -1616,6 +1589,8 @@ Please check:
                     "genes_axis": genes_axis,
                     "genes_axis_used": axis_used,
                     "read_files": read_files,
+                    # kept on the step: a later process restores steps, not entities
+                    **({"loaded_file": loaded_file} if loaded_file else {}),
                 },
                 description=f"Imported bulk counts ({detected_source}): {adata.shape[0]} samples x {adata.shape[1]} genes",
                 ir=ir,
@@ -1680,12 +1655,8 @@ Please check:
                 return f"Error: Metadata file '{metadata_file}' does not exist."
 
             # Read metadata (detect format from extension)
-            if meta_path.suffix in (".xlsx", ".xls"):
-                meta_df = pd.read_excel(meta_path)
-            elif meta_path.suffix == ".tsv":
-                meta_df = pd.read_csv(meta_path, sep="\t")
-            else:
-                meta_df = pd.read_csv(meta_path)
+            sheet = sample_sheet_content(meta_path)
+            meta_df = read_sample_sheet(meta_path.name, sheet)
 
             # Auto-detect sample ID column
             if sample_id_column == "auto":
@@ -1710,22 +1681,10 @@ Please check:
                     f"({best_overlap} matches)"
                 )
 
-            # Set index for merge
-            meta_df = meta_df.set_index(sample_id_column)
-
-            # Track columns before merge
-            cols_before = set(adata.obs.columns)
-
-            # Left-join on sample IDs
-            matched = set(adata.obs_names) & set(meta_df.index)
-            unmatched = set(adata.obs_names) - set(meta_df.index)
-
-            # Merge metadata into obs
-            for col in meta_df.columns:
-                if col not in adata.obs.columns:
-                    adata.obs[col] = meta_df[col].reindex(adata.obs_names)
-
-            cols_added = set(adata.obs.columns) - cols_before
+            # Left-join on sample IDs: the sheet's columns obs lacks
+            cols_added, matched, unmatched = add_sample_columns(
+                adata, meta_df, sample_id_column
+            )
 
             # Store updated modality
             data_manager.store_modality(
@@ -1740,18 +1699,27 @@ Please check:
                 operation="merge_sample_metadata",
                 tool_name="merge_sample_metadata",
                 description=f"Merged external metadata from {metadata_file}",
-                library="pandas",
+                library="lobster",
                 code_template=(
-                    "meta = pd.read_csv({{ metadata_file | string | repr }})\n"
-                    "meta = meta.set_index({{ sample_id_column | string | repr }})\n"
-                    "adata.obs = adata.obs.join(meta)"
+                    "add_sample_columns(\n"
+                    "    adata,\n"
+                    "    read_sample_sheet({{ metadata_file | repr }}, {{ sheet | repr }}),\n"
+                    "    {{ sample_id_column | repr }},\n"
+                    ")"
                 ),
-                imports=["import pandas as pd"],
+                imports=[
+                    "from lobster.services.analysis.bulk_import import "
+                    "add_sample_columns, read_sample_sheet"
+                ],
                 parameters={
-                    "metadata_file": metadata_file,
+                    # the name only: the sheet itself is kept, never a path
+                    "metadata_file": meta_path.name,
+                    "sheet": sheet,
                     "sample_id_column": sample_id_column,
                 },
                 parameter_schema={},
+                input_entities=["adata"],
+                output_entities=["adata"],
             )
 
             # An export never overwrites the file this read.

@@ -1278,6 +1278,23 @@ class DataManagerV2:
                 except Exception:
                     logger.debug("Catalog: register_artifact failed", exc_info=True)
 
+    def note_file_import(
+        self, name: str, path: Union[str, Path]
+    ) -> Optional[Dict[str, Any]]:
+        """A tool read ``path`` itself into modality ``name``: list the file as one
+        the session loaded (name, SHA-256, size), as ``load_modality`` does.
+
+        Returns that record, for the tool to keep on its step (a later process
+        restores steps, not entities); None without provenance.
+        """
+        file = _file_loaded(path) if self.provenance else None
+        if file:
+            self.provenance.create_entity(
+                entity_type="modality_data",
+                metadata={"modality_name": name, "loaded_file": file},
+            )
+        return file
+
     def anchored_import(self, name: str) -> Optional[Dict[str, Any]]:
         """Name, SHA-256 and size of the file a GEO import of ``name`` was saved as.
 

@@ -61,3 +61,31 @@ def test_a_load_that_names_no_file_restores_no_entity(tmp_path):
     second = DataManagerV2(workspace_path=tmp_path / "ws2", auto_scan=False)
     second.provenance._load_from_disk(session_dir / "provenance.jsonl")
     assert _loaded(second) == []
+
+
+def test_a_restored_file_import_step_brings_back_the_file_it_read():
+    """import_bulk_counts reads its table itself; its step keeps the file's
+    record, and a later process lists that file as loaded, under the modality."""
+    from lobster.core.provenance.provenance import ProvenanceTracker
+
+    file = {"name": "counts.csv", "sha256": "a" * 64, "size": "1234"}
+    tracker = ProvenanceTracker()
+    activity = {
+        "type": "import_bulk_counts",
+        "parameters": {"modality_name": "bulk", "loaded_file": file},
+    }
+    tracker._entity_of_loaded_file(activity)
+    tracker._entity_of_loaded_file(activity)  # restored twice: one entity
+
+    entities = [
+        e["metadata"]
+        for e in tracker.entities.values()
+        if (e.get("metadata") or {}).get("loaded_file")
+    ]
+    assert entities == [
+        {
+            "modality_name": "bulk",
+            "adapter": None,
+            "loaded_file": {**file, "size": 1234},
+        }
+    ]

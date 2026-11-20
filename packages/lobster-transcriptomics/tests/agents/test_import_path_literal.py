@@ -1,6 +1,6 @@
-"""The bulk import and metadata merge cells write their paths as Python literals.
+"""The bulk import and metadata merge cells write no path of the session.
 
-Both templates put the path inside double quotes in an f-string: a ``"`` in the
+Both templates once put the path inside double quotes in an f-string: a ``"`` in the
 path broke the cell, and a ``{{`` was read as a template expression, which
 Lobster evaluated in its own process when it rendered the cell.
 """
@@ -68,9 +68,12 @@ def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch
     )
 
     assert "merge_sample_metadata" in irs, reply
-    assert str(folder / "counts.csv") in _literals(irs["import_bulk_counts"].render())
+    # neither cell names a path of this session: the import reads the notebook's
+    # input file, the merge keeps the sheet itself
+    for tool in ("import_bulk_counts", "merge_sample_metadata"):
+        assert name not in irs[tool].render()
     merge = _literals(irs["merge_sample_metadata"].render())
-    assert str(folder / "meta.csv") in merge
+    assert "meta.csv" in merge
     assert "sample" in merge
     # the templates are the ones the exporter knows, whatever the path
     for tool in ("import_bulk_counts", "merge_sample_metadata"):

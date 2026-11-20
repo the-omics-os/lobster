@@ -1096,7 +1096,10 @@ class NotebookExporter:
         # Steps that build adata from a file themselves replace the generic
         # load only when they come first; a later one must not remove the
         # input load that the earlier cells depend on.
-        self_loading_ops = {"peptidomics.import_sequences"}
+        self_loading_ops = {
+            "peptidomics.import_sequences",
+            "transcriptomics.import_bulk_counts",
+        }
         return bool(exportable_pairs) and (
             exportable_pairs[0][1].operation in self_loading_ops
         )

@@ -28,6 +28,9 @@ from lobster.core.utils.h5ad_utils import sanitize_value
 # A record without it was written by an earlier version ("migrated"); the version
 # string cannot tell, as a build keeps its number until the next release.
 RECORD_FORMAT_KEY = "record_format"
+# Tools that read an input file themselves (not through load_modality); their
+# step keeps the file's record as ``loaded_file`` (DataManagerV2.note_file_import).
+FILE_IMPORT_TOOLS = frozenset({"import_bulk_counts"})
 RECORD_FORMAT = "lobster-1.3"
 
 
@@ -197,12 +200,18 @@ class ProvenanceTracker:
         if activity.get("type") == "import_anchor" and isinstance(file, dict):
             self._restore_anchor(params, file)
             return
-        if activity.get("type") != "load_dataset" or not isinstance(file, dict):
+        if not isinstance(file, dict):
+            return
+        if activity.get("type") == "load_dataset":
+            name = params.get("name")
+        elif activity.get("type") in FILE_IMPORT_TOOLS:  # read the file itself
+            name = params.get("modality_name")
+        else:
             return
         for entity in self.entities.values():
             held = (entity.get("metadata") or {}).get("loaded_file") or {}
             if held.get("sha256") == file.get("sha256") and (
-                entity["metadata"].get("modality_name") == params.get("name")
+                entity["metadata"].get("modality_name") == name
             ):
                 return
         if isinstance(file.get("size"), str) and file["size"].isdigit():
@@ -210,7 +219,7 @@ class ProvenanceTracker:
         self.create_entity(
             entity_type="modality_data",
             metadata={
-                "modality_name": params.get("name"),
+                "modality_name": name,
                 "adapter": params.get("adapter"),
                 "loaded_file": file,
             },

@@ -136,3 +136,41 @@ def test_an_unknown_genes_axis_is_refused(tmp_path):
     dm, _, reply = _import(tmp_path, ["A", "B"], ["S1"], True, genes_axis="cols")
     assert "bulk" not in dm.list_modalities()
     assert "genes_axis must be 'auto', 'rows' or 'columns'" in reply
+
+
+def test_the_import_cell_reads_its_input_as_the_tool_did(tmp_path, monkeypatch):
+    """Known answer, written by hand: a TSV with genes on rows. The recorded cell,
+    run on a copy named .csv, keeps the tab and the transpose the tool used."""
+    genes = [f"ENSG{i:011d}" for i in range(3)]
+    path = tmp_path / "counts.tsv"
+    path.write_text(
+        "gene_id\tA\tB\n"
+        f"{genes[0]}\t1\t2\n"
+        f"{genes[1]}\t3\t4\n"
+        f"{genes[2]}\t5\t6\n"
+    )
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    irs = {}
+    log = dm.log_tool_usage
+
+    def recording(tool_name, *args, **kwargs):
+        irs[tool_name] = kwargs.get("ir")
+        return log(tool_name, *args, **kwargs)
+
+    monkeypatch.setattr(dm, "log_tool_usage", recording)
+    tools = factory_tools(transcriptomics_expert, MODULE, dm)
+    tools["import_bulk_counts"].invoke(
+        {"modality_name": "bulk", "file_path": str(path)}
+    )
+    copy = tmp_path / "copy.csv"
+    copy.write_bytes(path.read_bytes())
+    ir = irs["import_bulk_counts"]
+    scope = {"input_data": str(copy)}
+    exec("\n".join(ir.imports) + "\n" + ir.render(), scope)  # nosec B102
+
+    adata = scope["adata"]
+    assert list(adata.obs_names) == ["A", "B"]
+    assert list(adata.var_names) == genes
+    expected = np.array([[1, 3, 5], [2, 4, 6]], dtype=np.float32)
+    np.testing.assert_array_equal(adata.X, expected)
+    np.testing.assert_array_equal(adata.layers["counts"], expected)
