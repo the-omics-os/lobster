@@ -69,6 +69,19 @@ def _continues(response, have: int, sent: str, answered: Optional[str]) -> bool:
     return bool(start) and int(start[1]) == have and answered in (None, sent)
 
 
+_QUIT_TIMEOUT_S = 5.0
+
+
+def _end_session(ftp: ftplib.FTP) -> None:
+    """QUIT, waiting only briefly on a control connection a stall left silent; the
+    session ending badly never fails the attempt or the file it fetched."""
+    try:
+        ftp.sock.settimeout(_QUIT_TIMEOUT_S)
+        ftp.quit()
+    except ftplib.all_errors:
+        ftp.close()
+
+
 def _size(path: Path) -> int:
     return path.stat().st_size if path.exists() else 0
 
@@ -932,7 +945,7 @@ class GEODownloadManager:
                     return True
 
                 finally:
-                    ftp.quit()
+                    _end_session(ftp)
 
             except (*ftplib.all_errors, OSError) as e:
                 logger.error(f"Download attempt {attempt}/{max_retries} failed: {e}")
