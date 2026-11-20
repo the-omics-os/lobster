@@ -46,6 +46,17 @@ def _call(tmp_path, adata, tool, **args):
     return reply, [m for m in dm.list_modalities() if m != "prot"]
 
 
+def _logged(tmp_path, monkeypatch, adata, tool, **args):
+    logged = []
+    monkeypatch.setattr(
+        DataManagerV2,
+        "log_tool_usage",
+        lambda self, **kw: logged.append(kw["tool_name"]),
+    )
+    _call(tmp_path, adata, tool, **args)
+    return logged
+
+
 @pytest.mark.parametrize("flat", [True, False])
 def test_de_with_no_p_value_refuses(tmp_path, flat):
     reply, stored = _call(
@@ -112,3 +123,73 @@ def test_correlation_with_no_p_value_refuses(tmp_path, flat, target, cause):
     else:
         assert reply.startswith(f"{head}Of 20 tests, none has a p-value: {cause}")
         assert stored == []
+
+
+FLAT_ADVICE = (
+    "Check the values loaded for this modality. No result modality was stored."
+)
+
+
+@pytest.mark.parametrize(
+    "flat, target, refusal",
+    [
+        (
+            True,
+            "dose",
+            "**Correlation refused: no protein has a p-value.**\n\n"
+            "Of 20 tests, none has a p-value: every protein has the same value in "
+            f"every sample. {FLAT_ADVICE}",
+        ),
+        (
+            False,
+            "batch_dose",
+            "**Correlation refused: no protein has a p-value.**\n\n"
+            "Of 20 tests, none has a p-value: every value of 'batch_dose' is the "
+            "same (2.5), so no protein can be correlated with it. Choose a target "
+            "that varies across samples. No result modality was stored.",
+        ),
+    ],
+    ids=["flat_proteins", "flat_target"],
+)
+def test_the_correlation_refusal_in_full(tmp_path, flat, target, refusal):
+    reply, _ = _call(
+        tmp_path, _proteins(flat), "run_correlation_analysis", target_column=target
+    )
+
+    assert reply == refusal
+
+
+def test_the_de_refusal_in_full_for_one_protein(tmp_path):
+    reply, _ = _call(
+        tmp_path,
+        _proteins(flat=True)[:, :1].copy(),
+        "find_differential_proteins",
+        group_column="group",
+        platform_type="affinity",
+        method="t_test",
+    )
+
+    assert reply == (
+        "**DE refused: no protein has a p-value.**\n\n"
+        "Of 1 test, none has a p-value: every protein has the same value in every "
+        f"sample compared. {FLAT_ADVICE}"
+    )
+
+
+@pytest.mark.parametrize(
+    "tool, args",
+    [
+        (
+            "find_differential_proteins",
+            {"group_column": "group", "platform_type": "affinity", "method": "t_test"},
+        ),
+        ("run_time_course_analysis", {"time_column": "time"}),
+        ("run_correlation_analysis", {"target_column": "dose"}),
+    ],
+    ids=["de", "time_course", "correlation"],
+)
+@pytest.mark.parametrize("flat", [True, False])
+def test_a_refusal_logs_nothing(tmp_path, monkeypatch, tool, args, flat):
+    logged = _logged(tmp_path, monkeypatch, _proteins(flat), tool, **args)
+
+    assert logged == ([] if flat else [tool])
