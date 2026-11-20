@@ -581,3 +581,10 @@ def test_a_finished_ftp_transfer_says_goodbye(real_ftp, manager, tmp_path):
 
 def test_quit_waits_seconds_not_the_idle_bound():
     assert 0 < dl._QUIT_TIMEOUT_S <= 5
+
+
+def test_ending_a_session_already_closed_raises_nothing():
+    # the session's end must never fail an attempt, closed connection or not
+    ftp = ftplib.FTP()
+    assert ftp.sock is None
+    dl._end_session(ftp)

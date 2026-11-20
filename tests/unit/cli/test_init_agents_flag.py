@@ -3,8 +3,10 @@ and experts of the same package that the list leaves off."""
 
 import pytest
 
+from lobster.cli_internal.agent_packages import AVAILABLE_AGENT_PACKAGES as _CATALOG
 from tests.unit.cli.test_init_project import (  # noqa: F401  (fixtures)
     KEY,
+    LOBSTER,
     _init_impl,
     _wizard,
     dirs,
@@ -221,7 +223,11 @@ def test_a_host_call_with_an_unknown_expert_changes_nothing(
     )
 
     assert code == 1
-    assert UNKNOWN.format(names="transcriptomic_expert") in text
+    # a host's refusal line, like its other refusals: a host greps for the prefix
+    assert (
+        "✗ bad_argument: --agents names an unknown expert: transcriptomic_expert. "
+        f"Nothing was changed; {LOBSTER} agents list shows the experts."
+    ) in text
     assert not (dirs / "study").exists()
 
 
@@ -240,3 +246,14 @@ def test_a_host_call_with_a_preset_names_nothing_left_off(
     code, text = _plain(str(dirs / "study"), "--preset", "scrna-basic")
 
     assert "leaves out" not in text
+
+
+def test_every_expert_init_can_name_has_a_package_to_install():
+    # init tells how to install an expert it names; it has no other line for one
+    from lobster.config.agent_presets import AGENT_PRESETS, expand_preset
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
+
+    named = {a for _, _, provided, _, _ in _CATALOG for a in provided}
+    for preset in AGENT_PRESETS:
+        named.update(expand_preset(preset))
+    assert sorted(named - set(AGENT_TO_PACKAGE)) == []
