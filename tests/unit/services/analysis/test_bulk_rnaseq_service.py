@@ -669,6 +669,11 @@ class TestPyDESeq2Integration:
                             }
                         )
                         mock_ds.lfc_shrink = Mock()  # Mock shrinkage method
+                        # treated vs control is the design's one coefficient
+                        mock_ds.contrast_vector = np.array([0.0, 1.0])
+                        mock_ds.LFC = pd.DataFrame(
+                            columns=["Intercept", "condition[T.treated]"]
+                        )
                         mock_ds_class.return_value = mock_ds
 
                         results_df, stats, ir = bulk_service.run_pydeseq2_analysis(
@@ -680,7 +685,9 @@ class TestPyDESeq2Integration:
                         )
 
                         # Verify shrinkage was called
-                        mock_ds.lfc_shrink.assert_called_once()
+                        mock_ds.lfc_shrink.assert_called_once_with(
+                            coeff="condition[T.treated]"
+                        )
 
                         # Verify stats indicate shrinkage
                         assert stats["shrink_lfc"] == True

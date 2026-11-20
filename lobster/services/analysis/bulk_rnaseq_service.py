@@ -47,6 +47,25 @@ class PyDESeq2Error(BulkRNASeqError):
     pass
 
 
+def _shrinkage_coefficient(ds) -> Tuple[Optional[str], str]:
+    """The LFC column a DeseqStats contrast tests, or None and why it cannot be shrunk.
+
+    apeGLM shrinks one model coefficient. The contrast is that coefficient only
+    when its second level is the reference level; pyDESeq2 names it after the
+    design (``condition[T.treat]`` since 0.6). Shrinking it for any other contrast
+    would replace the contrast's fold changes with another coefficient's.
+    """
+    vector = np.asarray(ds.contrast_vector, dtype=float)
+    hits = np.flatnonzero(vector)
+    if len(hits) == 1 and vector[hits[0]] == 1:
+        return str(ds.LFC.columns[hits[0]]), ""
+    factor, level1, level2 = ds.contrast
+    return None, (
+        f"the contrast {level1} vs {level2} is not one model coefficient "
+        f"({level2} is not the reference level of {factor})"
+    )
+
+
 class BulkRNASeqService:
     """
     Stateless service for bulk RNA-seq analysis workflows.
@@ -1530,15 +1549,20 @@ Next suggested step: Import quantification data with tximport for differential e
             ds.summary()
 
             # Optional LFC shrinkage for better estimates
+            shrinkage_applied, shrinkage_note = False, ""
             if shrink_lfc:
                 logger.info("Applying log fold change shrinkage...")
                 try:
-                    # Construct coefficient name for shrinkage
-                    factor, level1, level2 = contrast
-                    coeff_name = f"{factor}_{level1}_vs_{level2}"
-                    ds.lfc_shrink(coeff=coeff_name)
+                    coeff_name, reason = _shrinkage_coefficient(ds)
+                    if coeff_name is None:
+                        shrinkage_note = f"not applied: {reason}"
+                    else:
+                        ds.lfc_shrink(coeff=coeff_name)
+                        shrinkage_applied = True
                 except Exception as e:
-                    logger.warning(f"LFC shrinkage failed, continuing without: {e}")
+                    shrinkage_note = f"not applied: {e}"
+                if shrinkage_note:
+                    logger.warning(f"LFC shrinkage {shrinkage_note}")
 
             # Extract results
             results_df = ds.results_df.copy()
@@ -1571,7 +1595,8 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_significant_genes": n_significant,
                 "up_regulated": n_up,
                 "down_regulated": n_down,
-                "lfc_shrinkage_applied": shrink_lfc,
+                "lfc_shrinkage_applied": shrinkage_applied,
+                "lfc_shrinkage_note": shrinkage_note,
             }
 
             # Create provenance IR
@@ -1655,6 +1680,10 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_upregulated": len(upregulated),
                 "n_downregulated": len(downregulated),
                 "significance_threshold": kwargs.get("alpha", 0.05),
+                "lfc_shrinkage_applied": pydeseq2_stats.get(
+                    "lfc_shrinkage_applied", False
+                ),
+                "lfc_shrinkage_note": pydeseq2_stats.get("lfc_shrinkage_note", ""),
                 "top_upregulated": upregulated.nlargest(
                     10, "log2FoldChange"
                 ).index.tolist(),
@@ -2310,6 +2339,7 @@ significant_terms = enrichment_df[enrichment_df['Adjusted P-value'] < 0.05]
 
         code_template = """
 # pyDESeq2 differential expression analysis
+import numpy as np
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
 from pydeseq2.default_inference import DefaultInference
@@ -2338,8 +2368,12 @@ ds.summary()
 
 # Optional: LFC shrinkage for more accurate estimates
 {% if shrink_lfc %}
-coeff_name = f"{contrast[0]}_{contrast[1]}_vs_{contrast[2]}"
-ds.lfc_shrink(coeff=coeff_name)
+# Shrink only when the contrast is one model coefficient (its second level is
+# the reference level); pyDESeq2 names it after the design, e.g. 'condition[T.b]'
+vector = np.asarray(ds.contrast_vector, dtype=float)
+hits = np.flatnonzero(vector)
+if len(hits) == 1 and vector[hits[0]] == 1:
+    ds.lfc_shrink(coeff=ds.LFC.columns[hits[0]])
 {% endif %}
 
 # Extract results

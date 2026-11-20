@@ -120,6 +120,15 @@ def _is_pseudobulk(adata) -> bool:
 _COVARIATE_HINTS = ("batch", "donor", "patient", "subject", "individual", "sex", "lane")
 
 
+def _shrinkage_text(analysis_stats: Dict[str, Any], requested: bool) -> str:
+    """The reply's LFC shrinkage line: what ran, with the reason when it did not."""
+    if analysis_stats.get("lfc_shrinkage_applied"):
+        return "applied"
+    if not requested:
+        return "not requested"
+    return analysis_stats.get("lfc_shrinkage_note") or "not applied"
+
+
 def _unmodelled_covariates_text(obs, groupby) -> str:
     """Name covariate-like obs columns a simple ~groupby design did not model."""
     left_out = [
@@ -1472,7 +1481,7 @@ def de_analysis_expert(
 
 **Analysis Parameters:**
 - Method: pyDESeq2{" (pseudobulk)" if is_pseudobulk else ""}, design ~{groupby}
-- LFC shrinkage: {"Yes" if shrink_lfc else "No"}
+- LFC shrinkage: {_shrinkage_text(analysis_stats, shrink_lfc)}
 - Significance threshold: {alpha}
 - Used whole-number counts from: {count_source}
 
@@ -3566,14 +3575,26 @@ def de_analysis_expert(
                 if dds_stored and "log2FoldChange" in results_df.columns:
                     # pyDESeq2 shrinkage is typically applied during the DE step.
                     # Check if shrinkage was already applied
-                    already_shrunk = de_data.get("parameters", {}).get(
-                        "shrink_lfc", False
+                    # What ran, not what was asked: shrinkage can be requested
+                    # and not applied (see lfc_shrinkage_note).
+                    already_shrunk = (de_data.get("analysis_stats") or {}).get(
+                        "lfc_shrinkage_applied", False
                     )
                     if already_shrunk:
                         shrinkage_applied = True
                         shrinkage_note = (
                             "LFC shrinkage was already applied during DE analysis."
                         )
+                    elif (de_data.get("analysis_stats") or {}).get(
+                        "lfc_shrinkage_note"
+                    ):
+                        # Requested during DE and not applied there: say why.
+                        shrinkage_note = (
+                            "LFC shrinkage was "
+                            + de_data["analysis_stats"]["lfc_shrinkage_note"]
+                            + ". Exporting unshrunk results."
+                        )
+                        logger.warning(shrinkage_note)
                     else:
                         # Try to apply shrinkage via BulkRNASeqService if possible
                         # Note: pyDESeq2 shrinkage requires the DeseqDataSet object which

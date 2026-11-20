@@ -426,6 +426,11 @@ class TestPyDESeq2AnalysisMethod:
                     },
                     index=["Gene1", "Gene2"],
                 )
+                # Treatment vs Control is the design's one coefficient
+                mock_ds.contrast_vector = np.array([0.0, 1.0])
+                mock_ds.LFC = pd.DataFrame(
+                    columns=["Intercept", "condition[T.Treatment]"]
+                )
                 mock_stats_cls.return_value = mock_ds
 
                 # run_pydeseq2_analysis returns 3-tuple: (results_df, stats, ir)
@@ -439,7 +444,10 @@ class TestPyDESeq2AnalysisMethod:
 
                 assert isinstance(results_df, pd.DataFrame)
                 # Should call lfc_shrink method
-                mock_ds.lfc_shrink.assert_called()
+                mock_ds.lfc_shrink.assert_called_once_with(
+                    coeff="condition[T.Treatment]"
+                )
+                assert stats["lfc_shrinkage_applied"] is True
 
 
 @pytest.mark.unit
