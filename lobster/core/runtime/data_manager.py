@@ -547,6 +547,10 @@ _SPILL_REFUSED_LOG = (
 _DIR_CHECK_CHILD = ".export-dir-check"
 
 
+class RecordedInputError(ValueError):
+    """A save would overwrite a file this session loaded (a recorded input)."""
+
+
 def _managed_refusal() -> ManagedPathError:
     from lobster.core.figures.export_guard import MANAGED_EXPORT_REASON
 
@@ -884,6 +888,9 @@ class DataManagerV2:
             {}
         )  # modality_name -> source file path
         self._modality_dirty: set = set()  # modalities modified since load
+        # Files this session loaded (resolved path -> modality): never saved over,
+        # since a replay and the session's record start from them.
+        self._recorded_inputs: Dict[Path, str] = {}
 
         # Workspace restoration attributes
         self.session_file = self.workspace_path / ".session.json"
@@ -1705,6 +1712,7 @@ class DataManagerV2:
                 with self._state_lock:
                     self.modalities[modality_name] = adata
                 self._modality_sources[modality_name] = h5ad_file
+                self._record_input(h5ad_file, modality_name)
 
                 loaded_count += 1
                 logger.debug(
@@ -1771,6 +1779,7 @@ class DataManagerV2:
                     self.modalities[modality_name] = adata
                 # Track source but do NOT mark dirty — this is the unchanged original
                 self._modality_sources[modality_name] = data_file
+                self._record_input(data_file, modality_name)
 
                 loaded_count += 1
                 logger.debug(
@@ -1931,6 +1940,8 @@ class DataManagerV2:
         adapter_instance = self.adapters[adapter]
         loaded_file = _file_loaded(source) if self.provenance else None
         loaded_object = _object_loaded(source) if self.provenance else None
+        if isinstance(source, (str, Path)):
+            self._record_input(source, name)
 
         # Load data using adapter
         if not _is_anndata_instance(source):
@@ -2137,6 +2148,62 @@ class DataManagerV2:
 
         return name
 
+    def _record_input(self, path: Union[str, Path], name: str) -> None:
+        """Remember a file this session loaded, by resolved path."""
+        try:
+            resolved = Path(path).resolve()
+        except (OSError, RuntimeError, TypeError):
+            return
+        if resolved.is_file():
+            self._recorded_inputs.setdefault(resolved, name)
+
+    def recorded_input(self, path: Union[str, Path]) -> Optional[str]:
+        """The modality a file this session loaded was loaded as, or None.
+
+        ``path`` is spelled as for ``save_modality`` (relative to data_dir, or
+        absolute); links and '..' are resolved, so any spelling of the file counts.
+        """
+        target = Path(path)
+        if not target.is_absolute():
+            target = self.data_dir / target
+        try:
+            return self._recorded_inputs.get(target.resolve())
+        except (OSError, RuntimeError):
+            return None
+
+    def _assert_not_recorded_input(
+        self, name: str, *paths: Union[str, Path], own_snapshot: bool = False
+    ) -> None:
+        """Raise RecordedInputError when a save of ``name`` would overwrite a loaded file.
+
+        ``own_snapshot``: auto-save updating the modality's own snapshot (the
+        session's working state) is allowed. Own means exactly ``<name>.h5ad`` for a
+        modality named ``*_autosave``, or ``<name>_autosave.h5ad``.
+        """
+        for path in paths:
+            loaded_as = self.recorded_input(path)
+            if loaded_as is None:
+                continue
+            stem = Path(path).name[: -len(".h5ad")]
+            if (
+                own_snapshot
+                and Path(path).name.endswith("_autosave.h5ad")
+                and stem in (name, f"{name}_autosave")
+            ):
+                continue
+            target = Path(path)
+            if not target.is_absolute():
+                target = self.data_dir / target
+            try:
+                shown = target.resolve().relative_to(self.workspace_path.resolve())
+            except (OSError, RuntimeError, ValueError):
+                shown = Path(target.name)
+            raise RecordedInputError(
+                f"{shown.as_posix()} is a file this session loaded (as modality "
+                f"'{loaded_as}'); saving '{name}' there would overwrite it. "
+                "Save under a new modality name."
+            )
+
     def save_modality(
         self,
         name: str,
@@ -2187,12 +2254,16 @@ class DataManagerV2:
         # read below before anything changes) reaches the backend only: it is not a
         # save parameter, so it is not recorded with the save.
         backup_stamp = kwargs.pop("backup_stamp", None)
+        # auto_save_state: a modality's own *_autosave.h5ad snapshot (the session's
+        # working state) is the one loaded file it may update.
+        own_snapshot = kwargs.pop("own_snapshot", False)
         with self._measure_step("dm:save_modality"):
             if name not in self.modalities:
                 raise ValueError(f"Modality '{name}' not loaded")
             # The destination is built from caller input (often a modality name):
             # never write into the managed figure folder (raises ManagedPathError).
             self._assert_save_allowed(path)
+            self._assert_not_recorded_input(name, path, own_snapshot=own_snapshot)
 
             adata = self.modalities[name]
 
@@ -2268,6 +2339,9 @@ class DataManagerV2:
                 # (data/): a path in the workspace outside data/ is written there,
                 # so that is the file the catalog records.
                 written_path = Path(backend_instance._resolve_path(backend_path))
+            self._assert_not_recorded_input(
+                name, written_path, own_snapshot=own_snapshot
+            )
 
             # Validate data for H5AD serialization (optional pre-save check)
             if hasattr(adata, "uns"):
@@ -3113,6 +3187,7 @@ class DataManagerV2:
         if "mudata" not in self.backends:
             raise ValueError("MuData backend not available")
         self._assert_save_allowed(path)  # never into the managed figure folder
+        self._assert_not_recorded_input("MuData", path)
 
         # Create MuData object
         mdata = self.to_mudata(modalities=modalities)
@@ -3475,6 +3550,7 @@ class DataManagerV2:
                         _close_backed_handle(old)
                     self.modalities[modality_name] = adata
                 self._modality_sources[modality_name] = h5ad_file
+                self._record_input(h5ad_file, modality_name)
                 loaded.append(modality_name)
                 backed_tag = " [backed]" if getattr(adata, "isbacked", False) else ""
                 logger.debug(
@@ -4195,6 +4271,23 @@ class DataManagerV2:
                             should_skip = True
                             skip_reason = "up-to-date"
 
+                    # Case 3: unchanged, and its snapshot is a file this session
+                    # loaded as another modality (x_autosave beside x): that file
+                    # holds other, often newer, state; an unchanged x is not
+                    # written over it.
+                    loaded_as = self.recorded_input(full_save_path)
+                    if not (should_skip or is_dirty) and loaded_as not in (
+                        None,
+                        modality_name,
+                    ):
+                        should_skip = True
+                        skip_reason = (
+                            f"unchanged; {save_path} is loaded as '{loaded_as}'"
+                        )
+                        logger.info(
+                            f"Autosave skipped '{modality_name}': {skip_reason}"
+                        )
+
                 if should_skip:
                     skipped_items.append(f"Modality '{modality_name}': {skip_reason}")
                     if progress_callback:
@@ -4217,7 +4310,9 @@ class DataManagerV2:
                 if progress_callback:
                     progress_callback(idx + 1, total, modality_name, "saving")
 
-                saved_path = self.save_modality(modality_name, save_path, **save_kwargs)
+                saved_path = self.save_modality(
+                    modality_name, save_path, own_snapshot=True, **save_kwargs
+                )
                 saved_items.append(
                     f"Modality '{modality_name}': {Path(saved_path).name}"
                 )
@@ -4229,6 +4324,14 @@ class DataManagerV2:
             except ManagedPathError:  # the target became managed after the plan
                 logger.warning(_AUTOSAVE_REFUSED_LOG)
                 refused_count += 1
+                if progress_callback:
+                    progress_callback(idx + 1, total, modality_name, "error")
+            except RecordedInputError as e:  # never overwrite a loaded file or raise
+                logger.warning(f"Autosave skipped '{modality_name}': {e}")
+                saved_items.append(
+                    f"{AUTOSAVE_NOT_SAVED_PREFIX}Modality '{modality_name}': "
+                    "its file is a loaded input"
+                )
                 if progress_callback:
                     progress_callback(idx + 1, total, modality_name, "error")
             except Exception as e:
@@ -5846,6 +5949,7 @@ https://github.com/OmicsOS/lobster
                         _close_backed_handle(old)
                     self.modalities[name] = adata
                 self._modality_sources[name] = path
+                self._record_input(path, name)
 
                 # Update session file
                 self._update_session_file("loaded")

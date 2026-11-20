@@ -28,7 +28,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 )
 
 # === Heavy imports below ===
-import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -111,27 +110,14 @@ def _de_result_name(modality_name: str, group1, group2) -> str:
 def _unloaded_result_name(data_manager, name: str) -> str:
     """``name``, or the next ``name_<n>`` whose saved file is not a loaded input.
 
-    A resumed session may have loaded ``data/<name>.h5ad`` (its provenance records
-    the file's name and SHA-256): a new result must not be written over it.
+    A resumed session may have loaded ``data/<name>.h5ad``: a new result is not
+    written over it (DataManager would refuse the save), it takes a new name.
     """
-    # shortcut: DE result names only; a guard for every save is DataManager work (1.3.1)
-    entities = getattr(data_manager.provenance, "entities", None) or {}
-    loaded = set()
-    for entity in list(entities.values()):
-        file = ((entity or {}).get("metadata") or {}).get("loaded_file")
-        if isinstance(file, dict) and file.get("name") and file.get("sha256"):
-            loaded.add((file["name"], file["sha256"]))
-    loaded_names = {file_name for file_name, _ in loaded}
     candidate, n = name, 1
-    while True:
-        target = data_manager.data_dir / f"{candidate}.h5ad"
-        if target.name not in loaded_names or not target.is_file():
-            return candidate
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        if (target.name, digest) not in loaded:
-            return candidate
+    while data_manager.recorded_input(f"{candidate}.h5ad") is not None:
         n += 1
         candidate = check_modality_name(f"{name}_{n}")
+    return candidate
 
 
 def _is_pseudobulk(adata) -> bool:
