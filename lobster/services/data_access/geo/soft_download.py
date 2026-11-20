@@ -8,6 +8,7 @@ which fails in many network environments.
 
 import gzip
 import os
+import ssl
 import tempfile
 import time
 import urllib.error
@@ -83,8 +84,23 @@ def _valid_soft_file(path: Path, geo_id: str) -> bool:
 _ATTEMPTS = 3
 
 
+# a certificate or TLS setup failure: no retry or FTP fallback fixes it. A TLS
+# connection cut short (EOF) is a slow route's failure like a reset.
+_SSL_FAILURES = (
+    "CERTIFICATE_VERIFY_FAILED",
+    "WRONG_VERSION_NUMBER",
+    "HOSTNAME_MISMATCH",
+)
+
+
 def _is_ssl_failure(error: Exception) -> bool:
-    return "CERTIFICATE_VERIFY_FAILED" in str(error) or "SSL" in str(error)
+    # by type too: the message's wording depends on the TLS library
+    if any(
+        isinstance(e, ssl.SSLCertVerificationError)
+        for e in (error, getattr(error, "reason", None))
+    ):
+        return True
+    return any(token in str(error) for token in _SSL_FAILURES)
 
 
 def _worth_retrying(error: Exception) -> bool:
