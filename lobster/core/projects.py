@@ -393,12 +393,7 @@ def project_settings(project: Project) -> ProjectSettings:
     provider = provider_cfg.global_provider
     model = provider_cfg.get_model_for_provider(provider) if provider else None
     agent_cfg = WorkspaceAgentConfig.load(project.workspace)
-    experts = list(agent_cfg.enabled_agents)
-    if not experts and agent_cfg.preset:
-        # The file keeps either the list or the preset; the preset stands for its agents.
-        from lobster.config.agent_presets import expand_preset
-
-        experts = list(expand_preset(agent_cfg.preset) or [])
+    experts = agent_cfg.effective_agents()
     return ProjectSettings(
         provider=provider,
         model=model,

@@ -2493,15 +2493,16 @@ def _write_expert_list(
 
 
 def _team_of(workspace: Path) -> Optional[List[str]]:
-    """The experts loaded for the list in *workspace*'s config.toml, or None
-    without one; the engine's registry is loaded by then."""
+    """The experts loaded for the list or preset in *workspace*'s config.toml,
+    or None without one; the engine's registry is loaded by then."""
     try:
         names = mcp_overview.load_agent_config(workspace / "config.toml")
     except Exception:  # no file, or one the first turn did not write
         return None
-    if not names.enabled_agents:
+    experts = names.effective_agents()
+    if not experts:
         return None
-    return _expert_team(names.enabled_agents)[0]
+    return _expert_team(experts)[0]
 
 
 def _expert_team(names: Sequence[str]) -> Tuple[List[str], List[str]]:
