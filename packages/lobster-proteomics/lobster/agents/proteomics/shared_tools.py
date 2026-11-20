@@ -1652,7 +1652,7 @@ adata = parser.parse({{ file_path | tojson }})""",
 
             response += f"\n**New modality created:** '{corrected_name}'"
             if save_result:
-                response += f"\n**Saved to:** {modality_name}_batch_corrected.h5ad"
+                response += f"\n**Saved to:** {corrected_name}.h5ad"
 
             return response
 
@@ -1738,7 +1738,7 @@ adata = parser.parse({{ file_path | tojson }})""",
 
             response += f"\n**New modality created:** '{rollup_name}'"
             if save_result:
-                response += f"\n**Saved to:** {modality_name}_protein_rollup.h5ad"
+                response += f"\n**Saved to:** {rollup_name}.h5ad"
 
             return response
 
@@ -1836,7 +1836,7 @@ adata = parser.parse({{ file_path | tojson }})""",
 
             response += f"\n**New modality created:** '{normalized_name}'"
             if save_result:
-                response += f"\n**Saved to:** {ptm_modality_name}_ptm_normalized.h5ad"
+                response += f"\n**Saved to:** {normalized_name}.h5ad"
 
             return response
 
@@ -2543,7 +2543,7 @@ adata.X = X""",
 
             response += f"\n**New modality created:** '{result_name}'"
             if save_result:
-                response += f"\n**Saved to:** {modality_name}_bridge_normalized.h5ad"
+                response += f"\n**Saved to:** {result_name}.h5ad"
 
             analysis_results["details"]["bridge_normalization"] = response
             return response
