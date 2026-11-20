@@ -176,8 +176,8 @@ def _pinned_to_lobster(package: str, op: str = "~=") -> str:
 def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
     """Add a package to this uv tool's receipt, enable its agents, and exit.
 
-    The install replaces the tool's venv, so the agents are enabled first
-    (from the package catalog) and the process ends after the install.
+    The install replaces the tool's venv, so the agents (from the package
+    catalog) are enabled once it worked and the process ends after it.
     """
     import shlex
 
@@ -191,8 +191,13 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
     agents = {
         a for entry in AVAILABLE_AGENT_PACKAGES if entry[0] == package for a in entry[2]
     }
-    if agents:
-        _change_enabled(workspace_path, add=agents)
+    config = _changed_config(workspace_path, add=agents) if agents else None
+    after = None
+    if config is not None:
+        if windows_locks_running_tool():  # the install is left to the user
+            config.save(workspace_path)
+        else:
+            after = _save_after_install(config, workspace_path)
 
     cmd = build_tool_install_command(with_packages=[_pinned_to_lobster(package, ">=")])
     cmd.insert(3, "--reinstall")
@@ -200,7 +205,7 @@ def _install_into_uv_tool(package: str, workspace_path: Path) -> NoReturn:
         console.print(f"  {shlex.join(cmd)}", markup=False)
         if console.file:
             console.file.flush()
-    run_tool_install(cmd)
+    run_tool_install(cmd, after=after)
 
 
 def _uv_pip_install(package: str) -> tuple[bool, str]:
@@ -334,28 +339,70 @@ def _get_agents_for_package(package_name: str) -> list[str]:
     return matching_agents
 
 
-def _change_enabled(workspace_path: Path, *, add=(), remove=()) -> None:
-    """Add or remove agents in config.toml; a preset becomes the explicit list.
+def _with_children(names: set) -> set:
+    """*names* and their child agents, which the graph adds for them."""
+    from lobster.core.component_registry import component_registry
+
+    agents = component_registry.list_agents()
+    present = set(names)
+    for name in names:
+        present.update(getattr(agents.get(name), "child_agents", None) or ())
+    return present
+
+
+def _changed_config(workspace_path: Path, *, add=(), remove=()):
+    """The agent config with agents added or removed; None if nothing changes.
 
     config.toml holds a preset or a list, never both: a list saved next to a
-    preset is dropped, so the change would silently not happen.
+    preset is dropped, so a preset becomes the explicit list it changes.
     """
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
     config = WorkspaceAgentConfig.load(workspace_path)
     current = set(config.effective_agents())
-    changed = (current | set(add)) - set(remove)
-    if changed == current:
-        return  # nothing to change: a preset stays a preset
+    present = _with_children(current)
+    if set(add) <= present and not set(remove) & present:
+        return None  # nothing to change: a preset stays a preset
     if config.preset:
         console.print(
             h(
                 "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
             ).format(preset_name=config.preset)
         )
-    config.enabled_agents = sorted(changed)
+    config.enabled_agents = sorted((current | set(add)) - set(remove))
     config.preset = None
-    config.save(workspace_path)
+    return config
+
+
+def _change_enabled(workspace_path: Path, *, add=(), remove=()) -> None:
+    """Add or remove agents in config.toml (see ``_changed_config``)."""
+    config = _changed_config(workspace_path, add=add, remove=remove)
+    if config is not None:
+        config.save(workspace_path)
+
+
+def _save_after_install(config, workspace_path: Path):
+    """Stage *config* now; the returned ``after`` puts it in place once the
+    install worked. It runs after the tool's venv is replaced: ``os`` only."""
+    import os
+    import tempfile
+
+    workspace_path.mkdir(parents=True, exist_ok=True)  # as config.save does
+    folder = tempfile.mkdtemp(prefix=".config-", dir=workspace_path)
+    staged = str(config.save(Path(folder)))
+    final = os.path.join(str(workspace_path), os.path.basename(staged))
+
+    def after(ok: bool) -> None:
+        try:
+            if ok:
+                os.replace(staged, final)
+            else:
+                os.unlink(staged)
+            os.rmdir(folder)
+        except OSError:
+            pass  # no traceback over a stale venv
+
+    return after
 
 
 def _get_workspace_path() -> Path:

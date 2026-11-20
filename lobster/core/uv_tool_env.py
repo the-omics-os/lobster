@@ -10,7 +10,7 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import Callable, NoReturn, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,11 @@ def windows_locks_running_tool() -> bool:
     return sys.platform == "win32"
 
 
-def run_tool_install(cmd: list[str], next_step: Optional[str] = None) -> NoReturn:
+def run_tool_install(
+    cmd: list[str],
+    next_step: Optional[str] = None,
+    after: Optional[Callable[[bool], None]] = None,
+) -> NoReturn:
     """Run a ``uv tool install`` that replaces this tool's venv, then exit.
 
     After ``uv tool install`` completes, the venv on disk is replaced while
@@ -263,7 +267,9 @@ def run_tool_install(cmd: list[str], next_step: Optional[str] = None) -> NoRetur
     1. NO Rich (console.print, Panel, Prompt, etc.)
     2. Plain print() only, respecting NO_COLOR
     3. os._exit() to skip Python teardown (atexit, __del__, etc.)
-       Callers save their config before calling this.
+       Callers save their config before calling this, or pass ``after``:
+       called with whether the install worked, after the swap, so it may
+       use only builtins and ``os``.
     """
     import os
     import shlex
@@ -290,6 +296,8 @@ def run_tool_install(cmd: list[str], next_step: Optional[str] = None) -> NoRetur
     result = subprocess.run(cmd)  # nosec B603 # argv shown before; no shell
 
     # === DANGER ZONE: venv on disk has been replaced ===
+    if after is not None:
+        after(result.returncode == 0)
     color = os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
     if result.returncode == 0:
         print(f"  \033[32m{ok}\033[0m" if color else f"  {ok}")

@@ -192,3 +192,22 @@ def test_a_tool_install_that_works_enables_the_package(ws, monkeypatch):
     config = WorkspaceAgentConfig.load(ws)
     assert set(config.enabled_agents) == set(BASIC) | GENOMICS
     assert sorted(p.name for p in ws.iterdir()) == ["config.toml"]
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_the_tool_install_tells_after_whether_it_worked(monkeypatch, code):
+    from lobster.core import uv_tool_env
+
+    told = []
+
+    def exited(status):
+        raise SystemExit(status)
+
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: False)
+    monkeypatch.setattr("subprocess.run", lambda cmd: SimpleNamespace(returncode=code))
+    monkeypatch.setattr("os._exit", exited)
+
+    with pytest.raises(SystemExit) as end:
+        uv_tool_env.run_tool_install(["uv", "tool", "x"], after=told.append)
+
+    assert (told, end.value.code) == ([code == 0], code)
