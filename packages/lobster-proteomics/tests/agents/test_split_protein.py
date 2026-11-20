@@ -228,3 +228,51 @@ def test_the_reply_counts_two_split_proteins(tmp_path):
         + ADVICE.format(it="them")
         in reply
     ), reply
+
+
+@pytest.mark.parametrize(
+    "n, method, advice",
+    [
+        (10, "t_test", ADVICE),
+        (9, "t_test", FEW_ADVICE),
+        (9, "limma_like", LIMMA_FEW_ADVICE),
+    ],
+)
+def test_limma_like_borrows_from_10_proteins_tested(tmp_path, n, method, advice):
+    adata = _proteins(split=True)[:, 50 - n :].copy()
+
+    reply = _reply(tmp_path, adata, method)
+
+    assert advice.format(it="it") in reply, reply
+
+
+def test_limma_like_with_10_proteins_gives_a_split_protein_its_p_value():
+    results, _, stats = _run(_proteins(split=True)[:, 40:].copy(), "limma_like")
+
+    assert np.isfinite(results["P49"]["p_value"])
+    assert stats["n_zero_within_group_variance"] == 0
+
+
+def _three_groups(split_in):
+    """a, b and c of 4 samples; c has a value for P45-P49 only, so a comparison
+    with c tests 5 proteins. P49 is split between a and ``split_in``."""
+    adata = _proteins(split=False)
+    adata.obs["group"] = ["a"] * 4 + ["b"] * 4 + ["c"] * 4
+    adata.X[8:, :45] = np.nan
+    other = (adata.obs["group"] == split_in).to_numpy()
+    adata.X[:4, 49], adata.X[other, 49] = 5.0, 9.0
+    return adata
+
+
+@pytest.mark.parametrize(
+    "split_in, advice",
+    [("b", ADVICE), ("c", FEW_ADVICE)],
+    ids=["50_tested", "5_tested"],
+)
+def test_the_advice_follows_the_comparison_of_the_split_protein(
+    tmp_path, split_in, advice
+):
+    reply = _reply(tmp_path, _three_groups(split_in), "t_test")
+
+    assert "- Of the proteins tested, 1 has the same value" in reply, reply
+    assert advice.format(it="it") in reply, reply
