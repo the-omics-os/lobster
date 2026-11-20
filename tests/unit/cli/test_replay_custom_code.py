@@ -159,31 +159,36 @@ def test_a_step_after_the_custom_cell_is_recomputed_not_read(
     assert any(f"files/{STEP_C}.h5ad/" in d for d in diffs), diffs
 
 
-def _append_to_custom_cell(notebook, code, tmp_path, name="edited.ipynb"):
-    """A copy of the notebook with ``code`` added to the custom cell (code a user
-    could put there; the session never ran it)."""
+def _add_to_custom_code(notebook, code, tmp_path, name="edited.ipynb"):
+    """A copy of the notebook with ``code`` put first in the custom cell's code
+    (code a user could put there; the session never ran it)."""
     cells = json.loads(notebook.read_text())
     for cell in cells["cells"]:
-        if cell["cell_type"] == "code" and "# User code" in "".join(cell["source"]):
-            cell["source"] = "".join(cell["source"]) + "\n" + code
+        source = "".join(cell["source"])
+        if cell["cell_type"] == "code" and "# User code\n" in source:
+            cell["source"] = source.replace("# User code\n", "# User code\n" + code, 1)
     edited = tmp_path / name
     edited.write_text(json.dumps(cells))
     return edited
 
 
-def test_the_sessions_saved_file_is_never_read(tmp_path, monkeypatch):
-    """A typed path to the session's saved file reads the notebook's result: with
-    the step before changed, the step after the custom cell differs too."""
+def test_a_typed_path_to_the_sessions_saved_file_reads_the_notebooks_result(
+    tmp_path, monkeypatch
+):
+    """With the step before the custom cell changed, a typed path to the
+    session's saved file still reads the notebook's (changed) result."""
     dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
     typed = str(dm.data_dir / f"{STEP_A}.h5ad")
-    edited = _append_to_custom_cell(
-        _tamper_step_a(notebook, tmp_path),
-        f"import anndata\nadata = anndata.read_h5ad({typed!r})\n",
-        tmp_path,
+    check = (
+        "import anndata\n"
+        f"_s = anndata.read_h5ad({typed!r})\n"
+        "assert abs(float(_s.X.sum()) - float(adata.X.sum())) < 1e-3, "
+        "'read the session file'\n"
     )
+    edited = _add_to_custom_code(_tamper_step_a(notebook, tmp_path), check, tmp_path)
     out = _replay(dm, edited, source)
     assert out["verdict"] == "MISMATCH", out
-    assert any(f"files/{STEP_C}.h5ad/" in d for d in _diffs(out)), _diffs(out)
+    assert "read the session file" not in json.dumps(out), out
 
 
 def test_a_read_of_another_file_of_the_session_is_refused(tmp_path, monkeypatch):
@@ -192,13 +197,95 @@ def test_a_read_of_another_file_of_the_session_is_refused(tmp_path, monkeypatch)
     dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
     other = dm.data_dir / "earlier.h5ad"
     _x("e").write_h5ad(other)
-    edited = _append_to_custom_cell(
+    edited = _add_to_custom_code(
         notebook, f"import anndata\ne = anndata.read_h5ad({str(other)!r})\n", tmp_path
     )
     out = _replay(dm, edited, source)
     assert out["verdict"] == "NOTEBOOK_FAILED", out
     notes = " ".join(out["notes"])
     assert "reads data/earlier.h5ad of the session's workspace" in notes, notes
+
+
+def _upstream_read_session(tmp_path, monkeypatch):
+    """Load x, filter_and_normalize x then its result, then custom code on x
+    reading the first result's saved file (made two steps before), its result
+    saved: the session stores it as x_custom."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "in" / "x.h5ad"
+    source.parent.mkdir()
+    _x().write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("x", str(source), adapter="transcriptomics_single_cell")
+    tools = factory_tools(te.transcriptomics_expert, te.__name__, dm)
+    tools["filter_and_normalize"].invoke({"modality_name": "x", **PERMISSIVE})
+    tools["filter_and_normalize"].invoke({"modality_name": STEP_A, **PERMISSIVE})
+    _custom(
+        dm,
+        "import anndata\n"
+        f"saved = anndata.read_h5ad(WORKSPACE / 'data' / '{STEP_A}.h5ad')\n"
+        "adata = saved.copy()\n"
+        "adata.obs['from_upstream'] = 1\n",
+        modality_name="x",
+    )
+    assert "x_custom" in dm.list_modalities()
+    dm.save_modality("x_custom", "x_custom.h5ad")
+    notebook = dm.export_notebook("custom", "custom", filter_strategy="replay")
+    return dm, source, notebook
+
+
+def test_a_custom_result_built_from_an_upstream_file_replays_to_match(
+    tmp_path, monkeypatch
+):
+    dm, source, notebook = _upstream_read_session(tmp_path, monkeypatch)
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] == "MATCH", out
+
+
+def test_a_custom_result_built_from_an_upstream_file_follows_the_upstream(
+    tmp_path, monkeypatch
+):
+    """The upstream step changed: the custom result differs too (never a slot
+    compared against the session's own file)."""
+    dm, source, notebook = _upstream_read_session(tmp_path, monkeypatch)
+    out = _replay(dm, _tamper_step_a(notebook, tmp_path), source)
+    assert out["verdict"] == "MISMATCH", out
+    assert any("files/x_custom.h5ad/" in d for d in _diffs(out)), _diffs(out)
+
+
+def test_a_relative_data_write_lands_in_the_replay_folder(tmp_path, monkeypatch):
+    """A custom cell writing data/<name>.h5ad writes the replay's folder; the
+    session's data/ is never written."""
+    code = "adata.copy().write_h5ad('data/custom_out.h5ad')\n"
+    dm, source, notebook = _session(tmp_path, monkeypatch, code)
+    written = dm.data_dir / "custom_out.h5ad"
+    before = written.read_bytes()
+    out = _replay(dm, notebook, source)
+    assert written.read_bytes() == before
+    assert out["verdict"] == "NOT_COMPARED", out
+    assert any(
+        "data/custom_out.h5ad: written by the notebook" in n for n in out["notes"]
+    )
+
+
+def test_no_module_of_the_sessions_workspace_is_imported(tmp_path, monkeypatch):
+    """A module in the session's workspace is not importable from the replay.
+
+    Custom code imports only by import statements, which the notebook's imports
+    cell runs before any custom cell; the custom cell's sys.path entry is the
+    replay's folder, never the session's workspace."""
+
+    def module(dm):
+        (dm.workspace_path / "lobster_probe_mod.py").write_text("VALUE = 1\n")
+
+    dm, source, notebook = _session(
+        tmp_path,
+        monkeypatch,
+        "import lobster_probe_mod\n",
+        extra=module,
+    )
+    out = _replay(dm, notebook, source)
+    assert out["verdict"] == "NOTEBOOK_FAILED", out
+    assert "No module named 'lobster_probe_mod'" in " ".join(out["notes"])
 
 
 def test_the_bound_input_is_what_a_custom_cell_reads_for_it(tmp_path, monkeypatch):
