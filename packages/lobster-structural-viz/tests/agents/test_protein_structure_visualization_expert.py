@@ -491,18 +491,12 @@ class TestRegistryIntegration:
         """Test that agent is registered correctly."""
         from lobster.core.component_registry import component_registry
 
-        # The agent is discovered via entry points
-        agent_config = component_registry.get_agent(
-            "protein_structure_visualization_expert"
-        )
-        if agent_config is None:
-            # Also try with _agent suffix
-            agent_config = component_registry.get_agent(
-                "protein_structure_visualization_expert_agent"
-            )
-        # Agent should be discoverable (either via entry points or AGENT_REGISTRY)
-        # In dev install it should be available
-        assert agent_config is not None or True  # Soft assertion for CI environments
+        # The agent is discovered via entry points, under its entry point name
+        name = "protein_structure_visualization_expert"
+        agent_config = component_registry.get_agent(name)
+        assert agent_config is not None
+        assert agent_config.name == name
+        assert agent_config.handoff_tool_name == f"handoff_to_{name}"
 
     def test_agent_can_be_imported_from_registry(self):
         """Test that agent factory can be imported via registry."""

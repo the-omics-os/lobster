@@ -55,7 +55,7 @@ AGENTS = [
     "pharmacogenomics_expert",
     "visualization_expert_agent",
     "metadata_assistant",
-    "protein_structure_visualization_expert_agent",
+    "protein_structure_visualization_expert",
 ]
 
 
