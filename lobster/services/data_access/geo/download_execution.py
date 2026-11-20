@@ -87,6 +87,34 @@ def _loaded_series_file(manager, clean_geo_id: str):
     return None
 
 
+def _loaded_sample_files(manager, clean_geo_id: str):
+    """``[(GSM id, modality, file name)]`` for the series' per-sample import files
+    (``data/<gse>_<gsm>_raw.h5ad``) this session loaded, found by recorded path."""
+    data_dir = getattr(manager, "data_dir", None)
+    if not isinstance(data_dir, Path):  # a stand-in DataManager has no files
+        return []
+    prefix = f"{clean_geo_id.lower()}_gsm"
+    loaded = []
+    for path in sorted(data_dir.glob(f"{prefix}*_raw.h5ad")):
+        loaded_as = manager.recorded_input(path)
+        if loaded_as is not None:
+            gsm = path.name[len(clean_geo_id) + 1 : -len("_raw.h5ad")].upper()
+            loaded.append((gsm, loaded_as, path.name))
+    return loaded
+
+
+def _partly_loaded_text(clean_geo_id: str, samples) -> str:
+    named = ", ".join(
+        f"sample {gsm} as modality '{loaded_as}' (from data/{file_name})"
+        for gsm, loaded_as, file_name in samples
+    )
+    return (
+        f"Dataset {clean_geo_id} is already partly loaded: {named}; nothing was "
+        "downloaded. Use the loaded samples, or start a new workspace to import "
+        "the series again."
+    )
+
+
 def _already_loaded_text(clean_geo_id: str, loaded) -> str:
     loaded_as, file_name = loaded
     return (
@@ -153,6 +181,9 @@ class DownloadExecutor:
             loaded = _loaded_series_file(self.service.data_manager, clean_geo_id)
             if loaded is not None:
                 return _already_loaded_text(clean_geo_id, loaded)
+            samples = _loaded_sample_files(self.service.data_manager, clean_geo_id)
+            if samples:  # never a series of only the samples not loaded
+                return _partly_loaded_text(clean_geo_id, samples)
 
             # Check if metadata already exists (should be fetched first)
             if clean_geo_id not in self.service.data_manager.metadata_store:
@@ -567,6 +598,9 @@ Multi-Modal Dataset Detected:
         loaded = _loaded_series_file(manager, clean_geo_id)
         if loaded is not None:
             refuse(_already_loaded_text(clean_geo_id, loaded))
+        samples = _loaded_sample_files(manager, clean_geo_id)
+        if samples:
+            refuse(_partly_loaded_text(clean_geo_id, samples))
         for name in manager.list_modalities():
             cached = manager.get_modality(name)
             belongs = (

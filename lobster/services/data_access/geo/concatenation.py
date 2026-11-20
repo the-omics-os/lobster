@@ -57,6 +57,22 @@ class SampleConcatenator:
         """
         stored_samples = []
 
+        # All or none: a sample whose file this session loaded is never skipped
+        # while the others are stored (a series of only the samples not loaded).
+        recorded = getattr(self.service.data_manager, "recorded_input", None)
+        loaded = [
+            gsm_id
+            for gsm_id in validated_matrices
+            if callable(recorded)  # a stand-in DataManager has no files
+            and isinstance(recorded(f"{gse_id.lower()}_{gsm_id.lower()}_raw.h5ad"), str)
+        ]
+        if loaded:
+            logger.error(
+                f"Not storing the samples of {gse_id}: loaded already: "
+                f"{', '.join(loaded)}"
+            )
+            return stored_samples
+
         try:
             logger.info(
                 f"Storing {len(validated_matrices)} samples as individual AnnData objects"
