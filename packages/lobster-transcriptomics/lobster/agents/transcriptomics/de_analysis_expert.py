@@ -28,6 +28,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 )
 
 # === Heavy imports below ===
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -105,6 +106,32 @@ def _de_result_name(modality_name: str, group1, group2) -> str:
     return check_modality_name(
         f"{modality_name}_de_{plain_name_part(group1)}_vs_{plain_name_part(group2)}"
     )
+
+
+def _unloaded_result_name(data_manager, name: str) -> str:
+    """``name``, or the next ``name_<n>`` whose saved file is not a loaded input.
+
+    A resumed session may have loaded ``data/<name>.h5ad`` (its provenance records
+    the file's name and SHA-256): a new result must not be written over it.
+    """
+    # shortcut: DE result names only; a guard for every save is DataManager work (1.3.1)
+    entities = getattr(data_manager.provenance, "entities", None) or {}
+    loaded = set()
+    for entity in list(entities.values()):
+        file = ((entity or {}).get("metadata") or {}).get("loaded_file")
+        if isinstance(file, dict) and file.get("name") and file.get("sha256"):
+            loaded.add((file["name"], file["sha256"]))
+    loaded_names = {file_name for file_name, _ in loaded}
+    candidate, n = name, 1
+    while True:
+        target = data_manager.data_dir / f"{candidate}.h5ad"
+        if target.name not in loaded_names or not target.is_file():
+            return candidate
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        if (target.name, digest) not in loaded:
+            return candidate
+        n += 1
+        candidate = check_modality_name(f"{name}_{n}")
 
 
 def _is_pseudobulk(adata) -> bool:
@@ -1266,7 +1293,9 @@ def de_analysis_expert(
             # '/'): encoded into one plain name, checked before any analysis.
             de_modality_name = None
             if method != "deseq2":
-                de_modality_name = _de_result_name(modality_name, group1, group2)
+                de_modality_name = _unloaded_result_name(
+                    data_manager, _de_result_name(modality_name, group1, group2)
+                )
 
             # Every save target of the branch that will run is checked before the
             # data changes or any analysis runs.
@@ -1278,7 +1307,9 @@ def de_analysis_expert(
                     assert_inside_workspace(data_manager.workspace_path, results_csv)
                     assert_export_allowed(data_manager.workspace_path, results_csv)
                     # deseq2 saves its result as a new modality only when saving
-                    de_modality_name = _de_result_name(modality_name, group1, group2)
+                    de_modality_name = _unloaded_result_name(
+                        data_manager, _de_result_name(modality_name, group1, group2)
+                    )
                 data_manager._assert_save_allowed(f"{de_modality_name}.h5ad")
 
             logger.info(
