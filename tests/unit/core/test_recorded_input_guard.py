@@ -220,7 +220,21 @@ def _proteins():
     )
 
 
+def _clustered():
+    adata = _scrna()
+    adata.obs["leiden"] = pd.Categorical([str(i % 3) for i in range(300)])
+    return adata
+
+
 RERUNS = {
+    "mark_clusters_as_debris": (
+        "lobster.agents.transcriptomics.annotation_expert",
+        "annotation_expert",
+        _clustered,
+        {"modality_name": "x", "debris_clusters": ["0"], "cluster_key": "leiden"},
+        {"debris_clusters": ["1"]},
+        "x_debris_marked",
+    ),
     "filter_and_normalize": (
         "lobster.agents.transcriptomics.transcriptomics_expert",
         "transcriptomics_expert",
