@@ -118,7 +118,9 @@ def _bulk_genes_axis(df: pd.DataFrame):
 
     Gene IDs on one axis win. Shape alone decides only when the table cannot be
     a targeted panel with more samples than genes: the larger axis is a whole
-    transcriptome (>= 10,000) or the smaller has too few labels to be genes (< 20).
+    transcriptome (>= 10,000), or it has >= 1,000 labels and the smaller has too
+    few to be genes (< 20). A panel of under 20 genes over 1,000+ samples is out
+    of scope: shape takes it the wrong way round; genes_axis settles it.
     """
 
     def id_share(labels):
@@ -130,7 +132,9 @@ def _bulk_genes_axis(df: pd.DataFrame):
     if cols >= 0.9 and rows < 0.1:
         return "columns", "Ensembl/RefSeq gene IDs"
     larger, smaller = max(df.shape), min(df.shape)
-    if larger >= 2 * smaller and (larger >= 10_000 or smaller < 20):
+    if larger >= 2 * smaller and (
+        larger >= 10_000 or (larger >= 1_000 and smaller < 20)
+    ):
         return ("rows" if df.shape[0] > df.shape[1] else "columns"), "shape"
     return None, None
 
@@ -1538,12 +1542,16 @@ Please check:
                 if genes_axis == "auto":
                     axis_used, axis_reason = _bulk_genes_axis(df)
                 if axis_used is None:
+                    rows = ", ".join(map(str, df.index[:3]))
+                    columns = ", ".join(map(str, df.columns[:3]))
                     return (
                         f"Error: Cannot tell which axis of {path.name} holds the genes: "
                         f"{df.shape[0]} rows x {df.shape[1]} columns, and Ensembl/RefSeq "
                         "gene IDs do not mark one axis. A targeted panel with more "
-                        "samples than genes looks the same. Re-run import_bulk_counts "
-                        "with genes_axis='rows' or 'columns'."
+                        f"samples than genes looks the same. Rows start: {rows}. "
+                        f"Columns start: {columns}. Pick the axis whose labels are "
+                        "genes, or ask the user, then re-run import_bulk_counts with "
+                        "genes_axis='rows' or 'columns'."
                     )
                 # AnnData wants samples x genes
                 if axis_used == "rows":
