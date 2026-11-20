@@ -659,6 +659,18 @@ def _held_signature(adata: Any) -> Tuple[str, str]:
     return content_digest(adata), repr(shape(dict(adata.uns)))
 
 
+def _same_file(a: Path, b: Path) -> bool:
+    """Whether two spellings name one file (links, '..', letter case on a
+    case-insensitive volume); for a file that does not exist, the resolved paths."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        try:
+            return a.resolve() == b.resolve()
+        except (OSError, RuntimeError):
+            return False
+
+
 def _autosave_file_name(modality_name: str) -> str:
     """The auto-save file of a modality, relative to data_dir (never double-suffixed)."""
     if modality_name.endswith("_autosave"):
@@ -2205,23 +2217,24 @@ class DataManagerV2:
         """Raise RecordedInputError when a save of ``name`` would overwrite a loaded file.
 
         ``own_snapshot``: auto-save updating the modality's own snapshot (the
-        session's working state) is allowed. Own means exactly ``<name>.h5ad`` for a
-        modality named ``*_autosave``, or ``<name>_autosave.h5ad``.
+        session's working state) is allowed. Own means the file is
+        ``data/<name>.h5ad`` for a modality named ``*_autosave``, or
+        ``data/<name>_autosave.h5ad``, and was loaded as that modality or as its
+        snapshot: never a file loaded under another modality's name.
         """
         for path in paths:
             loaded_as = self.recorded_input(path)
             if loaded_as is None:
                 continue
-            stem = Path(path).name[: -len(".h5ad")]
-            if (
-                own_snapshot
-                and Path(path).name.endswith("_autosave.h5ad")
-                and stem in (name, f"{name}_autosave")
-            ):
-                continue
             target = Path(path)
             if not target.is_absolute():
                 target = self.data_dir / target
+            if (
+                own_snapshot
+                and loaded_as in (name, f"{name}_autosave")
+                and _same_file(target, self.data_dir / _autosave_file_name(name))
+            ):
+                continue
             try:
                 shown = target.resolve().relative_to(self.workspace_path.resolve())
             except (OSError, RuntimeError, ValueError):
