@@ -522,11 +522,18 @@ def abort_runs_on_sigterm() -> None:
         logger.debug("Catalog: SIGTERM not handled", exc_info=True)
 
 
+def ctrl_c_ends_the_turn(holder: Any) -> Any:
+    """A chat turn's Ctrl-C: the first ends the turn once its running step is done
+    (the session's run goes on), the second stops at once."""
+    return _ctrl_c_ends_the_run(holder, turn=True)
+
+
 @contextmanager
-def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
+def _ctrl_c_ends_the_run(holder: Any, *, turn: bool = False) -> Iterator[list]:
     """In a one-shot command, the first Ctrl-C ends the run at once and the second
     stops without waiting: a graph waits for its running tools before a Ctrl-C
-    reaches the command, so the run cannot wait for the command to end it.
+    reaches the command, so the run cannot wait for the command to end it. In a
+    chat ``turn`` the first only notes the turn aborted, should the second follow.
 
     Yields the presses seen; armed only on the main thread, with a bound run and
     Python's own Ctrl-C handler in place.
@@ -534,6 +541,7 @@ def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
     import signal
 
     pressed: list = []
+    noting: list = []
     try:
         armed = (
             _process_catalog is not None
@@ -556,9 +564,14 @@ def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
         pressed.append(signum)
         signal.signal(signal.SIGINT, lambda s, f: _stop_waiting(stop_now))
         # not here: the handler may run while this thread holds the catalog's lock
-        threading.Thread(
-            target=_abort_now, args=(holder,), name="lobster-ctrl-c", daemon=True
-        ).start()
+        noted = threading.Thread(
+            target=_abort_turn if turn else _abort_now,
+            args=(holder,),
+            name="lobster-ctrl-c",
+            daemon=True,
+        )
+        noted.start()
+        noting.append(noted)
         _say(waiting)
         signal.default_int_handler(signum, frame)
 
@@ -567,6 +580,13 @@ def _ctrl_c_ends_the_run(holder: Any) -> Iterator[list]:
         yield pressed
     finally:  # a caller that goes on after a press must not keep the hard exit
         signal.signal(signal.SIGINT, signal.default_int_handler)
+        if turn:  # the turn's own end is noted after the press's
+            for noted in noting:
+                noted.join(timeout=1.0)
+
+
+def _abort_turn(holder: Any) -> None:
+    note_run_status(holder, "aborted", reason="Ctrl-C")
 
 
 def _abort_now(holder: Any) -> None:

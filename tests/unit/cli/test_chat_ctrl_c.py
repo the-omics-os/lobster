@@ -246,3 +246,30 @@ def test_exiting_after_a_first_ctrl_c_ends_the_run_aborted_at_once(tmp_path, mod
     assert "EXIT HOOKS RAN; ended 1 as aborted" in said
     assert "RUN aborted Ctrl-C" in said
     assert _at(lines, "<exit>") < _at(lines, "TOOL done 1") + 1.5
+
+
+def test_a_turn_ends_as_its_caller_says_after_a_press(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from lobster.core.catalog import factory
+
+    seen = []
+
+    class Catalog:
+        def set_end_status(self, status, session_id=None, reason=None, **only):
+            if threading.current_thread().name == "lobster-ctrl-c":
+                time.sleep(0.3)  # the press's note is late
+            seen.append(status)
+
+    holder = SimpleNamespace(catalog=Catalog())
+    handlers = [signal.default_int_handler]
+    monkeypatch.setattr(signal, "getsignal", lambda sig: handlers[-1])
+    monkeypatch.setattr(signal, "signal", lambda sig, handler: handlers.append(handler))
+    monkeypatch.setattr(factory, "_process_catalog", (Path("."), holder.catalog))
+    with factory.ctrl_c_ends_the_turn(holder):
+        with pytest.raises(KeyboardInterrupt):
+            handlers[-1](signal.SIGINT, None)
+    factory.note_run_status(holder, "completed")  # the turn went on to the end
+
+    assert seen == ["aborted", "completed"]

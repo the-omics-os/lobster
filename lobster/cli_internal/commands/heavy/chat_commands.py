@@ -42,7 +42,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     render_startup_diagnostic_rich,
 )
-from lobster.core.catalog.factory import note_run_status
+from lobster.core.catalog.factory import ctrl_c_ends_the_turn, note_run_status
 from lobster.i18n import h
 from lobster.ui import setup_logging
 from lobster.ui.console_manager import get_console_manager
@@ -1192,7 +1192,8 @@ def chat_impl(
             querying = True
             note_run_status(client, None)  # no end status while the turn runs
             if use_streaming:
-                result = _display_streaming_response(client, user_input, console)
+                with ctrl_c_ends_the_turn(client):
+                    result = _display_streaming_response(client, user_input, console)
                 querying = False
                 _note_turn_status(client, result)
 
@@ -1211,7 +1212,8 @@ def chat_impl(
                 if should_show_progress(client):
                     console.print("[dim]...[/dim]", end="")
 
-                result = _query_classic(client, user_input)
+                with ctrl_c_ends_the_turn(client):
+                    result = _query_classic(client, user_input)
                 querying = False
                 _note_turn_status(client, result)
 
