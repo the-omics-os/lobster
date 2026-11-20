@@ -341,3 +341,19 @@ def test_the_texts_name_the_rule():
     said = run["inputSchema"]["properties"]["experts"]["description"]
     assert "with input_path, a list without it is refused" in said
     assert "input_path whose list lacks it is refused" in mcp_overview.TEAM_NOTE
+
+
+def test_a_session_file_with_a_preset_names_the_team_the_preset_runs(team, tmp_path):
+    # the graph runs a preset's experts, so the status names them
+    WorkspaceAgentConfig(preset="scrna-basic").save(tmp_path)
+
+    assert mcp_stdio._team_of(tmp_path) == [
+        "annotation_expert",
+        "data_expert_agent",
+        "de_analysis_expert",
+        "research_agent",
+        "transcriptomics_expert",
+        "visualization_expert_agent",
+    ]
+    WorkspaceAgentConfig().save(tmp_path)
+    assert mcp_stdio._team_of(tmp_path) is None
