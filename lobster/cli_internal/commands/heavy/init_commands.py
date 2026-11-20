@@ -772,20 +772,13 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
         return
     from lobster.cli_internal.commands.light.agent_commands import _pinned_to_lobster
 
-    if is_uv_tool_env():
-        from lobster.core.uv_tool_env import build_tool_install_command
-
-        command = build_tool_install_command(
-            with_packages=[_pinned_to_lobster(p, ">=") for p in packages]
-        )
-        command[0] = "uv"  # a quoted path first is an expression in PowerShell
-        command.insert(3, "--reinstall")
-    else:
-        pinned = [_pinned_to_lobster(p) for p in packages]
-        command = ["uv", "pip", "install", "--python", sys.executable, *pinned]
     console.print(
         h("Selected agents recorded; --skip-extras prevented package installation.")
     )
+    if is_uv_tool_env():
+        return  # init ends with the one uv tool command (_uv_tool_env_handoff)
+    pinned = [_pinned_to_lobster(p) for p in packages]
+    command = ["uv", "pip", "install", "--python", sys.executable, *pinned]
     # soft_wrap: a wrapped command breaks when pasted.
     console.print(
         h("Install later: ") + command_line(command), markup=False, soft_wrap=True
@@ -1201,24 +1194,30 @@ def _uv_tool_env_handoff(
         this call — save config **before** calling.
 
     If the user declines, this function returns normally.
-    """
-    if skip_extras:
-        return  # No prompt, command construction, or package handoff under --skip-extras.
 
+    ``skip_extras``: print the command as the one "Install later" line and
+    return; separate commands for the packages and extras would each drop what
+    the other adds.
+    """
     import shlex
 
     from rich.prompt import Confirm
 
-    from lobster.core.uv_tool_env import detect_uv_tool_env, run_tool_install
+    from lobster.core.uv_tool_env import (
+        command_line,
+        detect_uv_tool_env,
+        run_tool_install,
+    )
     from lobster.i18n import t
 
     info = detect_uv_tool_env()
     if not info:
-        console.print(f"  {_bold_command(_next_chat_text())}")
+        if not skip_extras:
+            console.print(f"  {_bold_command(_next_chat_text())}")
         return  # Not in a tool env — nothing to do
 
     cmd = _build_uv_tool_init_command(
-        None if skip_extras else provider_name,
+        provider_name,
         selected_agents,
         include_vector_search=include_vector_search,
         include_lamin=include_lamin,
@@ -1230,7 +1229,18 @@ def _uv_tool_env_handoff(
     existing_cmd = _build_uv_tool_init_command(None, None)
     existing_cmd.insert(3, "--reinstall")
     if cmd == existing_cmd:
-        console.print(f"  {_bold_command(_next_chat_text())}")
+        if not skip_extras:
+            console.print(f"  {_bold_command(_next_chat_text())}")
+        return
+
+    if skip_extras:
+        # soft_wrap: a wrapped command breaks when pasted. Plain "uv": a quoted
+        # path first is an expression in PowerShell.
+        console.print(
+            h("Install later: ") + command_line(["uv", *cmd[1:]]),
+            markup=False,
+            soft_wrap=True,
+        )
         return
 
     # The project first: the install ends the process, and Ctrl-C at the
@@ -1773,7 +1783,7 @@ def _print_lamin_notes(
     notes = init_notes(
         choice,
         global_config=global_config,
-        install_hint=not (install and is_uv_tool_env()),
+        install_hint=not is_uv_tool_env(),  # the one uv tool command carries it
     )
     for line in notes:
         console.print(line, markup=False)
@@ -3620,7 +3630,7 @@ def init_impl(
 
         # In a uv tool env, run the install now. It ends the process when it
         # runs: the tool's environment is replaced on disk.
-        if _in_uv_tool_ni and not skip_extras:
+        if _in_uv_tool_ni:
             provider_name_ni = None
             if has_anthropic:
                 provider_name_ni = "anthropic"
@@ -3675,6 +3685,8 @@ def init_impl(
     # available (or when --ui classic is passed explicitly).
     # =========================================================================
     if ui_mode != "classic" and not non_interactive:
+        from lobster.core.uv_tool_env import is_uv_tool_env
+
         _tui_handled = False
         # Agents are saved in the workspace even with --global.
         _saved_packages = _starting_packages(
@@ -3731,7 +3743,7 @@ def init_impl(
                                     "[dim]This lobster-tui did not ask about the LaminDB catalog; its setting is unchanged. Set it with `lobster init --lamin` or `--no-lamin`.[/dim]"
                                 )
                             )
-                        if _tool_install_follows(skip_extras):
+                        if is_uv_tool_env():
                             _uv_tool_env_handoff(
                                 provider_name=(_tui_result.get("provider") or "")
                                 .strip()
@@ -3741,8 +3753,7 @@ def init_impl(
                                 skip_extras=skip_extras,
                                 include_vector_search=bool(
                                     _tui_result.get("smart_standardization_enabled")
-                                )
-                                and not skip_extras,
+                                ),
                                 include_lamin=bool(_tui_result.get("lamin_enabled")),
                             )
                         _tui_handled = True
@@ -3816,7 +3827,7 @@ def init_impl(
                     _ws_path,
                     next_step=not _tool_install_follows(skip_extras),
                 )
-                if _tool_install_follows(skip_extras):
+                if is_uv_tool_env():
                     _uv_tool_env_handoff(
                         provider_name=(_q_result.get("provider") or "").strip().lower()
                         or None,
@@ -3824,8 +3835,7 @@ def init_impl(
                         skip_extras=skip_extras,
                         include_vector_search=bool(
                             _q_result.get("smart_standardization_enabled")
-                        )
-                        and not skip_extras,
+                        ),
                         include_lamin=bool(_q_result.get("lamin_enabled")),
                     )
                 _tui_handled = True
@@ -4475,7 +4485,8 @@ def init_impl(
         console.print()
 
         # In uv tool env, offer to run `uv tool install` for new packages
-        if _in_uv_tool and not skip_extras:
+        # (with --skip-extras: print it)
+        if _in_uv_tool:
             _want_vector_search = False
             if not skip_extras and _is_vector_search_backend_available():
                 try:

@@ -294,7 +294,7 @@ def test_uv_tool_deferred_command_preserves_existing_extras_and_with_packages(
     monkeypatch.setattr(uv_tool_env, "detect_uv_tool_env", lambda: info)
     monkeypatch.setattr(uv_tool_env, "is_uv_tool_env", lambda: True)
     monkeypatch.setattr(init_commands, "console", Console(width=2000))
-    init_commands._print_deferred_agent_install(["data_expert_agent"])
+    init_commands._uv_tool_env_handoff(None, ["data_expert_agent"], skip_extras=True)
     command = printed(capsys).split("Install later: ", 1)[1].strip()
     argv = shlex.split(command)
     release = uv_tool_env.lobster_release()

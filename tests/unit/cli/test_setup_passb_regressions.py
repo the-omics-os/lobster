@@ -122,18 +122,24 @@ def test_explicit_blank_never_falls_back_to_saved_python_key(
     assert not list(key_file.parent.glob(key_file.name + ".backup.*"))
 
 
-def test_skip_extras_suppresses_entire_tool_handoff(monkeypatch, tmp_path, capsys):
+def test_skip_extras_prints_the_tool_command_and_never_runs_it(
+    monkeypatch, tmp_path, capsys
+):
+    from lobster.core import uv_tool_env
+
     receipt(monkeypatch, tmp_path)
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("skip-extras attempted a package handoff")
+        raise AssertionError("skip-extras offered or ran a package handoff")
 
-    monkeypatch.setattr(init_commands, "_build_uv_tool_init_command", forbidden)
+    monkeypatch.setattr(uv_tool_env, "run_tool_install", forbidden)
     monkeypatch.setattr("rich.prompt.Confirm.ask", forbidden)
     init_commands._uv_tool_env_handoff(
         "anthropic", ["research_agent"], skip_extras=True
     )
-    assert "Package installation needed" not in printed(capsys)
+    output = printed(capsys)
+    assert "Package installation needed" not in output
+    assert "Install later: uv tool install --reinstall" in output
 
 
 def test_nonskip_tool_handoff_displays_receipt_preserving_command(
@@ -212,7 +218,9 @@ def test_saved_active_python_profile_precedes_local_saved_files(monkeypatch, tmp
     assert "omk_profile" not in result.output
 
 
-def test_go_parent_does_not_offer_a_handoff_under_skip(monkeypatch, tmp_path, capsys):
+def test_go_parent_prints_the_handoff_under_skip_without_offering_it(
+    monkeypatch, tmp_path, capsys
+):
     import inspect
     import sys
 
@@ -243,7 +251,8 @@ def test_go_parent_does_not_offer_a_handoff_under_skip(monkeypatch, tmp_path, ca
     def forbidden(*args, **kwargs):
         raise AssertionError("skip-extras parent offered a handoff")
 
-    monkeypatch.setattr(current_init, "_uv_tool_env_handoff", forbidden)
+    monkeypatch.setattr("lobster.core.uv_tool_env.run_tool_install", forbidden)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", forbidden)
     kwargs = {
         name: (
             parameter.default.default
@@ -262,6 +271,7 @@ def test_go_parent_does_not_offer_a_handoff_under_skip(monkeypatch, tmp_path, ca
     assert error.value.exit_code == 0
     output = printed(capsys)
     assert "Package installation needed" not in output
+    assert output.count("Install later:") == 1
     assert "--reinstall" in output
     assert "lobster-ai[anthropic,full]" in output
     assert KEY not in output
