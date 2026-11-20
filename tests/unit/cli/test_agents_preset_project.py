@@ -211,3 +211,35 @@ def test_the_tool_install_tells_after_whether_it_worked(monkeypatch, code):
         uv_tool_env.run_tool_install(["uv", "tool", "x"], after=told.append)
 
     assert (told, end.value.code) == ([code == 0], code)
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_the_preset_line_follows_the_tool_install(ws, monkeypatch, capsys, ok):
+    _tool_install(monkeypatch, ok=ok)
+
+    with pytest.raises(SystemExit):
+        agent_commands._install_into_uv_tool("lobster-genomics", ws)
+
+    said = _out() + capsys.readouterr().out
+    assert (REPLACED in said, "[dim]" in said) == (ok, False)
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError, KeyboardInterrupt])
+def test_a_tool_install_that_cannot_run_leaves_the_config(ws, monkeypatch, error):
+    from lobster.core import uv_tool_env
+
+    def cannot_run(cmd):
+        raise error()
+
+    before = (ws / "config.toml").read_bytes()
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: False)
+    monkeypatch.setattr(
+        uv_tool_env, "build_tool_install_command", lambda **k: ["uv", "tool", "x"]
+    )
+    monkeypatch.setattr("subprocess.run", cannot_run)
+
+    with pytest.raises(error):
+        agent_commands._install_into_uv_tool("lobster-genomics", ws)
+
+    assert (ws / "config.toml").read_bytes() == before
+    assert sorted(p.name for p in ws.iterdir()) == ["config.toml"]

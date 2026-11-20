@@ -139,3 +139,19 @@ def test_a_tier_filter_or_an_explicit_list_is_not_an_uninstalled_expert(
     # research_agent is installed (its fake entry builds no agent)
     assert [m.uninstalled_experts for m in (tier, explicit, some)] == [[], [], []]
     assert graph_module._told_uninstalled == set()
+
+
+def test_each_project_with_no_installed_expert_is_told_once(
+    tmp_path, monkeypatch, caplog
+):
+    import lobster.agents.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_told_uninstalled", set())
+    config = WorkspaceAgentConfig(enabled_agents=["lost_expert", "gone_expert"])
+
+    with caplog.at_level("WARNING", logger="lobster"):
+        for project in ("a", "b", "a"):
+            _metadata(config, tmp_path, workspace_path=tmp_path / project)
+
+    told = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert [m for m in told if "None of" in m] == [NONE_INSTALLED] * 2
