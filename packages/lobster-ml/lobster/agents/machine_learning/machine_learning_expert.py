@@ -534,6 +534,16 @@ def machine_learning_expert(
                     f"Available columns: {available_cols}"
                 )
 
+            if save_result:
+                # The split names are fixed (the notebook export finds the split
+                # files by them): refused before anything, the input included,
+                # changes in memory.
+                splits = [f"{modality_name}_train", f"{modality_name}_test"]
+                if validation_size > 0:
+                    splits.append(f"{modality_name}_validation")
+                for split in splits:
+                    data_manager.assert_save_target(split)
+
             from sklearn.model_selection import train_test_split
 
             n_samples = adata.n_obs
@@ -593,15 +603,6 @@ def machine_learning_expert(
 
             train_modality = f"{modality_name}_train"
             test_modality = f"{modality_name}_test"
-            if save_result:
-                # The split names are fixed (the notebook export finds the split
-                # files by them): refused before any modality in memory changes.
-                splits = [train_modality, test_modality]
-                if len(val_idx) > 0:
-                    splits.append(f"{modality_name}_validation")
-                for split in splits:
-                    data_manager.assert_save_target(split)
-
             data_manager.store_modality(
                 name=train_modality,
                 adata=adata_train,

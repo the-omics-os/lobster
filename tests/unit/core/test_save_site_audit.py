@@ -49,8 +49,8 @@ ALLOWED = {
         "packages/lobster-ml/lobster/agents/machine_learning/machine_learning_expert.py",
         "create_ml_splits",
     ): (
-        "assert_save_target() of the three split names (f-strings) before any "
-        "store_modality"
+        "assert_save_target() of the three split names (f-strings) before the "
+        "input is annotated or any store_modality"
     ),
     (
         "packages/lobster-proteomics/lobster/agents/proteomics/shared_tools.py",
