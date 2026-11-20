@@ -582,6 +582,42 @@ def _installer_accepts(argv):
     return not rest and all(INSTALLER_SPEC.match(s) for s in specs)
 
 
+@pytest.mark.parametrize(
+    "argv, accepted",
+    [
+        (
+            ["uv", "tool", "install", "--reinstall", "lobster-ai", "--python", "3.12"],
+            True,
+        ),
+        (
+            ["uv", "tool", "install", "--reinstall", "lobster-ai[anthropic]>=1.3.0"]
+            + ["--python", "3.13"],
+            True,
+        ),
+        (
+            ["uv", "tool", "install", "--reinstall", "lobster-ai"]
+            + ["--with", "lobster-transcriptomics>=1.3.0", "--python", "3.12"],
+            True,
+        ),
+        (["uv", "tool", "install", "--reinstall", "lobster-ai"], False),
+        (["uv", "tool", "install", "--reinstall", "lobster-ai", "--with"], False),
+        (
+            ["uv", "tool", "install", "--reinstall", "lobster-ai", "--with"]
+            + ["requests", "--python", "3.12"],
+            False,
+        ),
+        (
+            ["uv", "tool", "install", "--reinstall", "lobster-ai; calc"]
+            + ["--python", "3.12"],
+            False,
+        ),
+    ],
+)
+def test_the_installer_check_accepts_zero_or_more_with_packages(argv, accepted):
+    """The check copied from the installer: no --with is valid, anything else not."""
+    assert _installer_accepts(argv) is accepted
+
+
 def _pending():
     import json
 
@@ -604,8 +640,10 @@ def test_windows_init_leaves_the_reinstall_for_the_installer(
     pending = _pending()
     assert pending["version"] == 1
     assert pending["lobster"] == "1.3.0"
-    created = datetime.strptime(pending["created"], "%Y-%m-%dT%H:%M:%SZ")
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    # ISO 8601 with an explicit UTC offset, as datetime.isoformat writes it.
+    assert pending["created"].endswith("+00:00")
+    created = datetime.fromisoformat(pending["created"])
+    now = datetime.now(timezone.utc)
     assert now - timedelta(minutes=1) < created <= now
     assert "lobster-transcriptomics>=1.3.0" in pending["argv"]
     assert _installer_accepts(pending["argv"]), pending["argv"]
