@@ -3724,7 +3724,7 @@ notebook-replay = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "azure-ai-inference", marker = "extra == 'azure'", specifier = ">=1.0.0b1" },
     { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.25.0" },
     { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.7.0" },
@@ -3899,7 +3899,7 @@ plm = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "httpx", specifier = ">=0.24.0" },
     { name = "lobster-ai", editable = "." },
     { name = "lobster-drug-discovery", extras = ["chemistry", "docking", "plm"], marker = "extra == 'full'" },
@@ -3940,7 +3940,7 @@ genebe = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "cyvcf2", specifier = ">=0.30.0" },
     { name = "genebe", marker = "extra == 'genebe'", specifier = ">=0.2.0" },
     { name = "lobster-ai", editable = "." },
@@ -3971,7 +3971,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "lobster-ai", editable = "." },
     { name = "numpy", specifier = ">=1.23.0" },
     { name = "pandas", specifier = ">=1.5.0" },
@@ -4020,7 +4020,7 @@ network-analysis = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "lifelines", specifier = ">=0.27.0" },
     { name = "lobster-ai", editable = "." },
     { name = "networkx", marker = "extra == 'network-analysis'", specifier = ">=3.0" },
@@ -4081,7 +4081,7 @@ seurat-v3 = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anndata", specifier = ">=0.9.0" },
+    { name = "anndata", specifier = ">=0.12.7" },
     { name = "harmonypy", marker = "extra == 'batch-integration'", specifier = ">=0.0.6" },
     { name = "igraph", specifier = ">=0.10.4" },
     { name = "leidenalg", specifier = ">=0.9.0" },
