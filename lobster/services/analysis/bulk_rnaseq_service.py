@@ -559,7 +559,9 @@ Next suggested step: Import quantification data with tximport for differential e
             )
             n_zero_within_group_variance = int(flagged.sum())
             complete = (
-                results_df.drop(columns=["stat", "pvalue", "padj"]).notna().all(axis=1)
+                results_df.drop(columns=["stat", "pvalue", "padj"], errors="ignore")
+                .notna()
+                .all(axis=1)
             )
             results_df = results_df[
                 results_df.notna().all(axis=1) | (flagged & complete)
