@@ -32,6 +32,19 @@ FEW_ADVICE = (
     "; check {it} with Mann-Whitney (fewer than 10 proteins tested: limma_like "
     "has no variance to borrow)\n"
 )
+# with fewer than 4 samples in a group Mann-Whitney is not reliable
+SMALL_ADVICE = (
+    "; check {it} with limma_like, which borrows variance from the other " "proteins\n"
+)
+NO_TEST = (
+    "; with fewer than 4 samples in a group, no test can show the difference reliably\n"
+)
+FEW_SMALL_ADVICE = (
+    " (fewer than 10 proteins tested: limma_like has no variance to borrow)" + NO_TEST
+)
+LIMMA_FEW_SMALL_ADVICE = (
+    " (fewer than 10 proteins tested: no variance to borrow)" + NO_TEST
+)
 LIMMA_FEW_ADVICE = (
     " (fewer than 10 proteins tested: no variance to borrow); check {it} with "
     "Mann-Whitney\n"
@@ -275,4 +288,45 @@ def test_the_advice_follows_the_comparison_of_the_split_protein(
     reply = _reply(tmp_path, _three_groups(split_in), "t_test")
 
     assert "- Of the proteins tested, 1 has the same value" in reply, reply
+    assert advice.format(it="it") in reply, reply
+
+
+def _three_per_group(adata):
+    """3 samples in each group: too few for Mann-Whitney to be reliable."""
+    return adata[[0, 1, 2, 6, 7, 8]].copy()
+
+
+@pytest.mark.parametrize(
+    "adata, method, advice",
+    [
+        (_three_per_group(_proteins(split=True)), "t_test", SMALL_ADVICE),
+        (_three_per_group(_few(_proteins(split=True))), "t_test", FEW_SMALL_ADVICE),
+        (
+            _three_per_group(_few(_proteins(split=True))),
+            "limma_like",
+            LIMMA_FEW_SMALL_ADVICE,
+        ),
+    ],
+    ids=["t_test", "t_test_few_proteins", "limma_without_prior"],
+)
+def test_mann_whitney_is_not_advised_with_3_samples_in_a_group(
+    tmp_path, adata, method, advice
+):
+    reply = _reply(tmp_path, adata, method)
+
+    assert advice.format(it="it") in reply, reply
+    assert "Mann-Whitney" not in reply
+
+
+@pytest.mark.parametrize(
+    "split_in, advice", [("b", ADVICE), ("c", SMALL_ADVICE)], ids=["4_v_4", "4_v_3"]
+)
+def test_the_group_sizes_are_those_of_the_split_protein(tmp_path, split_in, advice):
+    adata = _proteins(split=False)[:11].copy()  # a, b of 4 and c of 3
+    adata.obs["group"] = ["a"] * 4 + ["b"] * 4 + ["c"] * 3
+    other = (adata.obs["group"] == split_in).to_numpy()
+    adata.X[:4, 49], adata.X[other, 49] = 5.0, 9.0
+
+    reply = _reply(tmp_path, adata, "t_test")
+
     assert advice.format(it="it") in reply, reply
