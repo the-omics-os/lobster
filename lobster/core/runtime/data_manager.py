@@ -2205,7 +2205,9 @@ class DataManagerV2:
             return resolved
         if st is not None:
             recorded = self._recorded_ids.get((st.st_dev, st.st_ino))
-            if recorded is not None:  # a hard link, or another spelling
+            # a hard link, or another spelling; not a new file given the inode a
+            # delete or a rewrite (os.replace) of the loaded file freed
+            if recorded is not None and _same_file(resolved, recorded):
                 return recorded
         recorded = self._recorded_folded.get(str(resolved).casefold())
         if recorded is None:
