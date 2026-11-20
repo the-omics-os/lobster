@@ -661,3 +661,13 @@ def test_aquadif_map_entry_for_the_code_tool(
         tmp_path, enabled_agents=enabled, expected_workers=workers
     )
     assert tool_map.get("execute_custom_code", "<absent>") == expected
+
+
+def test_a_config_saved_with_a_bom_keeps_its_disable(tmp_path):
+    # PowerShell 5.1's Set-Content -Encoding UTF8 and Notepad write the BOM
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    body = "[agent_settings.supervisor]\ncode_tool = false\n"
+    (ws / "config.toml").write_bytes(b"\xef\xbb\xbf" + body.encode())
+
+    assert code_tool_enabled("supervisor", default=True, workspace_path=ws) is False
