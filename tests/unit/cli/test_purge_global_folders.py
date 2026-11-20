@@ -173,3 +173,29 @@ def test_a_linked_lobster_entry_is_unlinked_and_its_target_kept(
     assert result.exit_code == 0, result.output
     assert not os.path.lexists(parent / name)
     assert (data / "results.csv").read_text() == "a,b\n"
+
+
+def test_a_config_folder_with_only_the_project_list_is_removed(home):
+    # lobster init <folder> without a provider of the user's writes only this
+    folder = home / ".config" / "lobster"
+    folder.mkdir(parents=True)
+    (folder / "projects.json").write_text('{"schema_version": 1, "projects": []}')
+
+    result = purge("--force")
+
+    assert result.exit_code == 0, result.output
+    assert not folder.exists()
+
+
+def test_the_project_list_goes_and_the_users_file_stays(home):
+    folder = home / ".config" / "lobster"
+    folder.mkdir(parents=True)
+    (folder / "projects.json").write_text("{}")
+    (folder / "notes.txt").write_text("mine")
+
+    result = purge("--force")
+
+    assert result.exit_code == 0, result.output
+    assert not (folder / "projects.json").exists()
+    assert (folder / "notes.txt").read_text() == "mine"
+    assert "notes.txt" in flat(result)
