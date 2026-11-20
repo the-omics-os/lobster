@@ -153,6 +153,22 @@ def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[st
     return None
 
 
+def _workspace_of(selected: Optional[Path]) -> Optional[Path]:
+    """The workspace the command will use, by the workspace resolver's rules: a
+    project folder names its own workspace, and with none named, the project
+    holding the current folder. None: the current folder, as before."""
+    from lobster.core.runtime.workspace import (
+        WORKSPACE_FOLDER_NAME,
+        _named_workspace,
+        find_project_root,
+    )
+
+    if selected is not None:
+        return _named_workspace(selected)
+    root = find_project_root()
+    return None if root is None else root / WORKSPACE_FOLDER_NAME
+
+
 def resolve_lang(
     argv: Optional[MutableSequence[str]] = None,
     environ: Optional[Mapping[str, str]] = None,
@@ -182,7 +198,9 @@ def resolve_lang(
     if not chosen:
         source, chosen = "env", env.get("LOBSTER_LANG")
     if not chosen:
-        source, chosen = "workspace", read_workspace_lang(selected_workspace)
+        source, chosen = "workspace", read_workspace_lang(
+            _workspace_of(selected_workspace)
+        )
     if not chosen:
         source, chosen = "global", read_global_lang(env)
     if not chosen:

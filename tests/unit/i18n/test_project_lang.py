@@ -41,6 +41,7 @@ def test_a_project_folder_with_a_file_of_the_same_name_reads_its_workspace(proje
 def test_a_command_run_inside_a_project_reads_its_workspace(project, monkeypatch):
     inner = project / "data" / "raw"
     inner.mkdir(parents=True)
+    (project / "provider_config.json").write_text(json.dumps({"tool": "mine"}))
     monkeypatch.chdir(inner)
     assert _lang("query") == "zh"
 
