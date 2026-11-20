@@ -155,3 +155,17 @@ def test_each_project_with_no_installed_expert_is_told_once(
 
     told = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert [m for m in told if "None of" in m] == [NONE_INSTALLED] * 2
+
+
+def test_a_project_whose_experts_change_is_told_again(tmp_path, monkeypatch, caplog):
+    import lobster.agents.graph as graph_module
+
+    monkeypatch.setattr(graph_module, "_told_uninstalled", set())
+
+    with caplog.at_level("WARNING", logger="lobster"):
+        for names in (["gone_expert"], ["lost_expert"]):
+            config = WorkspaceAgentConfig(enabled_agents=names)
+            _metadata(config, tmp_path, workspace_path=tmp_path / "a")
+
+    told = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len([m for m in told if "None of" in m]) == 2
