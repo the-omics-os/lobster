@@ -21,10 +21,13 @@ PACKAGES = {
     "research_agent": "lobster-research",
     "data_expert_agent": "lobster-research",
     "transcriptomics_expert": "lobster-transcriptomics",
+    "annotation_expert": "lobster-transcriptomics",
+    "de_analysis_expert": "lobster-transcriptomics",
     "visualization_expert_agent": "lobster-visualization",
     "genomics_expert": "lobster-genomics",
     "variant_analysis_expert": "lobster-genomics",
 }
+CHILDREN = {"transcriptomics_expert": ["annotation_expert", "de_analysis_expert"]}
 BASIC = expand_preset("scrna-basic")
 GENOMICS = {"genomics_expert", "variant_analysis_expert"}
 REPLACED = "Preset 'scrna-basic' will be saved as explicit agents instead."
@@ -34,7 +37,10 @@ REPLACED = "Preset 'scrna-basic' will be saved as explicit agents instead."
 def ws(tmp_path, monkeypatch):
     agents = {
         name: SimpleNamespace(
-            name=name, tier_requirement="free", package_name=pkg, child_agents=[]
+            name=name,
+            tier_requirement="free",
+            package_name=pkg,
+            child_agents=CHILDREN.get(name, []),
         )
         for name, pkg in PACKAGES.items()
     }
@@ -132,3 +138,57 @@ def test_a_change_that_changes_nothing_keeps_the_preset(ws, monkeypatch):
     config = WorkspaceAgentConfig.load(ws)
     assert (config.preset, config.enabled_agents) == ("scrna-basic", [])
     assert "explicit agents" not in _out()
+
+
+def _tool_install(monkeypatch, ok):
+    from lobster.core import uv_tool_env
+
+    def ran(cmd, *a, after=None, **k):
+        if after is not None:
+            after(ok)
+        raise SystemExit(0 if ok else 1)
+
+    monkeypatch.setattr(uv_tool_env, "run_tool_install", ran)
+    monkeypatch.setattr(
+        uv_tool_env, "build_tool_install_command", lambda **k: ["uv", "tool", "x"]
+    )
+    monkeypatch.setattr(uv_tool_env, "windows_locks_running_tool", lambda: False)
+
+
+@pytest.mark.parametrize("tool", [False, True])
+def test_installing_a_preset_package_with_child_agents_keeps_the_preset(
+    ws, monkeypatch, tool
+):
+    before = (ws / "config.toml").read_bytes()
+    if tool:
+        _tool_install(monkeypatch, ok=True)
+        with pytest.raises(SystemExit):
+            agent_commands._install_into_uv_tool("lobster-transcriptomics", ws)
+    else:
+        monkeypatch.setattr(agent_commands, "_uv_pip_install", lambda pkg: (True, ""))
+        agent_commands.agents_install("lobster-transcriptomics", workspace=ws)
+
+    assert (ws / "config.toml").read_bytes() == before
+    assert "explicit agents" not in _out()
+
+
+def test_a_failed_tool_install_leaves_the_config_alone(ws, monkeypatch):
+    before = (ws / "config.toml").read_bytes()
+    _tool_install(monkeypatch, ok=False)
+
+    with pytest.raises(SystemExit):
+        agent_commands._install_into_uv_tool("lobster-genomics", ws)
+
+    assert (ws / "config.toml").read_bytes() == before
+    assert sorted(p.name for p in ws.iterdir()) == ["config.toml"]
+
+
+def test_a_tool_install_that_works_enables_the_package(ws, monkeypatch):
+    _tool_install(monkeypatch, ok=True)
+
+    with pytest.raises(SystemExit):
+        agent_commands._install_into_uv_tool("lobster-genomics", ws)
+
+    config = WorkspaceAgentConfig.load(ws)
+    assert set(config.enabled_agents) == set(BASIC) | GENOMICS
+    assert sorted(p.name for p in ws.iterdir()) == ["config.toml"]
