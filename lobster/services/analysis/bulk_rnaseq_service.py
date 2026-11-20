@@ -557,7 +557,6 @@ Next suggested step: Import quantification data with tximport for differential e
                     & ~flagged
                 ).sum()
             )
-            n_zero_within_group_variance = int(flagged.sum())
             # A missing value makes a gene's fold change not a number; counted
             # apart from a group mean below -1, the other cause
             n_genes_with_missing_value = int(
@@ -634,6 +633,12 @@ Next suggested step: Import quantification data with tximport for differential e
 
             # Update results_df to match filtered genes
             results_df = results_df.loc[adata_de.var_names]
+            # of the genes reported, as n_genes_tested is
+            n_zero_within_group_variance = (
+                int(results_df["zero_within_group_variance"].sum())
+                if "zero_within_group_variance" in results_df
+                else 0
+            )
 
             # Calculate gene confidence scores
             logger.info("Calculating gene confidence scores...")
@@ -1077,7 +1082,7 @@ Next suggested step: Import quantification data with tximport for differential e
             (min(group1_expr.shape[0], group2_expr.shape[0]) > 1)
             & (np.ptp(group1_expr, axis=0) == 0)
             & (np.ptp(group2_expr, axis=0) == 0)
-            & (group1_mean != group2_mean)
+            & (group1_expr[0] != group2_expr[0])  # exact: each group is one value
         )
         p_values[no_variance] = np.nan
         t_stats[no_variance] = np.nan  # not +-inf: it would top a table sorted by it
