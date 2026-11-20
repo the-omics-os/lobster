@@ -91,3 +91,16 @@ def test_a_deleted_current_folder_is_skipped(tmp_path, monkeypatch):
     monkeypatch.chdir(gone)
     gone.rmdir()
     assert _lang("query") == "en"
+
+
+def test_an_unreadable_user_wide_config_folder_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOBSTER_WORKSPACE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / "xdg" / "lobster"
+    folder.mkdir(parents=True)
+    folder.chmod(0)
+    try:
+        env = {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}
+        assert resolve_lang(["lobster"], env) == "en"
+    finally:
+        folder.chmod(0o755)

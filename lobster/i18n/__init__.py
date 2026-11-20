@@ -109,16 +109,20 @@ def consume_lang_flag(argv: Optional[MutableSequence[str]]) -> Optional[str]:
 
 
 def read_workspace_lang(workspace: Optional[Path] = None) -> Optional[str]:
-    """Read ``lang`` from provider_config.json. Does not open config.toml."""
-    root = workspace if workspace is not None else Path.cwd()
-    path = root / "provider_config.json"
-    if not path.is_file():
-        path = root / ".lobster_workspace" / "provider_config.json"
-    if not path.is_file():
-        return None
+    """Read ``lang`` from provider_config.json. Does not open config.toml.
+
+    A file that cannot be read (no access, not UTF-8, not JSON) or a current
+    folder that is gone gives no language: every command reads this at start.
+    """
     try:
+        root = workspace if workspace is not None else Path.cwd()
+        path = root / "provider_config.json"
+        if not path.is_file():
+            path = root / ".lobster_workspace" / "provider_config.json"
+        if not path.is_file():
+            return None
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
         return None
     if not isinstance(data, dict):
         return None
@@ -139,11 +143,11 @@ def _global_config_dir(environ: Optional[Mapping[str, str]] = None) -> Path:
 def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[str]:
     """Read ``lang`` from the user-wide providers.json, if any."""
     path = _global_config_dir(environ) / "providers.json"
-    if not path.is_file():
-        return None
     try:
+        if not path.is_file():
+            return None
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):  # no access, not UTF-8, not JSON
         return None
     if not isinstance(data, dict):
         return None
@@ -165,7 +169,10 @@ def _workspace_of(selected: Optional[Path]) -> Optional[Path]:
 
     if selected is not None:
         return _named_workspace(selected)
-    root = find_project_root()
+    try:
+        root = find_project_root()
+    except OSError:  # the current folder is gone
+        return None
     return None if root is None else root / WORKSPACE_FOLDER_NAME
 
 
