@@ -502,6 +502,50 @@ def _with_current_de_ir(
     return ir
 
 
+def _rank_test_ir(
+    tool_name: str,
+    groupby: str,
+    group1: str,
+    group2: str,
+    method: str,
+    filters: Dict[str, float],
+) -> AnalysisStep:
+    """IR for a wilcoxon / t-test DE run: the same service call the tool made.
+
+    The result modality replaces ``adata``, so the save cell writes what the
+    session stored (results in uns, genes the filters kept).
+    """
+    return AnalysisStep(
+        operation="lobster.bulk_rnaseq.differential_expression",
+        tool_name=tool_name,
+        description=f"{method} DE: {group2} vs {group1} in {groupby}",
+        library="lobster",
+        code_template=(
+            _BULK_SERVICE_SETUP
+            + "adata_de, de_stats, _ = bulk_service.run_differential_expression_analysis(\n"
+            "    adata=adata,\n"
+            "    groupby={{ groupby | repr }},\n"
+            "    group1={{ group1 | repr }},\n"
+            "    group2={{ group2 | repr }},\n"
+            "    method={{ method | repr }},\n"
+            "    **{{ filters | repr }},\n"
+            ")\n"
+            "adata = adata_de"
+        ),
+        imports=[
+            "from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService"
+        ],
+        parameters={
+            "groupby": groupby,
+            "group1": group1,
+            "group2": group2,
+            "method": method,
+            "filters": dict(filters),
+        },
+        parameter_schema={},
+    )
+
+
 def _de_design_ir(
     formula: str, contrast: List[str], reference_condition: Optional[str]
 ) -> AnalysisStep:
@@ -1565,7 +1609,7 @@ def de_analysis_expert(
                     "max_out_pct_expressed": 1.0,
                 }
 
-                adata_de, de_stats, ir = (
+                adata_de, de_stats, _ = (
                     bulk_rnaseq_service.run_differential_expression_analysis(
                         adata=adata,
                         groupby=groupby,
@@ -1583,7 +1627,17 @@ def de_analysis_expert(
                 if refusal:
                     return refusal
                 adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
-                ir = _with_current_de_ir(ir, de_stats["de_results_key"])
+                ir = _with_current_de_ir(
+                    _rank_test_ir(
+                        tool_name,
+                        groupby,
+                        group1,
+                        group2,
+                        internal_method,
+                        bulk_filters,
+                    ),
+                    de_stats["de_results_key"],
+                )
                 # Save as new modality (name derived and checked before the analysis)
                 data_manager.store_modality(
                     name=de_modality_name,
