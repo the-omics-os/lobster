@@ -2118,6 +2118,16 @@ Please check:
         Returns:
             Conversion summary (converted count, unmapped genes)
         """
+        if source_type not in ("auto", "ensembl", "entrez", "symbol"):
+            return (
+                f"Unknown source_type {source_type!r}: use 'auto', 'ensembl', "
+                "'entrez' or 'symbol'."
+            )
+        if target_type not in ("symbol", "ensembl", "entrez"):
+            return (
+                f"Unknown target_type {target_type!r}: use 'symbol', 'ensembl' or "
+                "'entrez'."
+            )
         try:
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
@@ -2154,8 +2164,8 @@ Please check:
                 "entrez": "entrezgene",
             }
 
-            scope = type_to_scope.get(source_type, source_type)
-            field = type_to_field.get(target_type, target_type)
+            scope = type_to_scope[source_type]
+            field = type_to_field[target_type]
 
             # Lazy import mygene
             try:
@@ -2243,13 +2253,15 @@ Please check:
                 code_template=(
                     "import mygene\n"
                     "mg = mygene.MyGeneInfo()\n"
-                    f'results = mg.querymany(adata.var_names, scopes="{scope}", '
-                    f'fields="{field}", species="human")'
+                    "results = mg.querymany(adata.var_names, scopes={{ scope | repr }}, "
+                    "fields={{ field | repr }}, species='human')"
                 ),
                 imports=["import mygene"],
                 parameters={
                     "source_type": source_type,
                     "target_type": target_type,
+                    "scope": scope,
+                    "field": field,
                 },
                 parameter_schema={},
             )
