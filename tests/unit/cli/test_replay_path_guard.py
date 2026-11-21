@@ -749,6 +749,8 @@ def test_a_command_is_refused_and_a_custom_cells_command_paths_are_counted(
 def test_only_written_values_of_the_first_parameters_cell_are_replaced(tmp_path):
     runs = "workspace_path = open('/etc/passwd').read()\n"
     assert "/etc/passwd" in _refusal(tmp_path, "x = 1\n", parameters=runs)
+    built = "workspace_path = f'/etc/{1}'\n"
+    assert "/etc/" in _refusal(tmp_path, "x = 1\n", parameters=built)
     workspace = tmp_path / "ws"
     second = _notebook(tmp_path, "open(workspace_path + '/passwd')\n",
                        parameters="input_data = 'x'\n")  # fmt: skip

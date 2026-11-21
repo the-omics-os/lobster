@@ -421,7 +421,10 @@ def _reads_session_workspace(notebook: Path) -> bool:
 
 
 # A path text the check counts: absolute (POSIX, home, Windows drive or share).
+# A lone "/" is a separator (``'/'.join``) unless it starts a joined path.
 _ABSOLUTE = re.compile(r"^(/.|~($|/)|[A-Za-z]:[\\/]|\\\\)")
+# Calls that join their arguments into one path (and os.path.join).
+_PATH_JOINS = frozenset({"Path", "PurePath", "PosixPath", "PurePosixPath"})
 # Parameters the replay replaces before the run: their written values never run.
 _INJECTED = frozenset({"input_data", "output_prefix", "workspace_path"})
 # Readers a custom cell points at this notebook's result for the names it reads
@@ -431,8 +434,207 @@ _SERVED_READERS = frozenset({"read_h5ad", "read"})
 # each word of it is checked as a path.
 _COMMAND_CALLS = frozenset(
     {"system", "getoutput", "popen", "run_line_magic", "run_cell_magic"}
-    | {"run", "call", "check_call", "check_output", "Popen"}
+    | {"run", "call", "check_call", "check_output", "Popen", "getstatusoutput"}
 )
+
+
+# The setup lines the exporter opens every custom-code cell with
+# (exporter._custom_code_cell), before its _lobster_reads call. A value rendered
+# into a template comes after the template's own first line, so it cannot make
+# a cell start with them: they mark the cell as the user's code.
+_CUSTOM_SETUP = """\
+from pathlib import Path
+import sys
+WORKSPACE = Path(workspace_path)
+sys.path.append(str(WORKSPACE))
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+(WORKSPACE / 'data').mkdir(exist_ok=True)
+"""
+# What export_de_results and extract_and_export_de_results write (their
+# templates in de_analysis_expert): _TEXT is a string, _NUMBER a number, _TO the
+# writer (to_csv or to_excel). The writer's name is rendered as the tool got it.
+_EXPORT_CELLS = (
+    "results_df = adata.uns[_TEXT]['results_df']\n"
+    "results_df = results_df.sort_values(_TEXT)\n"
+    "results_df._TO(_TEXT, index=True)\n",
+) + tuple(
+    "results_df = adata.uns[_TEXT]['results_df'].copy()\n"
+    + padj
+    + lfc
+    + "results_df = results_df.sort_values('padj')\n"
+    "results_df._TO(_TEXT, index=True)\n"
+    for padj in ("", "results_df = results_df[results_df['padj'] <= _NUMBER]\n")
+    for lfc in (
+        "",
+        "results_df = results_df[abs(results_df['log2FoldChange']) >= _NUMBER]\n",
+    )
+)
+_EXPORT_WRITERS = frozenset({"to_csv", "to_excel"})
+# Known ways a cell runs a command or code it builds. Not a complete barrier.
+_BUILT_CODE = frozenset({"eval", "exec", "compile", "__import__", "breakpoint"})
+_COMMAND_MODULES = frozenset({"subprocess", "pty", "ctypes", "importlib", "runpy"})
+_OS_COMMANDS = frozenset(
+    {"system", "popen", "startfile", "posix_spawn", "posix_spawnp", "fork"}
+    | {"forkpty"}
+)
+
+
+@lru_cache(maxsize=1)
+def _parsed_shapes() -> Tuple[Tuple[str, ...], Tuple[Any, ...]]:
+    import ast
+
+    setup = tuple(ast.dump(s) for s in ast.parse(_CUSTOM_SETUP).body)
+    return setup, tuple(ast.parse(text).body for text in _EXPORT_CELLS)
+
+
+def _is_custom_cell(tree: Any) -> bool:
+    """The cell is a custom-code cell: the exporter's setup lines, then its
+    _lobster_reads call."""
+    import ast
+
+    setup = _parsed_shapes()[0]
+    body = tree.body
+    if (
+        len(body) <= len(setup)
+        or tuple(ast.dump(s) for s in body[: len(setup)]) != setup
+    ):
+        return False
+    call = body[len(setup)]
+    return (
+        isinstance(call, ast.Expr)
+        and isinstance(call.value, ast.Call)
+        and getattr(call.value.func, "id", "") == "_lobster_reads"
+    )
+
+
+def _fits(shape: Any, node: Any) -> bool:
+    """``node`` is ``shape`` with its slots filled: _TEXT a string, _NUMBER a
+    number, the attribute _TO a known writer."""
+    import ast
+
+    if isinstance(shape, list):
+        return (
+            isinstance(node, list)
+            and len(shape) == len(node)
+            and all(_fits(a, b) for a, b in zip(shape, node))
+        )
+    if isinstance(shape, ast.Name) and shape.id in ("_TEXT", "_NUMBER"):
+        kinds = (str,) if shape.id == "_TEXT" else (int, float)
+        return (
+            isinstance(node, ast.Constant)
+            and type(node.value) in kinds  # bool is no number here
+        )
+    if not isinstance(shape, ast.AST):
+        return shape == node
+    if type(shape) is not type(node):
+        return False
+    for name, value in ast.iter_fields(shape):
+        other = getattr(node, name, None)
+        if name == "ctx":
+            continue
+        if isinstance(shape, ast.Attribute) and name == "attr" and value == "_TO":
+            if other not in _EXPORT_WRITERS:
+                return False
+        elif not _fits(value, other):
+            return False
+    return True
+
+
+def _is_export_cell(tree: Any) -> bool:
+    """The cell is an export step's: it opens with the template's fixed first
+    line and writes ``results_df.to_<...>`` (the value the tool got is rendered
+    into that writer's name, after the fixed ``results_df.to_``)."""
+    import ast
+
+    return (
+        bool(tree.body)
+        and any(_fits(shape[0], tree.body[0]) for shape in _parsed_shapes()[1])
+        and any(
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "results_df"
+            and node.attr.startswith("to_")
+            for node in ast.walk(tree)
+        )
+    )
+
+
+def _runs_commands(tree: Any) -> Optional[str]:
+    """A known way the cell runs a command or code it builds, named; None if
+    none is found."""
+    import ast
+
+    os_names = {"os"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in _COMMAND_MODULES:
+                    return f"import {root}"
+                if root == "os":
+                    os_names.add(alias.asname or "os")
+        elif isinstance(node, ast.ImportFrom):
+            root = (node.module or "").split(".")[0]
+            if root in _COMMAND_MODULES:
+                return f"import {root}"
+            for alias in node.names if root == "os" else ():
+                if _os_command(alias.name):
+                    return f"os.{alias.name}"
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in _BUILT_CODE:
+            return func.id
+        if not isinstance(func, ast.Attribute):
+            continue
+        owner = func.value
+        if (
+            isinstance(owner, ast.Name)
+            and owner.id in os_names
+            and _os_command(func.attr)
+        ):
+            return f"os.{func.attr}"
+        if isinstance(owner, ast.Name) and owner.id in _COMMAND_MODULES:
+            return f"{owner.id}.{func.attr}"
+    return None
+
+
+def _ipython_use(tree: Any) -> Optional[str]:
+    """A magic or shell line in the cell (``%x``, ``%%x`` and ``!x`` run as
+    ``get_ipython()`` calls), or any other use of IPython, named; None if none.
+
+    No exported cell has one and a session's code runs without IPython, so the
+    code a magic is given is not read for paths: the cell is refused."""
+    import ast
+
+    if not any(
+        isinstance(node, ast.Name) and node.id == "get_ipython"
+        for node in ast.walk(tree)
+    ):
+        return None
+    for node in ast.walk(tree):
+        func = getattr(node, "func", None)
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Call)
+            and getattr(func.value.func, "id", "") == "get_ipython"
+        ):
+            continue
+        magic = node.args[0] if node.args else None
+        name = magic.value if isinstance(magic, ast.Constant) else "..."
+        if func.attr == "run_cell_magic":
+            return f"%%{name}"
+        if func.attr == "run_line_magic":
+            return f"%{name}"
+        return "a shell command"
+    return "get_ipython"
+
+
+def _os_command(name: str) -> bool:
+    return name in _OS_COMMANDS or name.startswith(("exec", "spawn"))
 
 
 def _python_of(source: str) -> Optional[Any]:
@@ -526,27 +728,17 @@ def _served_paths(tree: Any) -> set:
     return served
 
 
-def _exempt_nodes(tree: Any, parameters: bool, load_cell: bool) -> set:
+def _exempt_nodes(
+    tree: Any, parameters: bool, load_cell: bool, custom: bool = False
+) -> set:
     """ids of string nodes that never reach a file: the prelude's workspace
     argument, the parameters cell's injected values, typed reads the prelude
     serves, and the load cell's recorded path."""
     import ast
 
     exempt: set = set()
-    served = _served_paths(tree)
+    served = _served_paths(tree) if custom else set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_lobster_reads":
-            # the prelude's fixed root for a session run in a container
-            exempt |= {
-                id(element)
-                for inner in ast.walk(node)
-                if isinstance(inner, ast.Assign)
-                and [getattr(t, "id", None) for t in inner.targets] == ["roots"]
-                and isinstance(inner.value, ast.Set)
-                for element in inner.value.elts
-                if isinstance(element, ast.Constant)
-                and element.value == "/tmp/workspace"
-            }
         if (
             load_cell
             and isinstance(node, ast.Assign)
@@ -558,7 +750,7 @@ def _exempt_nodes(tree: Any, parameters: bool, load_cell: bool) -> set:
             exempt.add(id(node.value.args[0]))
         if isinstance(node, ast.Call):
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", "")
-            if name == "_lobster_reads" and len(node.args) > 1:
+            if custom and name == "_lobster_reads" and len(node.args) > 1:
                 exempt.add(id(node.args[1]))
             if not node.args or not served:
                 continue
@@ -587,28 +779,128 @@ def _exempt_nodes(tree: Any, parameters: bool, load_cell: bool) -> set:
             parameters
             and isinstance(node, ast.Assign)
             and all(getattr(t, "id", None) in _INJECTED for t in node.targets)
+            and isinstance(node.value, ast.Constant)  # a value, not code that runs
         ):
-            exempt |= {id(n) for n in ast.walk(node.value)}
+            exempt.add(id(node.value))
     return exempt
 
 
-def _path_texts(tree: Any, parameters: bool, load_cell: bool = False):
+def _bound_names(tree: Any) -> set:
+    """Names the cell's code binds at any depth (assigned, defined, imported)."""
+    import ast
+
+    names: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names |= {(a.asname or a.name).split(".")[0] for a in node.names}
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            names |= set(node.names)
+    return names
+
+
+def _patches_readers(tree: Any) -> bool:
+    """The cell sets a reader the helper serves (``anndata.read_h5ad = ...``)."""
+    import ast
+
+    return any(
+        isinstance(node, ast.Attribute)
+        and not isinstance(node.ctx, ast.Load)
+        and node.attr in _SERVED_READERS | {"File", "__init__"}
+        for node in ast.walk(tree)
+    ) or any(
+        isinstance(node, ast.Call)
+        and getattr(node.func, "id", "") in ("setattr", "delattr")
+        for node in ast.walk(tree)
+    )
+
+
+def _joined(node: Any) -> Optional[Tuple[str, bool, set]]:
+    """The path a join of written parts makes (``Path('/', 'etc')``,
+    ``os.path.join``, ``+`` and ``/``): its text, whether every part was
+    written (else the text is the written start), and the parts' node ids.
+    None when the node joins nothing written."""
+    import ast
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+        text = node.value
+        return (
+            (os.fsdecode(text) if isinstance(text, bytes) else text),
+            True,
+            {id(node)},
+        )
+    parts: list = []
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
+        parts, glue = [node.left, node.right], (
+            "" if isinstance(node.op, ast.Add) else "/"
+        )
+    elif isinstance(node, ast.Call) and not node.keywords:
+        func = node.func
+        name = getattr(func, "id", None) or getattr(func, "attr", "")
+        if name in _PATH_JOINS or (
+            name == "join"
+            and isinstance(func, ast.Attribute)
+            and (getattr(func.value, "attr", None) or getattr(func.value, "id", ""))
+            in ("path", "posixpath", "ntpath")
+        ):
+            parts, glue = list(node.args), "/"
+    if not parts:
+        return None
+    texts, ids = [], set()
+    for part in parts:
+        found = _joined(part)
+        if found is None:
+            break
+        texts.append(found[0])
+        ids |= found[2]
+        if not found[1]:
+            break
+    if not texts:
+        return None
+    whole = len(texts) == len(parts) and all(_joined(p)[1] for p in parts)
+    text = texts[0]
+    for more in texts[1:]:
+        text = (
+            more
+            if more.startswith("/") and glue == "/"
+            else (text.rstrip("/") + glue + more if glue else text + more)
+        )
+    return text, whole, ids
+
+
+def _path_texts(
+    tree: Any, parameters: bool, load_cell: bool = False, custom: bool = False
+):
     """Each string a cell's code holds that could name a file, with the ones
     that never reach a file left out. An f-string counts by its fixed start."""
     import ast
 
-    exempt = _exempt_nodes(tree, parameters, load_cell)
+    exempt = _exempt_nodes(tree, parameters, load_cell, custom)
     for node in ast.walk(tree):
         name = isinstance(node, ast.Call) and (
             getattr(node.func, "id", None) or getattr(node.func, "attr", "")
         )
-        if name in _COMMAND_CALLS:
-            for arg in node.args:
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    for word in arg.value.split():
+        if name in _COMMAND_CALLS:  # a command line, or its argv list
+            for arg in node.args + [k.value for k in node.keywords]:
+                for part in ast.walk(arg):
+                    if not (
+                        isinstance(part, ast.Constant)
+                        and isinstance(part.value, (str, bytes))
+                    ):
+                        continue
+                    for word in os.fsdecode(part.value).split():
                         yield word.strip("'\"")
                         if "=" in word:  # --out=/path
                             yield word.split("=", 1)[1].strip("'\"")
+        # a joined path starting at "/" (Path('/', 'etc')); a written start is
+        # what is known before the run
+        found = _joined(node) if not isinstance(node, ast.Constant) else None
+        if found is not None and not found[2] & exempt:
+            text = found[0]
+            yield "/." if text == "/" else text
     inner: set = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.JoinedStr):
@@ -619,10 +911,10 @@ def _path_texts(tree: Any, parameters: bool, load_cell: bool = False):
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
+            and isinstance(node.value, (str, bytes))
             and id(node) not in inner | exempt
         ):
-            yield node.value
+            yield os.fsdecode(node.value)
 
 
 def _path_refusal(
@@ -659,6 +951,28 @@ def _path_refusal(
         for number, source, tree, _ in code
         if tree and _is_load_cell(source, tree)
     }
+    from lobster.core.notebooks.exporter import CUSTOM_READS_HELPER
+
+    # The exporter's helper cell serves custom cells' reads. Only its exact text
+    # is that helper, and only while no other cell changes what it defines or
+    # patches; else no cell is read as custom code.
+    helpers = {number for number, source, _, _ in code if source == CUSTOM_READS_HELPER}
+    helper_names = {  # what the helper defines for the cells after it
+        name
+        for statement in ast.parse(CUSTOM_READS_HELPER).body
+        for name in _bound_names(ast.Module(body=[statement], type_ignores=[]))
+        if not isinstance(statement, (ast.FunctionDef, ast.ClassDef))
+        or name == statement.name
+    }
+    if len(helpers) != 1 or any(
+        _bound_names(tree) & helper_names or _patches_readers(tree)
+        for number, _, tree, _ in code
+        if tree is not None and number not in helpers
+    ):
+        helpers = set()
+    parameters = next(
+        (number for number, _, _, tags in code if "parameters" in tags), None
+    )
     # a load cell's object is never used: any other cell naming it voids the exemption
     if any(
         isinstance(node, ast.Name) and node.id == "_loaded"
@@ -668,14 +982,52 @@ def _path_refusal(
     ):
         loads = set()
     for number, source, tree, tags in code:
-        if tree is None:
+        if tree is None or number in helpers:
             continue  # not Python: the kernel cannot run it either
+        if source != CUSTOM_READS_HELPER and source.startswith(
+            CUSTOM_READS_HELPER.split("\n", 1)[0]
+        ):
+            return h(
+                "Code cell {n} is an older or changed copy of the cell that serves "
+                "custom code its reads. Re-export the notebook; it was not run."
+            ).format(n=number)
+        magic = _ipython_use(tree)
+        if magic is not None:
+            return h(
+                "Code cell {n} runs a command or code it builds ({call}); the "
+                "notebook was not run."
+            ).format(n=number, call=magic)
+        custom = bool(helpers) and _is_custom_cell(tree)
+        if not custom:  # a template's cell: custom code is the user's own
+            if _is_export_cell(tree) and not any(
+                _fits(shape, tree.body) for shape in _parsed_shapes()[1]
+            ):
+                return h(
+                    "Code cell {n} is not the code the export step writes; the "
+                    "notebook was not run."
+                ).format(n=number)
+            call = _runs_commands(tree)
+            if call is not None:
+                return h(
+                    "Code cell {n} runs a command or code it builds ({call}); the "
+                    "notebook was not run."
+                ).format(n=number, call=call)
         for text in _path_texts(
-            tree, parameters="parameters" in tags, load_cell=number in loads
+            tree,
+            parameters=number == parameters,
+            load_cell=number in loads,
+            custom=custom,
         ):
             if "\n" in text or len(text) > 4096:
                 continue
-            if _ABSOLUTE.match(text):
+            shown = "/" if text == "/." else text
+            if text[:5].lower() == "file:":  # pandas and others open file: URLs
+                from urllib.parse import urlparse
+                from urllib.request import url2pathname
+
+                text = url2pathname(urlparse(text).path)
+            home = text[:1] == "~" and "/" in text and os.path.expanduser(text) != text
+            if _ABSOLUTE.match(text) or home:  # ~ and ~user/ name a home
                 where = Path(os.path.expanduser(text)) if text[0] == "~" else Path(text)
             elif ".." in Path(text).parts and os.path.normpath(text).startswith(".."):
                 where = run_folder / text
@@ -693,7 +1045,7 @@ def _path_refusal(
                 "Code cell {n} uses the path {path}, outside this replay's folder; a "
                 "replay reads and writes only its own folder, so a file the notebook "
                 "reads must be imported in the session. The notebook was not run."
-            ).format(n=number, path=text)
+            ).format(n=number, path=shown)
     return None
 
 
