@@ -448,6 +448,17 @@ def _unknown_format_text(output_format: Any) -> Optional[str]:
     return f"Unknown output_format {output_format!r}: use 'csv' or 'xlsx'."
 
 
+def _notebook_export_path(workspace, output_path: str) -> str:
+    """Where the exported notebook writes a table the session exported: relative
+    to the workspace, so a replay writes in its own folder and never over the
+    session's file."""
+    path = Path(output_path)
+    try:
+        return path.relative_to(Path(workspace).resolve()).as_posix()
+    except ValueError:  # a listed export root outside the workspace
+        return f"exports/{path.name}"
+
+
 def _invalid_de_results_text(key: str, value: Any, expected: str) -> str:
     """Why the DE result at ``key`` cannot be read, and what to do."""
     # Lobster before 1.3.1 stored a wilcoxon or t-test table as to_dict():
@@ -3456,7 +3467,9 @@ def de_analysis_expert(
                     "modality_name": modality_name,
                     "de_results_key": actual_key,  # the table the session wrote
                     "output_format": output_format,
-                    "output_path": output_path,
+                    "output_path": _notebook_export_path(
+                        data_manager.workspace_path, output_path
+                    ),
                     "filtered_only": filtered_only,
                     "sort_by": sort_by,
                 },
@@ -3464,9 +3477,10 @@ def de_analysis_expert(
                 code_template=(
                     "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df']\n"
                     "results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
+                    "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
                     + _WRITE_DE_TABLE
                 ),
-                imports=["import pandas as pd"],
+                imports=["import pandas as pd", "from pathlib import Path"],
             )
 
             data_manager.log_tool_usage(
@@ -4005,7 +4019,9 @@ def de_analysis_expert(
                     "shrink_lfc": shrink_lfc,
                     "shrinkage_applied": shrinkage_applied,
                     "output_format": output_format,
-                    "output_path": output_path,
+                    "output_path": _notebook_export_path(
+                        data_manager.workspace_path, output_path
+                    ),
                     "padj_threshold": padj_threshold,
                     "lfc_threshold": lfc_threshold,
                 },
@@ -4015,9 +4031,11 @@ def de_analysis_expert(
                     "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df'].copy()\n"
                     "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] <= {{ padj_threshold }}]\n{% endif %}"
                     "{% if lfc_threshold > 0 %}results_df = results_df[abs(results_df['log2FoldChange']) >= {{ lfc_threshold }}]\n{% endif %}"
-                    "results_df = results_df.sort_values('padj')\n" + _WRITE_DE_TABLE
+                    "results_df = results_df.sort_values('padj')\n"
+                    "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
+                    + _WRITE_DE_TABLE
                 ),
-                imports=["import pandas as pd"],
+                imports=["import pandas as pd", "from pathlib import Path"],
             )
 
             data_manager.log_tool_usage(
