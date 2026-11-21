@@ -3256,7 +3256,7 @@ def de_analysis_expert(
                 library="pandas",
                 parameters={
                     "modality_name": modality_name,
-                    "de_results_key": de_results_key,
+                    "de_results_key": actual_key,  # the table the session wrote
                     "output_format": output_format,
                     "output_path": output_path,
                     "filtered_only": filtered_only,
