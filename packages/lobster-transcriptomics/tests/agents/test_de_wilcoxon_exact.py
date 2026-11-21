@@ -311,6 +311,10 @@ def test_a_tie_heavy_gene_on_the_normal_path_is_flagged_and_counted(
     flagged = out.var["approximate_with_ties"]
     assert list(flagged[flagged].index) == ["GENE0001"]
     assert stats["n_approximate_with_ties"] == 1
+    significant = out.var["padj"] < 0.05
+    assert stats["n_approximate_with_ties_significant"] == int(
+        (flagged & significant).sum()
+    )
 
 
 def test_an_exact_test_flags_no_gene(tmp_path, monkeypatch):
@@ -320,30 +324,47 @@ def test_an_exact_test_flags_no_gene(tmp_path, monkeypatch):
 
     assert not out.var["approximate_with_ties"].any()
     assert stats["n_approximate_with_ties"] == 0
+    assert stats["n_approximate_with_ties_significant"] == 0
 
 
 @pytest.mark.parametrize(
-    "n, line",
+    "n, significant, line",
     [
-        (0, ""),
+        (0, 0, ""),
         (
             1,
-            "\n- Of the genes tested, 1 has many tied values (such as zeros): its "
-            "Wilcoxon p-value is the normal approximation, which can be far smaller "
-            "than the exact p-value; check it with DESeq2 on counts.",
+            1,
+            "\n- Of the genes tested, 1 (significant) has many tied values (such as "
+            "zeros): its Wilcoxon p-value is the normal approximation, which can be "
+            "far smaller than the exact p-value; rerun with the default DESeq2 method "
+            "(needs raw counts), or check this gene.",
+        ),
+        (
+            1,
+            0,
+            "\n- Of the genes tested, 1 (not significant) has many tied values (such "
+            "as zeros): its Wilcoxon p-value is the normal approximation, which can "
+            "be far smaller than the exact p-value; rerun with the default DESeq2 "
+            "method (needs raw counts), or check this gene.",
         ),
         (
             3,
-            "\n- Of the genes tested, 3 have many tied values (such as zeros): their "
-            "Wilcoxon p-values are the normal approximation, which can be far "
-            "smaller than the exact p-values; check them with DESeq2 on counts.",
+            2,
+            "\n- Of the genes tested, 3 (2 of them significant) have many tied values "
+            "(such as zeros): their Wilcoxon p-values are the normal approximation, "
+            "which can be far smaller than the exact p-values; rerun with the default "
+            "DESeq2 method (needs raw counts), or check these genes.",
         ),
     ],
 )
-def test_the_reply_names_the_tie_heavy_genes(n, line):
+def test_the_reply_names_the_tie_heavy_genes(n, significant, line):
     from lobster.agents.transcriptomics.de_analysis_expert import _tied_text
 
-    assert _tied_text({"n_approximate_with_ties": n}) == line
+    stats = {
+        "n_approximate_with_ties": n,
+        "n_approximate_with_ties_significant": significant,
+    }
+    assert _tied_text(stats) == line
 
 
 def test_the_de_reply_carries_the_tie_line(tmp_path, monkeypatch):
@@ -351,7 +372,8 @@ def test_the_de_reply_carries_the_tie_line(tmp_path, monkeypatch):
 
     _, reply = _run(tmp_path, monkeypatch, _detected_in_four(10, 10), "wilcoxon", False)
 
-    assert "Of the genes tested, 1 has many tied values (such as zeros)" in reply
+    assert "Of the genes tested, 1 (" in reply
+    assert "has many tied values (such as zeros)" in reply
 
 
 def test_a_gene_with_one_value_in_every_sample_is_not_flagged():
@@ -380,3 +402,35 @@ def test_a_group_of_one_or_two_with_midranks_gets_the_counted_p_value(n_small):
         below = np.count_nonzero(sums <= observed + 1e-9)
         above = np.count_nonzero(sums >= observed - 1e-9)
         assert p[j] == pytest.approx(min(1.0, 2 * min(below, above) / len(sums)))
+
+
+def _forty_five_zeros(n_small):
+    """``n_small`` v 100, 45 of the 100 + ``n_small`` samples at 0: ties leave
+    about 0.92 of the rank variance."""
+    rest = np.arange(1.0, 59.0 + n_small - 3)
+    top = rest[[2, -2, -1] + list(range(3, n_small))]
+    y = np.r_[np.zeros(45), np.setdiff1d(rest, top)]
+    return top[:, None], y[:, None]
+
+
+def test_a_group_of_three_with_ties_is_flagged_where_the_normal_p_crosses_005():
+    """3 v 100, 45 tied: the normal approximation gives 0.047, the exact p-value
+    0.057. A group of at most four is flagged below 0.99 of the rank variance."""
+    from lobster.services.analysis.mann_whitney import approximate_with_ties
+
+    x, y = _forty_five_zeros(3)
+    assert len(y) == 100
+    _, p = mann_whitney(x, y)
+    assert p[0] == pytest.approx(0.0469, abs=1e-4)
+
+    assert approximate_with_ties(x, y)[0]
+
+
+@pytest.mark.parametrize("n_small, flagged", [(4, True), (5, False)])
+def test_a_group_of_five_or_more_is_flagged_below_09(n_small, flagged):
+    from lobster.services.analysis.mann_whitney import approximate_with_ties
+
+    x, y = _forty_five_zeros(n_small)
+    assert len(y) == 100
+
+    assert approximate_with_ties(x, y)[0] is np.bool_(flagged)
