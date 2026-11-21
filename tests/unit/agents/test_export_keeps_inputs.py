@@ -2,8 +2,8 @@
 
 Export tools take a model-chosen path anywhere in the workspace, and data_expert's
 write_file writes model text to one: either could replace the counts file the
-session was started from. A target that already exists is now refused, with its own
-message, when it is a file the session loaded or imported in this process (by real
+session was started from. A target that already exists is now refused, with the
+export refusal (which now names this cause too), when it is a file the session loaded or imported in this process (by real
 path), or when its size and SHA-256 match a file a load recorded (which a restored
 session keeps). Overwriting the session's own earlier export is unchanged. A modality
 save is not checked here (a known limit of this release).
@@ -32,10 +32,10 @@ ANNOTATION_MODULE = "lobster.agents.transcriptomics.annotation_expert"
 ML_MODULE = "lobster.agents.machine_learning.machine_learning_expert"
 TX_MODULE = "lobster.agents.transcriptomics.transcriptomics_expert"
 RESULTS_KEY = "de_results_condition_sample_b_vs_sample_a"
-REFUSAL = (
-    "Error: this file already exists and is one this session loaded or imported "
-    "(or an identical copy of one), or it could not be checked. "
-    "Exports never overwrite an input; choose a new file name."
+REFUSAL = "Error: " + (
+    "this export path is inside the managed figure folder (plots/<figure>/...), "
+    "or it is a file this session loaded or imported (or a copy of one). "
+    "Exports cannot write there; choose a new file name under exports/ instead."
 )
 
 

@@ -25,12 +25,14 @@ from lobster.core.figures import paths as P
 from lobster.core.figures.errors import FigureError, ManagedPathError
 from tests.unit.export_guard_fixtures import alias, saved_revision, workspace_tree
 
-#: sha256 of ``MANAGED_EXPORT_MESSAGE`` before this change (its bytes must not move).
-BASE_MESSAGE_SHA256 = "72ad4c97a2ba3ad8cffbc26813ce8c2a257bc09dd7fa3623ea1234dc674043f8"
+#: sha256 of ``MANAGED_EXPORT_MESSAGE`` (its bytes move only on purpose: it now also
+#: names a refused overwrite of a session input).
+BASE_MESSAGE_SHA256 = "81d92ce0afeabe8e619ece54569472f4c786a6b602225c9781d642f21469b75d"
 
 REASON = (
-    "this export path is inside the managed figure folder (plots/<figure>/...). "
-    "Exports cannot write there; choose a file name under exports/ instead."
+    "this export path is inside the managed figure folder (plots/<figure>/...), "
+    "or it is a file this session loaded or imported (or a copy of one). "
+    "Exports cannot write there; choose a new file name under exports/ instead."
 )
 
 MANAGED_CASES = ["dotdot-existing", "dotdot-new", "absolute", "alias", "new-figure"]
