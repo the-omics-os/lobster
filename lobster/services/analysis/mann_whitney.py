@@ -16,6 +16,9 @@ import numpy as np
 # An exact test enumerates every split of the samples into the two groups:
 # 12,870 for 8 v 8, 48,620 for 9 v 9
 MANN_WHITNEY_EXACT_MAX_SPLITS = 20_000
+# The exact test also needs its split matrix (splits x samples) to hold at most
+# this many values: 1 v 4,999 has 5,000 splits but a 5,000 x 5,000 matrix
+_EXACT_MAX_VALUES = 2**22
 
 # U of every split is computed for this many (split, gene) pairs at a time
 _BLOCK = 2**22
@@ -53,8 +56,9 @@ def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
 def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     """Per column (gene): the tie-corrected z of ``x`` against ``y``, and the
     two-sided p-value. The p-value is exact, over every split of the samples
-    (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them;
-    above, the normal approximation of that z. A normal approximation without
+    (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them
+    and their matrix fits _EXACT_MAX_VALUES; otherwise, the normal approximation
+    of that z. A normal approximation without
     tie correction gave p = 0.0495 to a complete separation at 3 v 3, where an
     exact test cannot go below 0.10. A column with a missing value has neither,
     and nor has a column of one value tied in every sample (z is 0 / 0)."""
@@ -68,7 +72,8 @@ def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     spread = ((ranks - (n + 1) / 2) ** 2).sum(axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
         z = (u - n_x * n_y / 2) / np.sqrt(n_x * n_y * spread / (n * (n - 1)))
-    if math.comb(n, n_x) <= MANN_WHITNEY_EXACT_MAX_SPLITS:
+    n_splits = math.comb(n, n_x)
+    if n_splits <= MANN_WHITNEY_EXACT_MAX_SPLITS and n_splits * n <= _EXACT_MAX_VALUES:
         p = _exact_p(ranks, n_x, u)
     else:
         p = 2 * stats.norm.sf(np.abs(z))
