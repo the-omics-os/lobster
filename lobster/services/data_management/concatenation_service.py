@@ -798,24 +798,20 @@ class ConcatenationService:
             ),
         }
 
-        # Jinja2 template with parameters
-        sample_ids_str = (
-            str(sample_ids)
-            if sample_ids
-            else "[f'sample_{i}' for i in range(n_samples)]"
-        )
-        code_template = f"""# Concatenate samples
-# Join type: {{{{ join_type | string | repr }}}} ({"inner join = common genes only" if join_type == "inner" else "outer join = all genes, fill missing with 0"})
+        # Values reach the cell through Jinja from the parameters, never through
+        # an f-string: the sample names are modality names the model chooses
+        code_template = """# Concatenate samples
+# Join type: {{ join_type | string | repr }} ({% if join_type == "inner" %}inner join = common genes only{% else %}outer join = all genes, fill missing with 0{% endif %})
 concatenated_adata = ad.concat(
     sample_adatas,
     axis=0,
-    join={{{{ join_type }}}},
+    join={{ join_type | string | repr }},
     merge='unique',
-    {"fill_value=0," if join_type == "outer" else ""}
-    label={{{{ batch_key | string | repr }}}},
-    keys={sample_ids_str},
+{% if join_type == "outer" %}    fill_value=0,
+{% endif %}    label={{ batch_key | string | repr }},
+    keys={% if sample_ids is none %}[f'sample_{i}' for i in range(len(sample_adatas))]{% else %}{{ sample_ids | repr }}{% endif %},
 )
-print(f"Concatenated {{len(sample_adatas)}} samples: {{concatenated_adata.n_obs}} cells × {{concatenated_adata.n_vars}} genes")
+print(f"Concatenated {len(sample_adatas)} samples: {concatenated_adata.n_obs} cells × {concatenated_adata.n_vars} genes")
 """
 
         return AnalysisStep(
@@ -830,6 +826,7 @@ print(f"Concatenated {{len(sample_adatas)}} samples: {{concatenated_adata.n_obs}
                 "batch_key": batch_key,
                 "use_intersecting_genes_only": use_intersecting_genes_only,
                 "n_samples": n_samples,
+                "sample_ids": sample_ids,
             },
             parameter_schema=parameter_schema,
             input_entities=["sample_adatas"],
