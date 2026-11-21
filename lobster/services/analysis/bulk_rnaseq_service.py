@@ -30,7 +30,7 @@ from lobster.core.sparse_utils import safe_toarray
 from lobster.services.analysis.differential_formula_service import (
     DifferentialFormulaService,
 )
-from lobster.services.analysis.mann_whitney import mann_whitney
+from lobster.services.analysis.mann_whitney import approximate_with_ties, mann_whitney
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -646,6 +646,12 @@ Next suggested step: Import quantification data with tximport for differential e
                 else 0
             )
 
+            n_approximate_with_ties = (
+                int(results_df["approximate_with_ties"].sum())
+                if "approximate_with_ties" in results_df
+                else 0
+            )
+
             # Calculate gene confidence scores
             logger.info("Calculating gene confidence scores...")
             confidence_scores, quality_categories = self._calculate_gene_confidence(
@@ -699,6 +705,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_genes_tested": len(results_df),
                 "n_genes_without_pvalue": n_genes_without_pvalue,
                 "n_zero_within_group_variance": n_zero_within_group_variance,
+                "n_approximate_with_ties": n_approximate_with_ties,
                 "n_genes_with_missing_value": n_genes_with_missing_value,
                 "n_significant_genes": len(significant_genes),
                 "n_upregulated": len(upregulated),
@@ -1016,9 +1023,13 @@ Next suggested step: Import quantification data with tximport for differential e
             z_stats, p_values = mann_whitney(
                 group2_expr.astype(np.float64), group1_expr.astype(np.float64)
             )
+            rough = approximate_with_ties(
+                group2_expr.astype(np.float64), group1_expr.astype(np.float64)
+            )
         else:
             z_stats = np.zeros(n_genes)
             p_values = np.ones(n_genes)
+            rough = np.zeros(n_genes, dtype=bool)
 
         # With one value in every sample all ranks tie: the rank sum has no
         # variance, so z is 0 / 0, not 0 with p = 1. No p-value, as the t-test.
@@ -1036,6 +1047,9 @@ Next suggested step: Import quantification data with tximport for differential e
                 "stat": z_stats,
                 "pvalue": p_values,
                 "padj": p_adjusted,
+                # p-value of the normal approximation with many ties: can be far
+                # below the exact one
+                "approximate_with_ties": rough,
             },
             index=gene_names,
         )

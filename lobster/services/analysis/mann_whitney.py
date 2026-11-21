@@ -25,6 +25,12 @@ _EXACT_MAX_VALUES = 2**22
 # 1.3 ms a protein instead of 0.9
 _KEPT_MAX_VALUES = 2**20
 
+# Below this share of the rank variance left by ties, the normal approximation
+# of the tie-corrected z can give a p-value far below the exact one: 10 v 10
+# with 16 samples tied gave 0.031 for an exact 0.087, 3 v 51 with the 51 tied
+# 3e-13 for 8e-5
+MANN_WHITNEY_TIE_FACTOR_MIN = 0.9
+
 # U of every split is computed for this many (split, gene) pairs at a time
 _BLOCK = 2**22
 
@@ -105,6 +111,34 @@ def _small_group_p(ranks: np.ndarray, small: slice) -> np.ndarray:
             above = _pairs_at_most(-values[::-1], -observed)
         p[j] = min(1.0, 2 * min(below, above) / total)
     return p
+
+
+def _exact(n_x: int, n_y: int) -> bool:
+    """mann_whitney's p-value is exact: by the split matrix, or counted for a
+    group of one or two."""
+    n = n_x + n_y
+    n_splits = math.comb(n, n_x)
+    return (
+        n_splits <= MANN_WHITNEY_EXACT_MAX_SPLITS and n_splits * n <= _EXACT_MAX_VALUES
+    ) or min(n_x, n_y) <= 2
+
+
+def approximate_with_ties(x, y) -> np.ndarray:
+    """Per column: mann_whitney(x, y) gives the normal approximation, and ties
+    leave less than MANN_WHITNEY_TIE_FACTOR_MIN of the rank variance."""
+    from scipy import stats
+
+    n_x, n_y = len(x), len(y)
+    n = n_x + n_y
+    if _exact(n_x, n_y):
+        return np.zeros(np.shape(x)[1], dtype=bool)
+    ranks = stats.rankdata(np.vstack([x, y]), axis=0)
+    spread = ((ranks - (n + 1) / 2) ** 2).sum(axis=0)
+    # without ties the spread is n (n^2 - 1) / 12; a missing value is not flagged
+    # one value in every sample has no p-value at all
+    return (spread > 0) & (
+        spread * 12 / (n * (n * n - 1)) < MANN_WHITNEY_TIE_FACTOR_MIN
+    )
 
 
 def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:

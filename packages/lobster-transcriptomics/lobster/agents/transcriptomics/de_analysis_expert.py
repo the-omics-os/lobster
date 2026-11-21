@@ -284,6 +284,24 @@ def _no_variance_text(de_stats) -> str:
     )
 
 
+def _tied_text(de_stats) -> str:
+    """A line naming the Wilcoxon genes whose p-value is the normal approximation
+    with many tied values, or "" when there is none."""
+    n = de_stats.get("n_approximate_with_ties", 0)
+    if not n:
+        return ""
+    if n == 1:
+        has, its, value, them = "has", "its", "p-value is", "it"
+    else:
+        has, its, value, them = "have", "their", "p-values are", "them"
+    return (
+        f"\n- Of the genes tested, {n:,} {has} many tied values (such as zeros): "
+        f"{its} Wilcoxon {value} the normal approximation, which can be far smaller "
+        f"than the exact {'p-value' if n == 1 else 'p-values'}; check {them} with "
+        "DESeq2 on counts."
+    )
+
+
 def _plain(value: Any) -> Any:
     """Convert numpy scalars/containers into plain Python for IR literals."""
     if isinstance(value, dict):
@@ -1816,7 +1834,7 @@ def de_analysis_expert(
 - Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)
 - Method: {de_stats["method"]}
 - Genes tested: {_genes_tested_text(adata, de_stats)}
-- Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}{_no_variance_text(de_stats)}
+- Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}{_no_variance_text(de_stats)}{_tied_text(de_stats)}
 
 **Differential Expression Summary:**
 - Upregulated in {group2}: {de_stats["n_upregulated"]} genes
