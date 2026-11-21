@@ -983,3 +983,119 @@ def test_a_served_name_that_is_a_path_is_not_served(tmp_path):
         "a = anndata.read_h5ad('/tmp/workspace/data/../../../Users/me/secret.h5ad')\n"
     )
     assert _custom_refusal(tmp_path, head + read + CUSTOM_TAIL) is not None
+
+
+# The export_de_results cell of 1.3.1: renames by the tool's fixed table, sorts
+# only by a column the table has, names an unnamed index, makes its folder.
+RENAMES = {
+    "log2FoldChange": "log2FoldChange",
+    "logFC": "log2FoldChange",
+    "mean_log2FC": "log2FoldChange",
+    "padj": "padj",
+    "pvalue_adj": "padj",
+    "FDR": "padj",
+    "p_adj": "padj",
+    "pvalue": "pvalue",
+    "baseMean": "baseMean",
+    "base_mean": "baseMean",
+    "AveExpr": "baseMean",
+    "lfcSE": "lfcSE",
+    "stat": "stat",
+}
+A3 = (
+    "results_df = adata.uns['de_results_x']['results_df'].copy()\n"
+    f"for _old, _new in {RENAMES!r}.items():\n"
+    "    if _old in results_df.columns and _old != _new:\n"
+    "        results_df = results_df.rename(columns={_old: _new})\n"
+    "if 'padj' in results_df.columns:\n"
+    "    results_df = results_df.sort_values('padj')\n"
+    "if results_df.index.name is None:\n"
+    "    results_df.index.name = 'gene'\n"
+    "Path('exports/de.csv').parent.mkdir(parents=True, exist_ok=True)\n"
+    "results_df.to_csv('exports/de.csv', index=True)"
+)
+
+
+def _rendered_export_cell(tmp_path, monkeypatch):
+    """The cell export_de_results records, rendered as the exporter does."""
+    pytest.importorskip("lobster.agents.transcriptomics")
+    import anndata as ad
+    import numpy as np
+    import pandas as pd
+
+    from lobster.agents.transcriptomics.de_analysis_expert import de_analysis_expert
+    from lobster.testing.provenance_replay import RecordingDataManager, factory_tools
+
+    monkeypatch.chdir(tmp_path)
+    adata = ad.AnnData(np.zeros((2, 2)))
+    adata.uns["de_results_x"] = {
+        "results_df": pd.DataFrame({"padj": [0.01, 0.2]}, index=["G1", "G2"])
+    }
+    dm = RecordingDataManager({"de": adata}, workspace_path=tmp_path / "session")
+    dm.exports_dir = dm.workspace_path / "exports"
+    tools = factory_tools(
+        de_analysis_expert, "lobster.agents.transcriptomics.de_analysis_expert", dm
+    )
+    tools["export_de_results"].invoke(
+        {"modality_name": "de", "de_results_key": "de_results_x"}
+    )
+    return dm.last_ir("export_de_results").render(output_path="exports/de.csv")
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        A3,
+        A3.replace("to_csv", "to_excel"),
+        A3.replace("if 'padj' in", "if 'pvalue' in").replace(
+            "sort_values('padj')", "sort_values('pvalue')"
+        ),
+    ],
+    ids=["A3", "A3-excel", "A3-sort-pvalue"],
+)
+def test_the_renaming_export_cell_is_admitted(tmp_path, cell):
+    assert _refusal(tmp_path, cell) is None
+
+
+def test_the_renaming_export_cell_the_tool_records_is_admitted(tmp_path, monkeypatch):
+    cell = _rendered_export_cell(tmp_path, monkeypatch)
+
+    assert "_DE_COLUMN_RENAMES" not in cell and "rename(columns=" in cell, cell
+    assert _refusal(tmp_path, cell) is None
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        A3.replace("if 'padj' in", "if 'pvalue' in"),
+        A3.replace("'stat': 'stat'", "'stat': 'padj'"),
+        A3.replace("'stat': 'stat'}", "'stat': 'stat', 'x': 'padj'}"),
+        A3.replace("_old != _new", "_old == _new"),
+        A3.replace("index.name = 'gene'", "index.name = 'id'"),
+        A3.replace("Path('exports/de.csv').parent.mkdir(parents=True, exist_ok=True)\n", ""),
+        A3.replace("Path('exports/de.csv').parent", "Path('exports/other.csv').parent"),
+        A3.replace("if results_df.index.name is None:\n    results_df.index.name = 'gene'\n", ""),
+        A3 + "\nresults_df.to_csv('exports/again.csv', index=True)",
+    ],
+    ids=["sort-differs", "rename-changed", "rename-added", "rename-test", "index-name",
+         "no-folder", "other-folder", "no-index-line", "extra-write"],
+)  # fmt: skip
+def test_a_changed_renaming_export_cell_is_refused(tmp_path, cell):
+    assert _refusal(tmp_path, cell) == NOT_EXPORT
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="refused once the check that a writing cell may not name the replay's "
+    "input is combined with this shape",
+)
+def test_the_renaming_export_cell_aimed_at_the_replay_input_is_refused(tmp_path):
+    source = tmp_path / "counts.csv"
+    source.write_text("gene,a\nG1,1\n")
+    (tmp_path / "ws").mkdir()
+    cell = A3.replace("'exports/de.csv'", repr(str(source)))
+    notebook = _notebook(tmp_path, cell)
+
+    refusal = replay_commands._path_refusal(notebook, tmp_path / "ws", source)
+
+    assert refusal is not None and "names the replay's input file" in refusal
