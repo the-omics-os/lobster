@@ -301,7 +301,8 @@ result = 42
         assert ir.tool_name == "execute_custom_code"
         assert ir.description == "Test operation"
         assert ir.library == "custom"
-        assert "result = 2 + 2" in ir.code_template
+        assert ir.parameters["code"] == "result = 2 + 2"
+        assert ir.render().endswith("\n# User code\nresult = 2 + 2")
         assert ir.exportable is True  # persist=True
         assert "test_mod" in ir.input_entities
         assert "modality_name" in ir.parameter_schema

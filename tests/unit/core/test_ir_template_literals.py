@@ -30,6 +30,17 @@ ALLOWED_QUOTED = {
     # value is only quoted after an isidentifier() check in the template
     "packages/lobster-transcriptomics/lobster/agents/transcriptomics/annotation_expert.py": "isidentifier guard",
 }
+# Single lines that match the scan but are safe, each with its reason.
+ALLOWED_QUOTED_LINES = {
+    (
+        "lobster/services/execution/custom_code_execution_service.py",
+        'CODE_SLOT = "{{ code }}"',
+    ): "the custom code is emitted as written: a value, never template source",
+    (
+        "lobster/services/execution/custom_code_execution_service.py",
+        "QUOTED_WORKSPACE = \"Path('{{ workspace_path }}')\"",
+    ): "the setup line 1.1.428 and earlier recorded: matched, never rendered",
+}
 # Numeric settings in comments; a number cannot break out of a comment.
 NUMERIC_IN_COMMENTS = {
     "min_genes_per_cell",
@@ -77,6 +88,8 @@ def test_no_hand_quoted_placeholders():
         if rel in ALLOWED_QUOTED:
             continue
         for number, line in enumerate(path.read_text().splitlines(), 1):
+            if (rel, line.strip()) in ALLOWED_QUOTED_LINES:
+                continue
             for start, end, expression in _placeholders(line):
                 before = line[start - 1] if start else ""
                 after = line[end] if end < len(line) else ""

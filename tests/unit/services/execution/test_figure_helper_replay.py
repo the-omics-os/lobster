@@ -80,7 +80,7 @@ def test_a_helper_dependent_attempt_is_neither_exported_nor_replayed(
     assert ir.exportable is False and ir.replayable is False
     assert ir.execution_context["replay_excluded"] == svc.REPLAY_EXCLUDED_FIGURE_HELPERS
     assert not _selected(ir, "exportable") and not _selected(ir, "replayable")
-    assert ir.code_template.endswith(DEPENDENT[case])  # provenance keeps the code
+    assert ir.parameters["code"] == DEPENDENT[case]  # provenance keeps the code
 
 
 @pytest.mark.parametrize("persist", [False, True])
