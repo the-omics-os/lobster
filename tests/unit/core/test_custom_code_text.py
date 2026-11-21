@@ -217,3 +217,13 @@ def test_a_step_read_by_its_shape_is_not_marked(tmp_path):
     assert "left out (steps:" not in nb.cells[0].source
     assert _record(nb)["migrated"]["omitted_custom_code"] == []
     assert exporter.omitted_custom_code == []
+
+
+def test_a_second_export_lists_each_omitted_step_once(tmp_path):
+    template = "WORKSPACE = Path('{{ workspace_path }}')\n# User code\nprint(1)"
+    exporter, _ = _migrated_notebook(tmp_path, template, "print(1)")
+
+    path = exporter.export("again", filter_strategy="successful")
+
+    assert exporter.omitted_custom_code == [2]
+    assert OMITTED_NOTE in nbformat.read(path, as_version=4).cells[0].source
