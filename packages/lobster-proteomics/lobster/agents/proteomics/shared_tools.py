@@ -2559,6 +2559,8 @@ adata.X = X""",
         Returns:
             str: Concordance report with per-protein correlations and summary statistics
         """
+        if method not in ("spearman", "pearson"):
+            return f"Unknown method {method!r}: use 'spearman' or 'pearson'."
         try:
             adata1 = data_manager.get_modality(modality_name_1)
         except ValueError:
@@ -2699,7 +2701,7 @@ for protein in common_proteins:
     v2 = adata2[common_samples, protein].X.flatten()
     valid = ~np.isnan(v1) & ~np.isnan(v2)
     if valid.sum() >= 3:
-        r, p = stats.{{ method }}r(v1[valid], v2[valid])
+        r, p = stats.{% if method == 'pearson' %}pearsonr{% else %}spearmanr{% endif %}(v1[valid], v2[valid])
         correlations.append({'protein': protein, 'r': r, 'p': p})""",
                 imports=["from scipy import stats", "import numpy as np"],
                 parameters={
