@@ -345,6 +345,22 @@ def _replicate_summary_text(validation: Dict[str, Any]) -> str:
     return f"\n\n**Biological replicates (n counted in donors):**{lines}"
 
 
+# A DE table is exported in one of these formats. The notebook cell names the
+# writer itself and never renders the format text, which becomes code there.
+DE_EXPORT_FORMATS = ("csv", "xlsx")
+_WRITE_DE_TABLE = (
+    "results_df.{% if output_format == 'xlsx' %}to_excel{% else %}to_csv{% endif %}"
+    "({{ output_path | string | repr }}, index=True)"
+)
+
+
+def _unknown_format_text(output_format: Any) -> Optional[str]:
+    """The refusal for an export format other than csv or xlsx, else None."""
+    if output_format in DE_EXPORT_FORMATS:
+        return None
+    return f"Unknown output_format {output_format!r}: use 'csv' or 'xlsx'."
+
+
 def _de_result_keys(adata) -> List[str]:
     """Include explicit historical choices, but never infer their chronology."""
     return sorted(
@@ -3126,6 +3142,8 @@ def de_analysis_expert(
             filtered_only: Whether to export only filtered results
             sort_by: Column to sort by (default: 'padj')
         """
+        if refusal := _unknown_format_text(output_format):
+            return refusal
         try:
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
@@ -3248,7 +3266,7 @@ def de_analysis_expert(
                 code_template=(
                     "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df']\n"
                     "results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
-                    "results_df.to_{{ output_format }}({{ output_path | string | repr }}, index=True)"
+                    + _WRITE_DE_TABLE
                 ),
                 imports=["import pandas as pd"],
             )
@@ -3582,6 +3600,8 @@ def de_analysis_expert(
             except (OSError, RuntimeError, ValueError):
                 return None
 
+        if refusal := _unknown_format_text(output_format):
+            return refusal
         try:
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
@@ -3784,8 +3804,7 @@ def de_analysis_expert(
                     "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df'].copy()\n"
                     "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] <= {{ padj_threshold }}]\n{% endif %}"
                     "{% if lfc_threshold > 0 %}results_df = results_df[abs(results_df['log2FoldChange']) >= {{ lfc_threshold }}]\n{% endif %}"
-                    "results_df = results_df.sort_values('padj')\n"
-                    "results_df.to_{{ output_format }}({{ output_path | string | repr }}, index=True)"
+                    "results_df = results_df.sort_values('padj')\n" + _WRITE_DE_TABLE
                 ),
                 imports=["import pandas as pd"],
             )
