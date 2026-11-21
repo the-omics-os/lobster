@@ -58,7 +58,13 @@ def _no_host_dependency_scan(monkeypatch):
 def test_a_new_custom_step_renders_its_code_exactly(tmp_path, code):
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     ir = CustomCodeExecutionService(dm)._create_ir(
-        code, "custom", None, False, None, True, {"success": True}
+        code,
+        "custom",
+        None,
+        False,
+        None,
+        True,
+        {"success": True, "duration_seconds": 0.0, "warnings": []},
     )
 
     rendered = ir.render()

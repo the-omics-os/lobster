@@ -14,6 +14,20 @@ pytestmark = pytest.mark.unit
 
 OLD = {"scanpy": "1.12.1", "lobster": "1.2.2+release.f32a8be"}
 CUSTOM = "open('/tmp/scbench_task/exports/out.csv', 'w').write('x')"
+# What the custom-code step of 1.2.2 recorded in front of its code
+RECORDED_SETUP = """# Workspace setup (for notebook execution)
+from pathlib import Path
+import sys
+
+WORKSPACE = Path({{ workspace_path | string | repr }})
+sys.path.append(str(WORKSPACE))
+
+# OUTPUT_DIR: Recommended directory for CSV/TSV/Excel exports
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# User code
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +35,7 @@ def _no_host_dependency_scan(monkeypatch):
     monkeypatch.setattr(NotebookExporter, "_snapshot_dependencies", lambda self: {})
 
 
-def _step(operation, tool, code, imports=(), **kwargs):
+def _step(operation, tool, code, imports=(), parameters=None, **kwargs):
     return AnalysisStep(
         operation=operation,
         tool_name=tool,
@@ -29,7 +43,7 @@ def _step(operation, tool, code, imports=(), **kwargs):
         library="scanpy",
         code_template=code,
         imports=list(imports),
-        parameters={},
+        parameters=parameters or {},
         parameter_schema={},
         input_entities=["adata"],
         output_entities=["adata"],
@@ -55,7 +69,12 @@ def _session(
         "execute_custom_code",
         "a",
         description="custom",
-        ir=_step("custom_code_execution", "execute_custom_code", custom),
+        ir=_step(
+            "custom_code_execution",
+            "execute_custom_code",
+            RECORDED_SETUP + custom,
+            parameters={"workspace_path": "/tmp/scbench_task", "code": custom},
+        ),
     )
     if migrated:
         meta = folder / "metadata.json"
@@ -101,7 +120,8 @@ def test_migrated_custom_code_is_text_never_a_code_cell(tmp_path, mode):
         "Not executed: custom code from a Lobster 1.2.2 session "
         "(it may use paths of the machine it ran on)" in shown
     )
-    assert f"```python\n{CUSTOM}" in shown
+    assert "```python\n# Workspace setup" in shown
+    assert f"\n# User code\n{CUSTOM}\n```" in shown
 
 
 def test_the_export_record_and_header_say_migrated(tmp_path):
