@@ -119,7 +119,7 @@ def _imports(plugin: Path) -> Iterator[Tuple[str, int, str]]:
                 continue
             for name in names:
                 if name == "lobster" or name.startswith("lobster."):
-                    yield str(path.relative_to(ROOT)), node.lineno, name
+                    yield path.relative_to(plugin.parent).as_posix(), node.lineno, name
 
 
 def _missing(plugin: Path, floor_modules: Set[str]) -> List[str]:
@@ -166,3 +166,26 @@ def test_module_names_come_from_files_under_lobster():
         "lobster.a",
         "lobster.a.b",
     }
+
+
+def test_a_module_taken_by_name_counts_and_the_plugins_own_do_not(tmp_path):
+    code = tmp_path / "lobster" / "services" / "analysis"
+    code.mkdir(parents=True)
+    (code / "bulk_rnaseq_service.py").write_text("")  # its own copy of a core path
+    (code / "uses.py").write_text(
+        "from lobster.services.analysis import mann_whitney, bulk_rnaseq_service\n"
+        "try:\n"
+        "    import lobster.services.analysis.mann_whitney\n"
+        "except ImportError:\n"
+        "    pass\n"
+    )
+    floor = _core_now() - {
+        "lobster.services.analysis.mann_whitney",
+        "lobster.services.analysis.bulk_rnaseq_service",
+    }
+
+    missing = _missing(tmp_path, floor)
+
+    assert [m.rsplit(" ", 1)[1] for m in missing] == [
+        "lobster.services.analysis.mann_whitney"
+    ], missing
