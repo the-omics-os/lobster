@@ -63,3 +63,17 @@ def test_a_de_export_replays_in_its_own_folder(tmp_path, monkeypatch, case):
         if cell["cell_type"] == "code"
     ]
     assert not any(str(dm.workspace_path.resolve()) in c for c in code)
+
+
+def test_the_notebook_path_is_relative_to_the_workspace(tmp_path):
+    workspace = tmp_path / "ws"
+    (workspace / "exports" / "tables").mkdir(parents=True)
+    linked = tmp_path / "linked"
+    linked.symlink_to(workspace)
+    table = str((workspace / "exports" / "tables" / "de.csv").resolve())
+
+    path = de_module._notebook_export_path
+    assert path(workspace, table) == "exports/tables/de.csv"
+    assert path(linked, table) == "exports/tables/de.csv"
+    elsewhere = str((tmp_path / "root" / "de.csv").resolve())
+    assert path(workspace, elsewhere) == "exports/de.csv"
