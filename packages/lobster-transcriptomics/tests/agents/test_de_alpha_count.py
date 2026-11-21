@@ -18,6 +18,7 @@ from .test_bulk_rank_no_marker_filter import _c2, _number
 
 
 def _run(tmp_path, monkeypatch, adata, tool, method, alpha):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)  # BulkRNASeqService writes ./bulk_results
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     dm.store_modality("bulk", adata)
@@ -65,3 +66,22 @@ def test_a_deseq2_reply_counts_at_its_alpha(tmp_path, monkeypatch, tool, alpha):
         _number(reply, "Upregulated")
         == (significant & (table["log2FoldChange"] > 0)).sum()
     )
+
+
+def test_a_gene_whose_padj_is_the_alpha_is_not_counted(tmp_path, monkeypatch):
+    _, first = _run(
+        tmp_path / "a", monkeypatch, _c2(), "run_differential_expression", "t_test", 0.2
+    )
+    alpha = float(first["padj"].sort_values().iloc[10])
+
+    reply, table = _run(
+        tmp_path / "b",
+        monkeypatch,
+        _c2(),
+        "run_differential_expression",
+        "t_test",
+        alpha,
+    )
+
+    assert (table["padj"] == alpha).any()
+    assert _number(reply, "Significant genes") == (table["padj"] < alpha).sum()
