@@ -2835,6 +2835,8 @@ def de_analysis_expert(
             de_results_key: Explicit DE result choice if current identity is unavailable
         """
         try:
+            # The reply names how genes were taken from a DE result
+            source = ""
             # If modality name provided, extract significant genes from it
             if modality_name and modality_name in data_manager.list_modalities():
                 adata = data_manager.get_modality(modality_name)
@@ -2856,6 +2858,16 @@ def de_analysis_expert(
                             ].index.tolist()
                             if significant_genes:
                                 gene_list = significant_genes[:500]
+                                source = (
+                                    f"- Genes from DE result '{selected_key}': padj "
+                                    f"< 0.05, {len(significant_genes):,} genes"
+                                )
+                                if len(gene_list) < len(significant_genes):
+                                    source += (
+                                        f" (the first {len(gene_list):,} in table "
+                                        "order were used)"
+                                    )
+                                source += "\n"
                                 logger.info(
                                     f"Extracted {len(gene_list)} significant genes from {modality_name}"
                                 )
@@ -2888,6 +2900,7 @@ def de_analysis_expert(
             # Format response
             response = f"## {analysis_type} Pathway Enrichment Analysis Complete\n\n"
             response += "**Enrichment Results:**\n"
+            response += source
             response += f"- Genes analyzed: {enrichment_stats['n_genes_input']:,}\n"
             response += f"- Database: {enrichment_stats['enrichment_database']}\n"
             response += f"- Terms found: {enrichment_stats['n_terms_total']}\n"
