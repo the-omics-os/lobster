@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from lobster.core.notebooks.written_templates import outdated_tool, template_hash
 from lobster.services.data_management.concatenation_service import (
     ConcatenationService,
 )
@@ -108,3 +109,13 @@ def test_without_sample_names_the_cell_numbers_the_samples(sample_ids):
     keys = ast.unparse(_keys(_cell(sample_ids)))
 
     assert keys == "[f'sample_{i}' for i in range(len(sample_adatas))]"
+
+
+@pytest.mark.parametrize("sample_ids", [None, [], ["a", "b"], [HOSTILE]])
+@pytest.mark.parametrize("join_type", ["inner", "outer"])
+def test_the_template_is_the_one_the_exporter_knows(sample_ids, join_type):
+    ir = ConcatenationService.__new__(ConcatenationService)._create_concatenation_ir(
+        2, join_type, "batch", join_type == "inner", sample_ids
+    )
+
+    assert outdated_tool(ir) is None, (ir.operation, template_hash(ir.code_template))

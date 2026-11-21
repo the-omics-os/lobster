@@ -370,6 +370,11 @@ FIGURE_CELL_KEY = "figure"
 # Cell metadata (under "lobster") on the cell that stands in for custom code left
 # out: {"step": <step number>, "reason": "unrecognised_record"}. Replay refuses it.
 OMITTED_CUSTOM_CODE_KEY = "omitted_custom_code"
+# The same mark's reason on the cell that stands in for a step recorded with a
+# template this Lobster does not write for its tool (written_templates); the
+# export record lists those steps under OUTDATED_STEPS_KEY.
+OUTDATED_TEMPLATE_REASON = "outdated_template"
+OUTDATED_STEPS_KEY = "outdated_steps"
 UNRECORDED_INPUT_NOTE = (
     "*Input not recorded: this step runs on the result of the cells above.*"
 )
@@ -408,6 +413,8 @@ class NotebookExporter:
         self.dangling_links: List[str] = []
         # Set by each export: the steps whose custom code was left out
         self.omitted_custom_code: List[int] = []
+        # Set by each export: the steps left out for a template it does not write
+        self.outdated_steps: List[int] = []
         logger.debug("Initialized NotebookExporter with IR support")
 
     def _migrated_origin(self) -> Optional[Dict[str, Any]]:
@@ -467,6 +474,20 @@ class NotebookExporter:
             "(it may use paths of the machine it ran on)"
         ).format(source=self._source_words(origin))
         return new_markdown_cell(f"**{label}**\n\n{fence}python\n{code}\n{fence}\n")
+
+    @staticmethod
+    def _outdated_cell(tool: str, step: int) -> NotebookNode:
+        """In place of a step whose stored template could run its values: named,
+        never shown."""
+        label = h(
+            "Not shown: a {tool} step recorded with code this Lobster no longer "
+            "writes (run the step again to include it)"
+        ).format(tool=tool)
+        cell = new_markdown_cell(f"**{label}**\n")
+        cell.metadata["lobster"] = {
+            OMITTED_CUSTOM_CODE_KEY: {"step": step, "reason": OUTDATED_TEMPLATE_REASON}
+        }
+        return cell
 
     def export(
         self,
@@ -576,6 +597,18 @@ class NotebookExporter:
             for idx, (activity, ir) in enumerate(exportable_pairs, start=1)
             if id(activity) in unrun and recorded_custom_code(ir) is None
         ]
+        from lobster.core.notebooks.written_templates import outdated_tool
+
+        outdated = {
+            id(activity): tool
+            for activity, ir in exportable_pairs
+            if (tool := outdated_tool(ir)) is not None
+        }
+        self.outdated_steps = [
+            idx
+            for idx, (activity, _) in enumerate(exportable_pairs, start=1)
+            if id(activity) in outdated
+        ]
         exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
         excluded_activity_types = [
             self._omitted_label(activity)
@@ -590,7 +623,11 @@ class NotebookExporter:
         )
 
         # Extract IRs for imports and parameters collection
-        irs = [ir for activity, ir in exportable_pairs if id(activity) not in unrun]
+        irs = [
+            ir
+            for activity, ir in exportable_pairs
+            if id(activity) not in unrun and id(activity) not in outdated
+        ]
 
         if exportable_count == 0:
             raise ValueError(
@@ -704,6 +741,10 @@ class NotebookExporter:
                 notebook.cells.append(_rebind_cell(rebind[position]))
 
             # Add executable code cell from IR (no placeholder fallback)
+            if id(activity) in outdated:
+                notebook.cells.append(self._outdated_cell(outdated[id(activity)], idx))
+                after(position)
+                continue
             if id(activity) in unrun:
                 notebook.cells.append(self._unrun_cell(ir, origin, idx))
                 after(position)
@@ -1070,7 +1111,7 @@ class NotebookExporter:
 
 {description if description else "Bioinformatics analysis workflow"}
 
-{self._migrated_header()}**Created:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+{self._migrated_header()}{self._outdated_header()}**Created:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 **Lobster Version:** {self._get_lobster_version()}
 **Export mode:** {mode_text}
 **Steps included:** {n_irs} of {len(self.provenance.activities)} recorded activities
@@ -1119,6 +1160,16 @@ code recorded for it.
             ).format(steps=", ".join(map(str, self.omitted_custom_code)))
             lines += f"**{note}**\n\n"
         return lines
+
+    def _outdated_header(self) -> str:
+        """The header line naming the steps left out for their template."""
+        if not self.outdated_steps:
+            return ""
+        note = h(
+            "Steps recorded with code this Lobster no longer writes are left out "
+            "(steps: {steps}); replay cannot check this notebook."
+        ).format(steps=", ".join(map(str, self.outdated_steps)))
+        return f"**{note}**\n\n"
 
     def _client_session_identity(self) -> Optional[str]:
         """The client session id bound on the data manager, or None when unknown.
@@ -1170,6 +1221,10 @@ code recorded for it.
                 "system": self._get_system_info(),
             }
         }
+        if self.outdated_steps:
+            record["data_integrity_manifest"][OUTDATED_STEPS_KEY] = list(
+                self.outdated_steps
+            )
         origin = self._migrated_origin()
         if origin is not None:
             record["data_integrity_manifest"]["migrated"] = {

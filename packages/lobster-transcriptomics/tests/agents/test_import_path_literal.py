@@ -14,6 +14,7 @@ import pytest
 from lobster.agents.transcriptomics.transcriptomics_expert import (
     transcriptomics_expert,
 )
+from lobster.core.notebooks.written_templates import outdated_tool, template_hash
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.testing.provenance_replay import factory_tools
 
@@ -71,3 +72,9 @@ def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch
     merge = _literals(irs["merge_sample_metadata"].render())
     assert str(folder / "meta.csv") in merge
     assert "sample" in merge
+    # the templates are the ones the exporter knows, whatever the path
+    for tool in ("import_bulk_counts", "merge_sample_metadata"):
+        assert outdated_tool(irs[tool]) is None, (
+            irs[tool].operation,
+            template_hash(irs[tool].code_template),
+        )

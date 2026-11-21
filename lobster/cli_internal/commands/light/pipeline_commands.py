@@ -184,6 +184,26 @@ def pipeline_export(
                 ],
             )
 
+        outdated = getattr(
+            getattr(client.data_manager, "notebook_exporter", None),
+            "outdated_steps",
+            None,
+        )
+        if isinstance(outdated, list) and outdated:  # replay refuses the notebook
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        h(
+                            "Steps recorded with code this Lobster no longer writes "
+                            "are left out (steps: {steps}); replay cannot check this "
+                            "notebook."
+                        ).format(steps=", ".join(map(str, outdated))),
+                        level="warning",
+                    )
+                ],
+            )
+
         _render_blocks(
             output,
             [

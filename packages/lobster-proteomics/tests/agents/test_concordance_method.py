@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from lobster.agents.proteomics.shared_tools import create_shared_tools
+from lobster.core.notebooks.written_templates import outdated_tool, template_hash
 from lobster.testing.provenance_replay import RecordingDataManager
 
 INJECTED = "pearson(v1, v2) if __import__('os').getcwd() else stats.pearson"
@@ -64,3 +65,14 @@ def test_the_cell_calls_the_test_of_its_method(method):
 
     assert f"stats.{method}r(v1[valid], v2[valid])" in ir.render()
     assert "getcwd" not in ir.render(method=INJECTED)
+
+
+@pytest.mark.parametrize("method", ["spearman", "pearson"])
+def test_the_template_is_the_one_the_exporter_knows(method):
+    dm, tool = _session()
+    tool.invoke(
+        {"modality_name_1": "olink", "modality_name_2": "soma", "method": method}
+    )
+    ir = dm.last_ir("assess_cross_platform_concordance")
+
+    assert outdated_tool(ir) is None, (ir.operation, template_hash(ir.code_template))

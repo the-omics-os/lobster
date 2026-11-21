@@ -138,7 +138,7 @@ def test_a_stored_pre_fix_step_is_left_out_and_named(tmp_path, step, migrated):
     exporter, path, nb = _export(tmp_path, build(), migrated=migrated)
 
     assert "__import__" not in path.read_text(), "the stored value became code"
-    (cell,) = [c for c in nb.cells if "no longer writes" in c.source]
+    (cell,) = [c for c in nb.cells if c.source.startswith("**Not shown")]
     assert cell.cell_type == "markdown"
     assert cell.source == (
         f"**Not shown: a {tool} step recorded with code this Lobster no longer "

@@ -20,6 +20,7 @@ import pytest
 from lobster.agents.transcriptomics.transcriptomics_expert import (
     transcriptomics_expert,
 )
+from lobster.core.notebooks.written_templates import outdated_tool, template_hash
 from lobster.testing.provenance_replay import RecordingDataManager, factory_tools
 
 MODULE = "lobster.agents.transcriptomics.transcriptomics_expert"
@@ -100,3 +101,15 @@ def test_the_cell_writes_the_scope_and_field_as_literals(monkeypatch):
     assert _keywords(hostile)["scopes"] == INJECTED
     assert _keywords(hostile)["fields"] == INJECTED
     assert "1337" not in hostile
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{}, {"source_type": "ensembl", "target_type": "entrez"}],
+)
+def test_the_template_is_the_one_the_exporter_knows(monkeypatch, arguments):
+    dm, tools = _session(monkeypatch)
+    tools["convert_gene_identifiers"].invoke({"modality_name": "bulk", **arguments})
+    ir = dm.last_ir("convert_gene_identifiers")
+
+    assert outdated_tool(ir) is None, (ir.operation, template_hash(ir.code_template))

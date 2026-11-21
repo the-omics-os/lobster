@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from lobster.agents.transcriptomics.de_analysis_expert import de_analysis_expert
+from lobster.core.notebooks.written_templates import outdated_tool, template_hash
 from lobster.testing.provenance_replay import RecordingDataManager, factory_tools
 
 MODULE = "lobster.agents.transcriptomics.de_analysis_expert"
@@ -112,3 +113,25 @@ def test_a_filtered_export_cell_writes_the_filtered_rows(tmp_path, monkeypatch):
 
     assert list(pd.read_csv(written, index_col=0).index) == ["GENE1"]
     assert ir.parameters["de_results_key"] == f"filtered_{KEY}"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"output_format": "csv"},
+        {"output_format": "xlsx"},
+        {"padj_threshold": 0.05, "lfc_threshold": 1.0},
+        {"padj_threshold": 1.0, "lfc_threshold": 0.0},
+    ],
+)
+@pytest.mark.parametrize("tool", list(TOOLS))
+def test_the_template_is_the_one_the_exporter_knows(
+    tmp_path, monkeypatch, tool, arguments
+):
+    dm, tools, _ = _session(tmp_path, monkeypatch)
+    if tool == "export_de_results":
+        arguments = {k: v for k, v in arguments.items() if "threshold" not in k}
+    tools[tool].invoke({"modality_name": "de", **TOOLS[tool], **arguments})
+    ir = dm.last_ir(tool)
+
+    assert outdated_tool(ir) is None, (ir.operation, template_hash(ir.code_template))
