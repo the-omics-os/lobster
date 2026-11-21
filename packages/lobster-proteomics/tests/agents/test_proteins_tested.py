@@ -64,8 +64,8 @@ def test_the_reply_counts_the_proteins_tested_and_those_left_untested(tmp_path):
     reply = _reply(tmp_path, _proteins(n_sparse=5))
 
     assert (
-        "- Proteins tested: 45 of 50 (5 with fewer than 2 values in a compared "
-        "group were not tested)\n" in reply
+        "- Proteins tested: 45 of 50; not tested: 5 (fewer than 2 values in a "
+        "compared group, or the test could not run)\n" in reply
     ), reply
 
 
@@ -102,10 +102,30 @@ def test_the_ptm_reply_counts_the_sites_and_proteins_tested(tmp_path):
     )
 
     assert (
-        "- PTM sites tested: 45 of 50 (5 with fewer than 2 values in a compared "
-        "group were not tested)\n" in reply
+        "- PTM sites tested: 45 of 50; not tested: 5 (fewer than 2 values in a "
+        "compared group, or the test could not run)\n" in reply
     ), reply
     assert (
-        "- Proteins tested: 48 of 50 (2 with fewer than 2 values in a compared "
-        "group were not tested)\n" in reply
+        "- Proteins tested: 48 of 50; not tested: 2 (fewer than 2 values in a "
+        "compared group, or the test could not run)\n" in reply
+    ), reply
+
+
+def test_a_protein_whose_test_could_not_run_counts_as_not_tested(tmp_path, monkeypatch):
+    real = ProteomicsDifferentialService._perform_statistical_test
+    calls = []
+
+    def first_fails(self, group1, group2, method):
+        calls.append(1)
+        return None if len(calls) == 1 else real(self, group1, group2, method)
+
+    monkeypatch.setattr(
+        ProteomicsDifferentialService, "_perform_statistical_test", first_fails
+    )
+
+    reply = _reply(tmp_path, _proteins(n_sparse=0))
+
+    assert (
+        "- Proteins tested: 49 of 50; not tested: 1 (fewer than 2 values in a "
+        "compared group, or the test could not run)\n" in reply
     ), reply
