@@ -28,11 +28,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.provenance.analysis_ir import (
-    _JINJA_ENV,
-    AnalysisStep,
-    ParameterSpec,
-)
+from lobster.core.provenance import analysis_ir
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.execution.execution_context_builder import ExecutionContextBuilder
 from lobster.utils.ipc_read import RefusedRead, read_regular, regular_identity
 from lobster.utils.logger import get_logger
@@ -205,6 +202,8 @@ def recorded_custom_code(ir: Any) -> Optional[str]:
     Before the code became a template value, it was written into the template
     after ``USER_CODE_MARK``: that text is code, never template source.
     """
+    if not isinstance(ir.code_template, str):
+        return None
     setup, *rest = ir.code_template.split(USER_CODE_MARK)
     if len(rest) != 1 or setup not in RECORDED_WORKSPACE_SETUPS:
         return None
@@ -215,7 +214,9 @@ def recorded_custom_code(ir: Any) -> Optional[str]:
             return None
     workspace = ir.parameters.get("workspace_path")
     return (
-        _JINJA_ENV.from_string(WORKSPACE_SETUP).render(workspace_path=workspace)
+        analysis_ir._JINJA_ENV.from_string(WORKSPACE_SETUP).render(
+            workspace_path=workspace
+        )
         + USER_CODE_MARK
         + code
     )
