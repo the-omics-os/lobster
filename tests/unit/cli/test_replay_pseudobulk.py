@@ -145,16 +145,25 @@ def test_the_step_records_what_it_read_and_made(tmp_path, monkeypatch):
     assert [e["name"] for e in step["outputs"]] == ["sc_pseudobulk"]
 
 
-def test_the_step_records_every_setting_the_session_used():
+@pytest.mark.parametrize(
+    "gene_subset", [None, [f"G{i:03d}" for i in range(100)]], ids=["all", "subset"]
+)
+def test_the_step_records_every_setting_the_session_used(gene_subset):
+    """The tool never passes a gene subset; a Python caller can, and its cell gets
+    the same subset."""
     service = pseudobulk.PseudobulkService()
     _, _, ir = service.aggregate_to_pseudobulk(
-        _single_cell(), sample_col="donor", celltype_col="cell_type", **CHANGED
+        _single_cell(),
+        sample_col="donor",
+        celltype_col="cell_type",
+        gene_subset=gene_subset,
+        **CHANGED,
     )
     assert ir.parameters == {
         "sample_col": "donor",
         "celltype_col": "cell_type",
         **CHANGED,
-        "gene_subset": None,
+        "gene_subset": gene_subset,
     }
     code = ir.render()
     for name, value in ir.parameters.items():
