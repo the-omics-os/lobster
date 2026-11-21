@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelBinarizer, StandardScaler
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.analysis.mann_whitney import mann_whitney
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -420,9 +421,14 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                             group_data[0], group_data[1], equal_var=False
                         )
                     elif method == "wilcoxon":
-                        stat, pval = scipy_stats.mannwhitneyu(
+                        stat = scipy_stats.mannwhitneyu(
                             group_data[0], group_data[1], alternative="two-sided"
+                        ).statistic
+                        # scipy's default approximates whenever a value ties
+                        _, p = mann_whitney(
+                            group_data[0][:, None], group_data[1][:, None]
                         )
+                        pval = p[0]
                     elif method == "anova":
                         stat, pval = scipy_stats.f_oneway(*group_data)
                     elif method == "kruskal":
