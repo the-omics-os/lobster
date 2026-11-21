@@ -28,7 +28,7 @@ INJECTED = "csv(__import__('os').getcwd()) or results_df.to_csv"
 def _session(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     table = pd.DataFrame(
-        {"padj": [0.01, 0.2], "log2FoldChange": [2.0, -0.5], "baseMean": [9.0, 9.0]},
+        {"padj": [0.01, 0.2], "log2FoldChange": [2.0, -0.5], "baseMean": [9.5, 3.25]},
         index=["GENE1", "GENE2"],
     )
     adata = ad.AnnData(np.zeros((2, 2)))
