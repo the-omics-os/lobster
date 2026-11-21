@@ -91,7 +91,7 @@ def _step(operation, tool, template, parameters):
     )
 
 
-def _migrated_notebook(tmp_path, template, code):
+def _migrated_notebook(tmp_path, template, code, workspace="/old/ws"):
     """The export of a session an earlier version wrote: one plain step, then
     the custom step (step 2)."""
     ws = tmp_path / "ws"
@@ -112,9 +112,9 @@ def _migrated_notebook(tmp_path, template, code):
             code_template=template,
             imports=[],
             parameters=(
-                {"workspace_path": "/old/ws", "code": code}
+                {"workspace_path": workspace, "code": code}
                 if code is not None
-                else {"workspace_path": "/old/ws"}
+                else {"workspace_path": workspace}
             ),
             parameter_schema={},
             exportable=True,
@@ -227,3 +227,19 @@ def test_a_second_export_lists_each_omitted_step_once(tmp_path):
 
     assert exporter.omitted_custom_code == [2]
     assert OMITTED_NOTE in nbformat.read(path, as_version=4).cells[0].source
+
+
+def test_a_quote_in_the_old_workspace_path_is_shown_as_a_literal(tmp_path):
+    template = RECORDED_SETUPS[0] + "\n# User code\nprint(1)"
+    exporter, nb = _migrated_notebook(tmp_path, template, "print(1)", "/old/it's")
+
+    shown = next(c.source for c in nb.cells if "Not executed: custom code" in c.source)
+    assert 'WORKSPACE = Path("/old/it\'s")\n' in shown, shown
+
+
+@pytest.mark.parametrize("template", [None, 7], ids=["none", "int"])
+def test_a_record_whose_template_is_not_text_is_not_shown(tmp_path, template):
+    exporter, nb = _migrated_notebook(tmp_path, template, "print(1)")
+
+    assert any("Not shown: custom code" in c.source for c in nb.cells)
+    assert exporter.omitted_custom_code == [2]
