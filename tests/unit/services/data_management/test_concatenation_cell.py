@@ -100,3 +100,11 @@ def test_a_sample_name_stays_text_in_the_cell(name):
 )
 def test_the_cell_says_which_join_it_uses(join_type, comment):
     assert comment in _cell(["a", "b"], join_type)
+
+
+@pytest.mark.parametrize("sample_ids", [None, []])
+def test_without_sample_names_the_cell_numbers_the_samples(sample_ids):
+    """The template before this fix numbered the samples for an empty list too."""
+    keys = ast.unparse(_keys(_cell(sample_ids)))
+
+    assert keys == "[f'sample_{i}' for i in range(len(sample_adatas))]"
