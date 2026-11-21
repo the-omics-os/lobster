@@ -14,6 +14,7 @@ this notebook's result (it never opens the file).
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -231,8 +232,77 @@ LOADED = "/home/me/data/pbmc.h5ad"
 
 def test_the_load_cell_naming_where_the_session_loaded_from_is_admitted(tmp_path):
     """load_modality's cell opens the session's file read-only to print where it
-    came from; its object is never used. Admitted only as the exporter writes it."""
+    came from; its object is never used. Admitted only as the exporter writes it,
+    and only while that file is not on this machine (the session ran elsewhere)."""
+    assert not os.path.exists(LOADED)
     assert _refusal(tmp_path, _load_cell(LOADED)) is None
+
+
+IMPORT_TEXT = "so a file the notebook reads must be imported in the session"
+
+
+def _outside_file(tmp_path):
+    outside = tmp_path / "lab" / "pbmc.h5ad"
+    outside.parent.mkdir()
+    outside.write_bytes(b"not read")
+    return outside
+
+
+def test_a_load_cell_naming_a_file_on_this_machine_is_refused(tmp_path):
+    """The file the session loaded is here, outside the replay's folder: the cell
+    would open it, so the notebook is refused as any read of it is."""
+    outside = _outside_file(tmp_path)
+    reason = _refusal(tmp_path, _load_cell(str(outside)))
+    assert reason is not None and str(outside) in reason and IMPORT_TEXT in reason
+
+
+def test_a_load_cell_whose_link_leads_to_a_file_here_is_refused(tmp_path):
+    """Links are followed: a path in the replay's folder, or a missing one, that
+    leads to a file outside it is that file."""
+    outside = _outside_file(tmp_path)
+    link = tmp_path / "ws" / replay_commands.REPLAYS_DIR / "run" / "pbmc.h5ad"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside)
+    elsewhere = tmp_path / "links" / "pbmc.h5ad"
+    elsewhere.parent.mkdir()
+    elsewhere.symlink_to(outside)
+    for text in ("pbmc.h5ad", str(elsewhere)):
+        reason = _refusal(tmp_path, _load_cell(text))
+        assert reason is not None and IMPORT_TEXT in reason, (text, reason)
+
+
+def test_a_load_cell_that_climbs_out_to_a_file_here_is_refused(tmp_path):
+    (tmp_path / "ws").mkdir()
+    (tmp_path / "ws" / "pbmc.h5ad").write_bytes(b"not read")
+    outside = _outside_file(tmp_path)
+    reason = _refusal(tmp_path, _load_cell("../../pbmc.h5ad"))
+    assert reason is not None and "pbmc.h5ad in the workspace" in reason, reason
+    reason = _refusal(tmp_path, _load_cell(f"../../../lab/{outside.name}"))
+    assert reason is not None and IMPORT_TEXT in reason, reason
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["/app/workspace/data/pbmc.h5ad", "pbmc.h5ad", "data/pbmc.h5ad",
+     "../../../nowhere/pbmc.h5ad", "~/nowhere/pbmc.h5ad"],
+)  # fmt: skip
+def test_a_load_cell_naming_a_file_not_here_is_admitted(tmp_path, text):
+    """A path from the machine the session ran on (a Cloud worker), or one in the
+    replay's own folder: the cell only prints that the file is not present."""
+    assert _refusal(tmp_path, _load_cell(text)) is None
+
+
+def test_a_load_cell_naming_a_file_the_replay_may_read_is_admitted(tmp_path):
+    """A file in the replay's own folder, or the replay's input, is read as any
+    cell may read it."""
+    inside = tmp_path / "ws" / replay_commands.REPLAYS_DIR / "run" / "pbmc.h5ad"
+    inside.parent.mkdir(parents=True)
+    inside.write_bytes(b"in the folder")
+    assert _refusal(tmp_path, _load_cell("pbmc.h5ad")) is None
+    outside = _outside_file(tmp_path)
+    notebook = _notebook(tmp_path, _load_cell(str(outside)))
+    workspace = (tmp_path / "ws").resolve()
+    assert replay_commands._path_refusal(notebook, workspace, outside) is None
 
 
 @pytest.mark.parametrize(
@@ -356,11 +426,48 @@ def test_an_extract_and_export_to_the_sessions_exports_is_refused(
 
 
 @needs_kernel
-def test_a_session_that_loaded_its_file_through_the_service_still_replays(
+def test_a_session_whose_loaded_file_is_here_is_refused_and_never_opened(
     tmp_path, monkeypatch
 ):
     """The replay notebook carries load_modality's cell with the session's
-    absolute path; replayed on a copy of the input elsewhere, it still runs."""
+    absolute path. On the machine that file is on, the replay refuses before any
+    kernel starts: the file, made unreadable, is not opened."""
+    notebook, source, dm_workspace = _service_loaded(tmp_path, monkeypatch)
+    copy = tmp_path / "elsewhere" / "bulk.h5ad"
+    copy.parent.mkdir()
+    shutil.copy(source, copy)
+    before = _state(source)
+    source.chmod(0)
+    try:
+        code, out = _verify(notebook, copy, dm_workspace)
+    finally:
+        source.chmod(0o644)
+    assert code == 4 and out["verdict"] == "REFUSED", out
+    reason = out["report"]["refusal"]["reason"]
+    assert str(source) in reason and IMPORT_TEXT in reason, reason
+    assert _nothing_ran(dm_workspace) and _state(source) == before
+
+
+@needs_kernel
+def test_a_session_that_loaded_its_file_through_the_service_still_replays(
+    tmp_path, monkeypatch
+):
+    """Replayed where the session's file is not (another machine), on a copy of
+    the input, the notebook still runs."""
+    notebook, source, workspace = _service_loaded(tmp_path, monkeypatch)
+    copy = tmp_path / "elsewhere" / "bulk.h5ad"
+    copy.parent.mkdir()
+    shutil.move(source, copy)
+    code, out = _verify(notebook, copy, workspace)
+    assert out["verdict"] in ("MATCH", "MISMATCH"), out  # run, not refused
+    # shortcut: the service load adds uns/dataset_id and uns/dataset_type that the
+    # notebook's read of the input does not; a replay-fidelity gap of its own.
+    diffs = [d for slot in out["report"]["slots"] for d in slot.get("diffs", [])]
+    assert all("/uns/dataset_" in d for d in diffs), diffs
+
+
+def _service_loaded(tmp_path, monkeypatch):
+    """A replay notebook of a session that loaded its input through the service."""
     from lobster.services.data_management.modality_management_service import (
         ModalityManagementService,
     )
@@ -383,15 +490,7 @@ def test_a_session_that_loaded_its_file_through_the_service_still_replays(
     dm.save_modality("bulk_filtered", "bulk_filtered.h5ad")
     notebook = dm.export_notebook("nb", "S", filter_strategy="replay")
     assert f"_src = Path({str(source)!r})" in notebook.read_text()
-    copy = tmp_path / "elsewhere" / "bulk.h5ad"
-    copy.parent.mkdir()
-    shutil.copy(source, copy)
-    code, out = _verify(notebook, copy, dm.workspace_path)
-    assert out["verdict"] in ("MATCH", "MISMATCH"), out  # run, not refused
-    # shortcut: the service load adds uns/dataset_id and uns/dataset_type that the
-    # notebook's read of the input does not; a replay-fidelity gap of its own.
-    diffs = [d for slot in out["report"]["slots"] for d in slot.get("diffs", [])]
-    assert all("/uns/dataset_" in d for d in diffs), diffs
+    return notebook, source, dm.workspace_path
 
 
 @needs_kernel
