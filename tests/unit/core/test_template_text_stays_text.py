@@ -72,16 +72,6 @@ KNOWN = {
         "raw_name",
     ): "the name Lobster gave the raw file it saved",
     (
-        "lobster/services/data_management/concatenation_service.py",
-        "_create_concatenation_ir",
-        "join_type",
-    ): "'inner' or 'outer', chosen in Lobster; it renders as a bare name, a separate fix",
-    (
-        "lobster/services/data_management/concatenation_service.py",
-        "_create_concatenation_ir",
-        "sample_ids_str",
-    ): "str() of a list, or a fixed expression",
-    (
         "lobster/services/execution/custom_code_execution_service.py",
         "_create_ir",
         "code",
