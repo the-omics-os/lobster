@@ -656,6 +656,21 @@ def _python_of(source: str) -> Optional[Any]:
         return None
 
 
+def _load_sources(tree: Any) -> List[Any]:
+    """The values the cell gives ``_src``, as the load cell writes it."""
+    import ast
+
+    return [
+        node.value.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and [getattr(t, "id", None) for t in node.targets] == ["_src"]
+        and isinstance(node.value, ast.Call)
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Constant)
+    ]
+
+
 def _is_load_cell(source: str, tree: Any) -> bool:
     """The cell is exactly the exporter's load_modality cell: it opens the
     session's file read-only, only to print where it came from, into ``_loaded``.
@@ -669,15 +684,7 @@ def _is_load_cell(source: str, tree: Any) -> bool:
     used = re.fullmatch(
         r"# (.+) adapter \(dataset_type=(.+)\)\.", lines[2] if len(lines) > 2 else ""
     )
-    paths = [
-        node.value.args[0].value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and [getattr(t, "id", None) for t in node.targets] == ["_src"]
-        and isinstance(node.value, ast.Call)
-        and len(node.value.args) == 1
-        and isinstance(node.value.args[0], ast.Constant)
-    ]
+    paths = _load_sources(tree)
     if not (head and used and len(paths) == 1):
         return False
     try:
@@ -993,6 +1000,16 @@ def _path_refusal(
                 "Code cell {n} is an older or changed copy of the cell that serves "
                 "custom code its reads. Re-export the notebook; it was not run."
             ).format(n=number)
+        if number in loads:  # it opens the session's file when that file is here
+            (text,) = _load_sources(tree)
+            try:  # the path as the kernel opens it, from the replay's folder
+                real = Path(os.path.realpath(run_folder / text))
+                here = os.path.exists(real)
+            except (OSError, ValueError):  # no file the kernel can open either
+                real, here = run_folder, False
+            inside = real == run_folder or run_folder in real.parents
+            if here and not inside and real != bound:
+                return _outside_reason(number, real, text, workspace)
         magic = _ipython_use(tree)
         if magic is not None:
             return h(
@@ -1038,17 +1055,22 @@ def _path_refusal(
             real = Path(os.path.realpath(where))
             if real == bound:
                 continue  # the file the replay is told to read
-            if real == workspace or workspace in real.parents:
-                return h(
-                    "Code cell {n} reads or writes {path} in the workspace; a replay "
-                    "uses only its own folder. The notebook was not run."
-                ).format(n=number, path=real.relative_to(workspace).as_posix())
-            return h(
-                "Code cell {n} uses the path {path}, outside this replay's folder; a "
-                "replay reads and writes only its own folder, so a file the notebook "
-                "reads must be imported in the session. The notebook was not run."
-            ).format(n=number, path=shown)
+            return _outside_reason(number, real, shown, workspace)
     return None
+
+
+def _outside_reason(number: int, real: Path, shown: str, workspace: Path) -> str:
+    """Why a cell naming *real* (written as *shown*) is not run."""
+    if real == workspace or workspace in real.parents:
+        return h(
+            "Code cell {n} reads or writes {path} in the workspace; a replay "
+            "uses only its own folder. The notebook was not run."
+        ).format(n=number, path=real.relative_to(workspace).as_posix())
+    return h(
+        "Code cell {n} uses the path {path}, outside this replay's folder; a "
+        "replay reads and writes only its own folder, so a file the notebook "
+        "reads must be imported in the session. The notebook was not run."
+    ).format(n=number, path=shown)
 
 
 # The exporter's cell for custom code in a record of a form Lobster did not write
