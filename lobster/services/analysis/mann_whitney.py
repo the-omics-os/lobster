@@ -30,10 +30,11 @@ _BLOCK = 2**22
 
 
 @functools.lru_cache(maxsize=4)
-def _members(n: int, n_x: int) -> np.ndarray:
-    """The samples of the first group, one row per split: at most
-    MANN_WHITNEY_EXACT_MAX_SPLITS x ``n_x`` values, kept for the next call."""
-    members = np.array(list(itertools.combinations(range(n), n_x)))
+def _members(n: int, k: int) -> np.ndarray:
+    """The samples of the smaller group, one row per split of ``n`` into ``k``
+    and the rest: at most MANN_WHITNEY_EXACT_MAX_SPLITS x 8 values, kept for the
+    next call."""
+    members = np.array(list(itertools.combinations(range(n), k)))
     members.flags.writeable = False  # shared by every later call
     return members
 
@@ -41,9 +42,11 @@ def _members(n: int, n_x: int) -> np.ndarray:
 def _split_matrix(n: int, n_x: int) -> np.ndarray:
     """One row per split of ``n`` samples into ``n_x`` and the rest: 1 where a
     sample is in the first group."""
-    members = _members(n, n_x)
-    splits = np.zeros((len(members), n))
-    splits[np.arange(len(members))[:, None], members] = 1
+    k = min(n_x, n - n_x)
+    members = _members(n, k)
+    # the rows list the smaller group, so a split of the larger one is its complement
+    splits = np.full((len(members), n), float(k < n_x))
+    splits[np.arange(len(members))[:, None], members] = float(k == n_x)
     return splits
 
 
