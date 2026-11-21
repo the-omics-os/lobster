@@ -471,6 +471,26 @@ _EXPORT_CELLS = (
     )
 )
 _EXPORT_WRITERS = frozenset({"to_csv", "to_excel"})
+# Calls that write or remove a file at a path given to them (pandas, anndata,
+# numpy, matplotlib, json, pickle, pathlib); a cell holding one may not name the
+# replay's input. shortcut: a writer not listed here (Path.rename, a renamed
+# module) is seen only by the check after the run that the input is unchanged.
+_WRITE_CALLS = frozenset(
+    {"to_csv", "to_excel", "to_parquet", "to_json", "to_pickle", "to_hdf"}
+    | {"to_feather", "to_stata", "to_html", "to_latex", "to_markdown", "to_xml"}
+    | {"to_orc", "to_sql", "to_netcdf", "to_zarr", "tofile", "write", "writelines"}
+    | {"write_h5ad", "write_h5mu", "write_csvs", "write_loom", "write_zarr"}
+    | {"write_text", "write_bytes", "write_image", "write_html", "save", "savez"}
+    | {"savez_compressed", "savetxt", "savefig", "dump", "touch", "unlink"}
+    | {"symlink_to", "hardlink_to", "chmod", "truncate"}
+)
+# os functions that change a file; every shutil function but these three does
+_OS_WRITES = frozenset(
+    {"remove", "unlink", "rename", "replace", "rmdir", "removedirs", "symlink"}
+    | {"link", "chmod", "chown", "truncate", "utime", "open", "fdopen", "mkfifo"}
+)
+_SHUTIL_READS = frozenset({"which", "disk_usage", "get_terminal_size"})
+_READ_MODE = re.compile(r"[rbtU]+")
 # Known ways a cell runs a command or code it builds. Not a complete barrier.
 _BUILT_CODE = frozenset({"eval", "exec", "compile", "__import__", "breakpoint"})
 _COMMAND_MODULES = frozenset({"subprocess", "pty", "ctypes", "importlib", "runpy"})
@@ -558,6 +578,46 @@ def _is_export_cell(tree: Any) -> bool:
             for node in ast.walk(tree)
         )
     )
+
+
+def _writes(tree: Any) -> bool:
+    """The cell holds a call that writes or removes a file: a known writer, or an
+    opener whose mode is not a written read-only one."""
+    import ast
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = getattr(func, "id", None) or getattr(func, "attr", "")
+        owner = (
+            func.value.id
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+            else None
+        )
+        if name in _WRITE_CALLS or (owner == "os" and name in _OS_WRITES):
+            return True
+        if owner == "shutil" and name not in _SHUTIL_READS:
+            return True
+        if name in ("open", "File"):
+            modes = [k.value for k in node.keywords if k.arg == "mode"]
+            if not modes:  # Path(...).open(mode); open(path, mode), File(path, mode)
+                method = name == "open" and isinstance(func, ast.Attribute)
+                at = 0 if method and owner not in ("io", "codecs") else 1
+                modes = node.args[at : at + 1]
+            if any(
+                not (isinstance(mode, ast.Constant) and isinstance(mode.value, str))
+                or not _READ_MODE.fullmatch(mode.value)
+                for mode in modes
+            ):
+                return True
+        if any(  # anndata opens a backed file for writing unless 'r'
+            k.arg == "backed"
+            and not (isinstance(k.value, ast.Constant) and k.value.value in ("r", None))
+            for k in node.keywords
+        ):
+            return True
+    return False
 
 
 def _runs_commands(tree: Any) -> Optional[str]:
@@ -933,7 +993,8 @@ def _path_refusal(
     folder (absolute, or relative and climbing out of it); None when none does.
 
     The replay's folder is made for the run, so no path written in the notebook
-    can be in it; the one file outside it a cell may name is the replay's input.
+    can be in it; the one file outside it a cell may name is the replay's input,
+    and only a cell that writes no file.
     Paths the code builds while it runs are not seen here."""
     workspace = Path(os.path.realpath(workspace))
     bound = Path(os.path.realpath(input_data)) if input_data is not None else None
@@ -1031,6 +1092,7 @@ def _path_refusal(
                     "Code cell {n} runs a command or code it builds ({call}); the "
                     "notebook was not run."
                 ).format(n=number, call=call)
+        writes: Optional[bool] = None  # whether the cell writes files, when asked
         for text in _path_texts(
             tree,
             parameters=number == parameters,
@@ -1053,8 +1115,15 @@ def _path_refusal(
             else:
                 continue
             real = Path(os.path.realpath(where))
+            if real == bound and writes is None:
+                writes = _writes(tree)  # an export cell's writer is one
+            if real == bound and writes:
+                return h(
+                    "Code cell {n} names the replay's input file {name} and writes "
+                    "files, so it could change that file; the notebook was not run."
+                ).format(n=number, name=bound.name)
             if real == bound:
-                continue  # the file the replay is told to read
+                continue  # the file the replay is told to read, only read
             return _outside_reason(number, real, shown, workspace)
     return None
 

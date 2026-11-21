@@ -2123,6 +2123,7 @@
   "Code cell {n} reads or writes {path} in the workspace; a replay uses only its own folder. The notebook was not run.": "第 {n} 个代码单元格读取或写入工作区中的 {path}；replay 只使用自己的文件夹。notebook 未运行。",
   "Code cell {n} uses the path {path}, outside this replay's folder; a replay reads and writes only its own folder, so a file the notebook reads must be imported in the session. The notebook was not run.": "第 {n} 个代码单元格使用了路径 {path}，它在此次 replay 的文件夹之外；replay 只读写自己的文件夹，因此 notebook 读取的文件必须在会话中导入。notebook 未运行。",
   "Code cell {n} is not the code the export step writes; the notebook was not run.": "第 {n} 个代码单元格不是导出步骤生成的代码；notebook 未运行。",
+  "Code cell {n} names the replay's input file {name} and writes files, so it could change that file; the notebook was not run.": "第 {n} 个代码单元格指向 replay 的输入文件 {name}，并且会写入文件，因此可能改动该文件；notebook 未运行。",
   "Code cell {n} runs a command or code it builds ({call}); the notebook was not run.": "第 {n} 个代码单元格会运行命令或它自己构造的代码（{call}）；notebook 未运行。",
   "Code cell {n} is an older or changed copy of the cell that serves custom code its reads. Re-export the notebook; it was not run.": "第 {n} 个代码单元格是为自定义代码提供读取的单元格的旧版本或被修改的副本。请重新导出 notebook；它未运行。",
   "This notebook omits custom code Lobster did not write, so a replay cannot check it; it was not run.": "此 notebook 省略了并非 Lobster 所写的自定义代码，因此 replay 无法检查它；notebook 未运行。",
