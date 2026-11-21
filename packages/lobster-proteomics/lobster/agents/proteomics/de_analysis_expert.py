@@ -80,8 +80,8 @@ def _tested_text(stats: dict, label: str) -> str:
     if tested == total:
         return f"- {label}: {tested}\n"
     return (
-        f"- {label}: {tested} of {total} ({total - tested} with fewer than 2 "
-        "values in a compared group were not tested)\n"
+        f"- {label}: {tested} of {total}; not tested: {total - tested} (fewer "
+        "than 2 values in a compared group, or the test could not run)\n"
     )
 
 
