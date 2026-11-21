@@ -344,3 +344,39 @@ def test_the_reply_names_the_tie_heavy_genes(n, line):
     from lobster.agents.transcriptomics.de_analysis_expert import _tied_text
 
     assert _tied_text({"n_approximate_with_ties": n}) == line
+
+
+def test_the_de_reply_carries_the_tie_line(tmp_path, monkeypatch):
+    from .test_de_genes_tested_line import _run
+
+    _, reply = _run(tmp_path, monkeypatch, _detected_in_four(10, 10), "wilcoxon", False)
+
+    assert "Of the genes tested, 1 has many tied values (such as zeros)" in reply
+
+
+def test_a_gene_with_one_value_in_every_sample_is_not_flagged():
+    """It gets no p-value at all, so there is no approximation to flag."""
+    from lobster.services.analysis.mann_whitney import approximate_with_ties
+
+    x = np.zeros((20, 2))
+    x[:4, 1] = [3.0, 4.0, 5.0, 6.0]
+
+    assert list(approximate_with_ties(x[:10], x[10:])) == [False, True]
+
+
+@pytest.mark.parametrize("n_small", [1, 2])
+def test_a_group_of_one_or_two_with_midranks_gets_the_counted_p_value(n_small):
+    """Values 0 to 149 over 300 samples: most tie in twos or threes, so many
+    midranks are halves and many sums of two are close."""
+    rng = np.random.default_rng(9)
+    x = rng.integers(0, 150, size=(300, 8)).astype(np.float64)
+
+    _, p = mann_whitney(x[:n_small], x[n_small:])
+
+    ranks = scipy_stats.rankdata(x, axis=0)
+    for j in range(x.shape[1]):
+        sums = np.array([sum(c) for c in itertools.combinations(ranks[:, j], n_small)])
+        observed = ranks[:n_small, j].sum()
+        below = np.count_nonzero(sums <= observed + 1e-9)
+        above = np.count_nonzero(sums >= observed - 1e-9)
+        assert p[j] == pytest.approx(min(1.0, 2 * min(below, above) / len(sums)))
