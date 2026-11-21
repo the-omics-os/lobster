@@ -28,7 +28,7 @@ INJECTED = "csv(__import__('os').getcwd()) or results_df.to_csv"
 def _session(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     table = pd.DataFrame(
-        {"padj": [0.01, 0.2], "log2FoldChange": [2.0, -0.5], "baseMean": [9.5, 3.25]},
+        {"padj": [0.01, 0.2], "log2FoldChange": [2.0, -0.5], "baseMean": [95.5, 30.25]},
         index=["GENE1", "GENE2"],
     )
     adata = ad.AnnData(np.zeros((2, 2)))
@@ -90,3 +90,25 @@ def test_the_cell_never_renders_the_format_text(tmp_path, monkeypatch, tool):
 
     assert "getcwd" not in code
     assert "results_df.to_csv(" in code
+
+
+def test_a_filtered_export_cell_writes_the_filtered_rows(tmp_path, monkeypatch):
+    """The session exported the filtered table, its notebook cell the unfiltered one."""
+    dm, tools, table = _session(tmp_path, monkeypatch)
+    reply = tools["filter_de_results"].invoke(
+        {"modality_name": "de", "padj_threshold": 0.05, "lfc_threshold": 1.0}
+    )
+    adata = dm.modalities["de"]
+    filtered = adata.uns[f"filtered_{KEY}"]["results_df"]
+    assert list(filtered.index) == ["GENE1"], reply
+
+    tools["export_de_results"].invoke({"modality_name": "de", "filtered_only": True})
+    ir = dm.last_ir("export_de_results")
+    written = tmp_path / "replayed.csv"
+    exec(
+        "\n".join([*ir.imports, ir.render(output_path=str(written))]),
+        {"adata": adata},
+    )
+
+    assert list(pd.read_csv(written, index_col=0).index) == ["GENE1"]
+    assert ir.parameters["de_results_key"] == f"filtered_{KEY}"
