@@ -1532,7 +1532,7 @@ Please check:
                 library="pandas",
                 code_template=(
                     "adata = sc.read_csv({{ file_path | string | repr }})"
-                    "  # source={{ source }}"
+                    "  # source={{ source | repr }}"
                 ),
                 imports=["import scanpy as sc"],
                 parameters={
