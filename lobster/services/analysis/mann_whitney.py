@@ -79,12 +79,40 @@ def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
     return p
 
 
+def _pairs_at_most(values: np.ndarray, limit: int) -> int:
+    """How many pairs of the sorted ``values`` sum to at most ``limit``."""
+    partners = np.searchsorted(values, limit - values, side="right").sum()
+    return int(partners - np.count_nonzero(2 * values <= limit)) // 2
+
+
+def _small_group_p(ranks: np.ndarray, small: slice) -> np.ndarray:
+    """Two-sided exact p-value per column of the rank sum of the ``small`` rows,
+    one or two, over every draw of that many rows: counted from the sorted
+    ranks, with no split matrix. Ties are midranks, so twice a rank is an
+    integer and every sum is exact."""
+    n = len(ranks)
+    k = small.stop - small.start
+    total = n if k == 1 else n * (n - 1) // 2
+    p = np.full(ranks.shape[1], np.nan)
+    for j in np.flatnonzero(~np.isnan(ranks).any(axis=0)):
+        doubled = np.rint(2 * ranks[:, j]).astype(np.int64)
+        values, observed = np.sort(doubled), int(doubled[small].sum())
+        if k == 1:
+            below = np.count_nonzero(values <= observed)
+            above = np.count_nonzero(values >= observed)
+        else:
+            below = _pairs_at_most(values, observed)
+            above = _pairs_at_most(-values[::-1], -observed)
+        p[j] = min(1.0, 2 * min(below, above) / total)
+    return p
+
+
 def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     """Per column (gene): the tie-corrected z of ``x`` against ``y``, and the
     two-sided p-value. The p-value is exact, over every split of the samples
     (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them
-    and their matrix fits _EXACT_MAX_VALUES; otherwise, the normal approximation
-    of that z. A normal approximation without
+    and their matrix fits _EXACT_MAX_VALUES, or the smaller group has one or two
+    samples; otherwise, the normal approximation of that z. A normal approximation without
     tie correction gave p = 0.0495 to a complete separation at 3 v 3, where an
     exact test cannot go below 0.10. A column with a missing value has neither,
     and nor has a column of one value tied in every sample (z is 0 / 0)."""
@@ -101,6 +129,8 @@ def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     n_splits = math.comb(n, n_x)
     if n_splits <= MANN_WHITNEY_EXACT_MAX_SPLITS and n_splits * n <= _EXACT_MAX_VALUES:
         p = _exact_p(ranks, n_x, u)
+    elif min(n_x, n_y) <= 2:
+        p = _small_group_p(ranks, slice(0, n_x) if n_x <= n_y else slice(n_x, n))
     else:
         p = 2 * stats.norm.sf(np.abs(z))
     p[np.isnan(z)] = np.nan
