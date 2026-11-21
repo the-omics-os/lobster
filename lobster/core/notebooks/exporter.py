@@ -2152,6 +2152,14 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                     value_str = str(value)
                 doc_content += f"- `{key}`: {value_str}\n"
 
+        reads = self._ir_context(activity).get("reads_modalities")
+        if type(reads) is int and reads > 1:
+            note = h(
+                "Not replayed: this step reads {n} modalities, and a replay starts "
+                "from one input."
+            ).format(n=reads)
+            doc_content = f"{doc_content.rstrip()}\n\n*{note}*"
+
         return new_markdown_cell(doc_content)
 
     def _ir_to_code_cell(self, ir: AnalysisStep, validate: bool = True) -> NotebookNode:

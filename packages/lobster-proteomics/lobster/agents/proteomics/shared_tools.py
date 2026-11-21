@@ -2811,6 +2811,9 @@ for protein in common_proteins:
                     "method": method,
                 },
                 parameter_schema={},
+                # a replay starts from one input; no cell binds adata1 and adata2
+                execution_context={"reads_modalities": 2, "replay_incomplete": True},
+                replayable=False,
             )
 
             data_manager.log_tool_usage(

@@ -836,7 +836,11 @@ print(f"Concatenated {len(sample_adatas)} samples: {concatenated_adata.n_obs} ce
                 "n_samples": n_samples,
                 "join_strategy": join_type,
                 "batch_tracking": batch_key,
+                # a replay starts from one input; no cell binds sample_adatas
+                "reads_modalities": n_samples,
+                "replay_incomplete": True,
             },
+            replayable=False,
             validates_on_export=True,
             requires_validation=False,
         )
