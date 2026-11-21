@@ -171,3 +171,38 @@ def test_a_loop_over_proteins_of_one_group_size_builds_the_splits_once():
         mann_whitney(x[:8, j : j + 1], x[8:, j : j + 1])
 
     assert mann_whitney_module._splits.cache_info().misses == 1
+
+
+def test_a_group_of_one_against_thousands_builds_no_sample_by_sample_matrix():
+    """1 v 4,999 has only 5,000 splits, but its split matrix is 5,000 x 5,000
+    (200 MB), kept for the next call."""
+    x = np.random.default_rng(3).normal(size=(5_000, 1))
+    mann_whitney_module._splits.cache_clear()
+
+    tracemalloc.start()
+    try:
+        mann_whitney(x[:1], x[1:])
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    assert peak < 32 * 2**20, f"{peak / 2**20:.0f} MiB"
+
+
+@pytest.mark.parametrize("n, exact", [(2_048, True), (2_049, False)])
+def test_the_exact_test_runs_while_the_split_matrix_holds_2_22_values(
+    monkeypatch, n, exact
+):
+    """1 v 2,047: 2,048 splits x 2,048 samples is 2**22 values, still exact."""
+    called = []
+    real = mann_whitney_module._exact_p
+    monkeypatch.setattr(
+        mann_whitney_module,
+        "_exact_p",
+        lambda *args: called.append(1) or real(*args),
+    )
+    x = np.random.default_rng(4).normal(size=(n, 1))
+
+    mann_whitney(x[:1], x[1:])
+
+    assert bool(called) is exact
