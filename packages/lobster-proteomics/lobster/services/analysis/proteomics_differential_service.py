@@ -20,6 +20,7 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.analysis.mann_whitney import mann_whitney
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -924,9 +925,12 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             elif method == "welch_t_test":
                 statistic, p_value = stats.ttest_ind(group1, group2, equal_var=False)
             elif method == "mann_whitney":
-                statistic, p_value = stats.mannwhitneyu(
+                statistic = stats.mannwhitneyu(
                     group1, group2, alternative="two-sided"
-                )
+                ).statistic
+                # scipy's default approximates whenever a value ties
+                _, p = mann_whitney(group1[:, None], group2[:, None])
+                p_value = p[0]
             elif method == "limma_like":
                 # Simplified limma-like approach using moderated t-test
                 statistic, p_value = self._moderated_t_test(group1, group2)

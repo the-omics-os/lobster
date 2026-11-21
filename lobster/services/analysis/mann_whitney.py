@@ -45,7 +45,8 @@ def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them;
     above, the normal approximation of that z. A normal approximation without
     tie correction gave p = 0.0495 to a complete separation at 3 v 3, where an
-    exact test cannot go below 0.10. A column with a missing value has neither."""
+    exact test cannot go below 0.10. A column with a missing value has neither,
+    and nor has a column of one value tied in every sample (z is 0 / 0)."""
     from scipy import stats
 
     n_x, n_y = len(x), len(y)
@@ -60,5 +61,5 @@ def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
         p = _exact_p(ranks, n_x, u)
     else:
         p = 2 * stats.norm.sf(np.abs(z))
-    p[np.isnan(u)] = np.nan
+    p[np.isnan(z)] = np.nan
     return z, p

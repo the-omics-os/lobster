@@ -24,6 +24,7 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.analysis.mann_whitney import mann_whitney
 from lobster.services.analysis.pathway_enrichment_service import (
     PathwayEnrichmentError,
     PathwayEnrichmentService,
@@ -820,9 +821,12 @@ print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")"""
                     if test_method == "t_test":
                         statistic, p_value = stats.ttest_ind(g1_clean, g2_clean)
                     elif test_method == "mann_whitney":
-                        statistic, p_value = stats.mannwhitneyu(
+                        statistic = stats.mannwhitneyu(
                             g1_clean, g2_clean, alternative="two-sided"
-                        )
+                        ).statistic
+                        # scipy's default approximates whenever a value ties
+                        _, p = mann_whitney(g1_clean[:, None], g2_clean[:, None])
+                        p_value = p[0]
                     else:
                         continue
 
