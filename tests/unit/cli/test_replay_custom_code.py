@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.unit.cli.test_replay_commands import app, needs_kernel, runner
+from tests.unit.cli.test_replay_commands import _built, app, needs_kernel, runner
 
 te = pytest.importorskip("lobster.agents.transcriptomics.transcriptomics_expert")
 
@@ -198,7 +198,7 @@ def test_a_read_of_another_file_of_the_session_is_refused(tmp_path, monkeypatch)
     other = dm.data_dir / "earlier.h5ad"
     _x("e").write_h5ad(other)
     edited = _add_to_custom_code(
-        notebook, f"import anndata\ne = anndata.read_h5ad({str(other)!r})\n", tmp_path
+        notebook, f"import anndata\ne = anndata.read_h5ad({_built(other)})\n", tmp_path
     )
     out = _replay(dm, edited, source)
     assert out["verdict"] == "NOTEBOOK_FAILED", out
@@ -354,7 +354,7 @@ def test_a_write_into_the_sessions_exports_is_refused(tmp_path, monkeypatch):
         if cell["cell_type"] == "code" and "result = 1" in "".join(cell["source"]):
             cell["source"] = (
                 "".join(cell["source"])
-                + f"\nopen({str(exports / 'markers.csv')!r}, 'w').write('REPLAY')\n"
+                + f"\nopen({_built(exports / 'markers.csv')}, 'w').write('REPLAY')\n"
             )
     notebook.write_text(json.dumps(cells))
     out = _replay(dm, notebook, source)
@@ -428,7 +428,7 @@ def test_the_kernel_environment_never_names_the_sessions_workspace(
     check = (
         "import os, sys\n"
         "from pathlib import Path as _P\n"
-        f"_ws = {ws!r}\n"
+        f"_ws = {_built(ws)}\n"
         "_seen = [n for n in ('LOBSTER_WORKSPACE', 'PWD', 'OLDPWD', 'PYTHONPATH') "
         "if _ws in os.environ.get(n, '').split(os.pathsep)]\n"
         "assert not _seen, f'kernel env names the session workspace: {_seen}'\n"
@@ -445,7 +445,7 @@ def test_a_write_to_another_file_of_the_session_is_refused(tmp_path, monkeypatch
     workspace (here through ../.. from the replay folder) is counted."""
     dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
     (dm.workspace_path / "notes.txt").write_text("SESSION\n")
-    write = "open('../../notes.txt', 'w').write('REPLAY')\n"
+    write = f"open({_built('../../notes.txt')}, 'w').write('REPLAY')\n"
     out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
     assert out["verdict"] == "REFUSED", out
     assert out["report"]["refusal"]["reason"] == (
@@ -462,7 +462,7 @@ def test_a_same_size_rewrite_with_its_time_put_back_is_refused(tmp_path, monkeyp
     (dm.workspace_path / "notes.txt").write_text("SESSION\n")
     write = (
         "import os\n"
-        "_p = '../../notes.txt'\n"
+        f"_p = {_built('../../notes.txt')}\n"
         "_st = os.stat(_p)\n"
         "open(_p, 'w').write('REPLAY!\\n')\n"
         "os.utime(_p, ns=(_st.st_atime_ns, _st.st_mtime_ns))\n"
@@ -479,7 +479,7 @@ def test_the_session_file_changed_during_the_run_says_what_to_do(tmp_path, monke
     session_file = dm.workspace_path / ".session.json"
     if not session_file.exists():
         session_file.write_text("{}")
-    write = "open('../../.session.json', 'a').write(' ')\n"
+    write = f"open({_built('../../.session.json')}, 'a').write(' ')\n"
     out = _replay(dm, _add_to_custom_code(notebook, write, tmp_path), source)
     assert out["verdict"] == "REFUSED", out
     assert out["report"]["refusal"]["reason"].startswith(

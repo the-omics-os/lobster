@@ -45,6 +45,19 @@ app.command(cls=JsonUsageCommand)(replay_command)
 runner = CliRunner()
 
 
+def _built(path) -> str:
+    """Python that builds ``path`` while the cell runs. The replay refuses a path
+    written in the code before the run; these rows are about what the run itself
+    sees, so their paths are made at run time."""
+    parts = Path(path).parts
+    if parts and parts[0] == os.sep:
+        return (
+            f"__import__('os').sep + __import__('os').path.join(*{list(parts[1:])!r})"
+        )
+    words = ("__import__('os').pardir" if p == ".." else repr(p) for p in parts)
+    return f"__import__('os').path.join({', '.join(words)})"
+
+
 def _kernel_installed() -> bool:
     try:
         from jupyter_client.kernelspec import KernelSpecManager
@@ -704,11 +717,11 @@ def _invariant_case(ws, case):
         return TWO_OUTPUTS
     if case == "wrote to data/":
         return _writing(
-            f'Path({str(ws / "data" / "new.txt")!r}).write_text("x")\n' + COPY
+            f'Path({_built(ws / "data" / "new.txt")}).write_text("x")\n' + COPY
         )
     if case == "wrote to its input":
         return _writing(
-            f'Path({str(ws.parent / "input.h5ad")!r}).write_bytes(b"changed")\n'
+            f'Path({_built(ws.parent / "input.h5ad")}).write_bytes(b"changed")\n'
         )
     raise AssertionError(case)
 
@@ -777,9 +790,9 @@ def test_a_saved_file_the_export_record_has_no_hash_for_is_not_compared(ws):
 def test_a_notebook_that_changes_what_it_only_reads_is_refused_and_says_what(ws, where):
     target = (ws / where).resolve()
     if where.endswith("pbmc.h5ad"):
-        body = _writing(f"Path({str(target)!r}).write_bytes(b'x')\n")
+        body = _writing(f"Path({_built(target)}).write_bytes(b'x')\n")
     else:
-        body = _writing(f"Path({str(target)!r}).write_text('x')\n")
+        body = _writing(f"Path({_built(target)}).write_text('x')\n")
     result = _verify(ws, body)
     assert result.exit_code == 4, result.output
     reason = _report(ws).refusal.reason
@@ -792,12 +805,12 @@ def test_a_notebook_that_changes_what_it_only_reads_is_refused_and_says_what(ws,
 @needs_kernel
 def test_a_file_removed_from_data_or_a_notebook_that_edits_itself_is_refused(ws):
     nb = ws / "notebooks" / "nb.ipynb"
-    body = _writing(f"Path({str(ws / 'data' / 'pbmc.h5ad')!r}).unlink()\n" + COPY)
+    body = _writing(f"Path({_built(ws / 'data' / 'pbmc.h5ad')}).unlink()\n" + COPY)
     result = _verify(ws, body, notebook=_notebook(nb, body))
     assert result.exit_code == 4 and "data/pbmc.h5ad" in _report(ws).refusal.reason
     # the notebook's own file
     other = ws / "notebooks" / "me.ipynb"
-    body = _writing(f"Path({str(other)!r}).write_text('{{}}')\n")
+    body = _writing(f"Path({_built(other)}).write_text('{{}}')\n")
     result = _verify(ws, body, notebook=_notebook(other, body))
     assert result.exit_code == 4
     reason = json.loads(result.stdout)["report"]["refusal"]["reason"]
@@ -808,7 +821,7 @@ def test_a_file_removed_from_data_or_a_notebook_that_edits_itself_is_refused(ws)
 def test_a_notebook_that_crashes_after_changing_data_is_refused_not_failed(ws):
     target = ws / "data" / "new.txt"
     result = _verify(
-        ws, _writing(f"Path({str(target)!r}).write_text('x')\nraise SystemExit(1)\n")
+        ws, _writing(f"Path({_built(target)}).write_text('x')\nraise SystemExit(1)\n")
     )
     assert result.exit_code == 4, result.output
 
@@ -1219,8 +1232,8 @@ def test_the_registered_command_has_the_json_usage_behaviour():
 def test_a_data_file_written_anywhere_in_the_workspace_is_refused(ws, where):
     target = ws / where
     body = _writing(
-        f"Path({str(target.parent)!r}).mkdir(parents=True, exist_ok=True)\n"
-        f"Path({str(target)!r}).write_bytes(b'x')\n" + COPY
+        f"Path({_built(target.parent)}).mkdir(parents=True, exist_ok=True)\n"
+        f"Path({_built(target)}).write_bytes(b'x')\n" + COPY
     )
     result = _verify(ws, body)
     out = json.loads(result.stdout)
@@ -1232,7 +1245,7 @@ def test_a_data_file_written_anywhere_in_the_workspace_is_refused(ws, where):
 def test_a_data_file_changed_in_the_workspace_root_is_refused(ws):
     root_file = ws / "other.h5ad"
     root_file.write_bytes(b"before")
-    body = _writing(f"Path({str(root_file)!r}).write_bytes(b'after')\n" + COPY)
+    body = _writing(f"Path({_built(root_file)}).write_bytes(b'after')\n" + COPY)
     result = _verify(ws, body)
     assert result.exit_code == 4
     assert "other.h5ad" in json.loads(result.stdout)["report"]["refusal"]["reason"]
@@ -1337,7 +1350,7 @@ def test_a_data_folder_that_is_a_symlink_is_watched(tmp_path, monkeypatch):
         nbformat.v4.new_code_cell(
             "import anndata, numpy\n"
             "anndata.AnnData(numpy.zeros((2, 2), 'float32'))"
-            ".write_h5ad('../../data/other_saved.h5ad')"
+            f".write_h5ad({_built('../../data/other_saved.h5ad')})"
         )
     )
     nbformat.write(nb, notebook)
