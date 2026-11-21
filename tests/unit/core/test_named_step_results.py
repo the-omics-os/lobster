@@ -67,3 +67,54 @@ def test_the_result_variable_is_bound_to_adata_after_its_step():
 )
 def test_no_binding_without_a_stored_result_in_a_variable(activity):
     assert NotebookExporter._result_binding(activity) is None
+
+
+def _unrecorded(source, var, made, parent="same"):
+    """A step whose IR records no input: the tool named it by modality_name."""
+    activity = _step(source, var)
+    activity["inputs"] = []
+    activity["stored_modalities"] = [
+        {"name": made, "parent": source if parent == "same" else parent}
+    ]
+    return activity
+
+
+def test_a_result_of_a_step_with_no_recorded_input_starts_from_its_parent():
+    """The reported case: QC on X records no input; a later step on X must start from
+    the loaded X, not from the QC result adata now holds."""
+    steps = [
+        _unrecorded("X", "adata_qc", "X_qc"),
+        {"inputs": [{"name": "X", "ir_name": "adata", "resolved": True}],
+         "outputs": [{"name": "X_norm", "ir_name": "adata", "resolved": True}],
+         "parameters": {}},
+    ]  # fmt: skip
+    keep, rebind, _, _, _ = NotebookExporter._lineage(steps, [])
+    assert rebind == {1: "X"}
+    assert keep == {-1: ["X"]}
+
+
+def test_a_custom_step_on_the_parent_of_such_a_result_reads_it():
+    steps = [
+        _unrecorded("X", "adata_qc", "X_qc"),
+        {"inputs": [], "outputs": [], "parameters": {}},
+    ]
+    _, _, _, plans, _ = NotebookExporter._lineage(steps, [], {1: ("X", ["X"], None)})
+    assert plans[1]["X"] != "missing", plans
+
+
+def test_no_binding_when_the_stored_result_names_no_parent():
+    assert (
+        NotebookExporter._result_binding(
+            _unrecorded("X", "adata_qc", "X_qc", parent=None)
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("kind", ["execute_custom_code", "custom_code_execution"])
+def test_a_custom_code_step_is_never_bound(kind):
+    """Its cell is the custom cell, or markdown when it is not run: the custom
+    path keeps its names, never a binding."""
+    activity = _step("pr", "adata_x", "pr_x")
+    activity["type"] = kind
+    assert NotebookExporter._result_binding(activity) is None
