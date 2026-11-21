@@ -21,6 +21,7 @@ import nbformat
 import pytest
 
 from lobster.cli_internal.commands.light import replay_commands
+from lobster.core.notebooks.exporter import CUSTOM_READS_HELPER
 from tests.unit.cli.test_replay_commands import app, needs_kernel, runner
 
 pytestmark = pytest.mark.unit
@@ -46,6 +47,25 @@ def _refusal(tmp_path, *cells, parameters=None):
     return replay_commands._path_refusal(notebook, workspace.resolve())
 
 
+CUSTOM_HEAD = (
+    "# Workspace setup (a replay runs in its own folder)\n"
+    "from pathlib import Path\nimport sys\n\n"
+    "WORKSPACE = Path(workspace_path)\nsys.path.append(str(WORKSPACE))\n\n"
+    "OUTPUT_DIR = WORKSPACE / 'exports'\n"
+    "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n"
+    "(WORKSPACE / 'data').mkdir(exist_ok=True)\n"
+    "_lobster_reads(1, '/home/me/session_ws', {'x': adata}, [], runs_on=None)\n\n"
+    "_lobster_held, adata = adata, (adata.copy() if adata is not None else None)\n\n"
+    "# User code\n"
+)
+CUSTOM_TAIL = "\n_lobster_reads_done()\nadata = _lobster_held\n"
+
+
+def _custom_refusal(tmp_path, *cells):
+    """The refusal for cells after the exporter's helper cell (cell 1)."""
+    return _refusal(tmp_path, CUSTOM_READS_HELPER, *cells)
+
+
 OUTSIDE = "/srv/lab/raw/counts.csv"
 
 
@@ -59,9 +79,8 @@ OUTSIDE = "/srv/lab/raw/counts.csv"
         "n = 'counts'\np = f'/srv/lab/raw/{n}.csv'\n",
         "p = 'C:\\\\lab\\\\raw\\\\counts.csv'\n",
         "p = '~/lab/counts.csv'\n",
-        "!cp /srv/lab/raw/counts.csv here.csv\n",
     ],
-    ids=["read", "Path", "open", "join", "f-string", "windows", "home", "shell"],
+    ids=["read", "Path", "open", "join", "f-string", "windows", "home"],
 )
 def test_a_path_outside_the_replay_is_refused_and_named(tmp_path, code):
     reason = _refusal(tmp_path, "x = 1\n", code)
@@ -69,6 +88,18 @@ def test_a_path_outside_the_replay_is_refused_and_named(tmp_path, code):
     assert reason.startswith("Code cell 2 uses the path "), reason
     assert "outside this replay's folder" in reason
     assert reason.endswith("The notebook was not run."), reason
+
+
+def test_a_path_in_a_custom_cells_shell_command_is_refused(tmp_path):
+    """Custom code may run commands (the user's code); the paths it names are
+    still counted, word by word."""
+    command = (
+        "import subprocess\n"
+        "subprocess.run('cp /srv/lab/raw/counts.csv here.csv', shell=True)\n"
+    )
+    reason = _custom_refusal(tmp_path, CUSTOM_HEAD + command + CUSTOM_TAIL)
+    assert reason is not None
+    assert reason.startswith("Code cell 2 uses the path /srv/lab/raw/counts.csv")
 
 
 def test_a_path_in_the_workspace_is_named_from_the_workspace(tmp_path):
@@ -134,17 +165,14 @@ def test_the_custom_cell_prelude_and_typed_reads_of_its_modalities_are_admitted(
     """The session's workspace is the prelude's argument; a typed path to a
     modality the cell reads is served this notebook's result."""
     ws = "/home/me/session_ws"
-    cell = (
-        f"_lobster_reads(1, {ws!r}, {{'x_norm': adata}}, ['ref'], runs_on=None)\n"
+    cell = CUSTOM_HEAD.replace("{'x': adata}, []", "{'x_norm': adata}, ['ref']") + (
         "import anndata, h5py, scanpy as sc\n"
         f"a = anndata.read_h5ad({ws + '/data/x_norm.h5ad'!r})\n"
         f"b = sc.read({ws + '/modalities/x_norm.h5ad'!r})\n"
         f"c = h5py.File({ws + '/data/x_norm.h5ad'!r}, 'r')\n"
         "d = sc.read_h5ad('/tmp/workspace/data/ref.h5ad')\n"
     )
-    from lobster.core.notebooks.exporter import CUSTOM_READS_HELPER
-
-    assert _refusal(tmp_path, CUSTOM_READS_HELPER, cell) is None
+    assert _custom_refusal(tmp_path, cell) is None
 
 
 def test_the_check_reads_the_code_not_its_text(tmp_path):
@@ -166,12 +194,15 @@ def test_the_check_reads_the_code_not_its_text(tmp_path):
 )
 def test_a_typed_path_the_prelude_does_not_serve_is_refused(tmp_path, use):
     ws = "/home/me/session_ws"
-    cell = (
-        f"_lobster_reads(1, {ws!r}, {{'x_norm': adata}}, [], runs_on=None)\n"
+    cell = CUSTOM_HEAD.replace("{'x': adata}", "{'x_norm': adata}") + (
         "import anndata, h5py\n"
         + use.format(p=ws + "/data/x_norm.h5ad", other=ws + "/data/earlier.h5ad")
     )
-    assert _refusal(tmp_path, cell) is not None
+    served = CUSTOM_HEAD.replace("{'x': adata}", "{'x_norm': adata}") + (
+        f"import anndata\na = anndata.read_h5ad({ws + '/data/x_norm.h5ad'!r})\n"
+    )
+    assert _custom_refusal(tmp_path, served) is None  # the same cell, as served
+    assert _custom_refusal(tmp_path, cell) is not None
 
 
 def test_the_replays_own_input_may_be_named(tmp_path):
@@ -487,6 +518,23 @@ def test_an_export_cell_as_its_step_writes_it_is_admitted(tmp_path, cell):
     assert _refusal(tmp_path, cell) is None
 
 
+def test_other_cells_that_use_results_df_are_not_export_cells(tmp_path):
+    """The pathway templates keep their table in results_df too."""
+    pathway = (
+        "results_df = enr.results\n"
+        "significant = results_df[results_df['Adjusted P-value'] < 0.05]\n"
+        "summary = {'results': results_df.to_dict('records')}\n"
+    )
+    assert _refusal(tmp_path, pathway) is None
+    # filter_de_results opens like an export and writes nothing
+    filtered = (
+        "results_df = adata.uns['de_results_x']['results_df']\n"
+        "mask = (results_df['padj'] < 0.05) & (abs(results_df['log2FoldChange']) > 1.0)\n"
+        "filtered_df = results_df[mask]\n"
+    )
+    assert _refusal(tmp_path, filtered) is None
+
+
 @pytest.mark.parametrize(
     "cell",
     [
@@ -533,27 +581,13 @@ def test_a_cell_that_runs_commands_or_built_code_is_refused(tmp_path, code, call
     )
 
 
-CUSTOM_HEAD = (
-    "# Workspace setup (a replay runs in its own folder)\n"
-    "from pathlib import Path\nimport sys\n\n"
-    "WORKSPACE = Path(workspace_path)\nsys.path.append(str(WORKSPACE))\n\n"
-    "OUTPUT_DIR = WORKSPACE / 'exports'\n"
-    "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n"
-    "(WORKSPACE / 'data').mkdir(exist_ok=True)\n"
-    "_lobster_reads(1, '/home/me/session_ws', {'x': adata}, [], runs_on=None)\n\n"
-    "_lobster_held, adata = adata, (adata.copy() if adata is not None else None)\n\n"
-    "# User code\n"
-)
-CUSTOM_TAIL = "\n_lobster_reads_done()\nadata = _lobster_held\n"
-
-
 def test_a_custom_cell_is_the_users_code_and_not_checked_for_commands(tmp_path):
     """Custom code is the user's (the session ran it): only its paths are checked."""
     user = (
         "import subprocess\nresults_df = adata.obs\n"
         "results_df.to_csv(OUTPUT_DIR / 'obs.csv')\n"
     )
-    assert _refusal(tmp_path, CUSTOM_HEAD + user + CUSTOM_TAIL) is None
+    assert _custom_refusal(tmp_path, CUSTOM_HEAD + user + CUSTOM_TAIL) is None
 
 
 def test_a_cell_is_custom_by_its_setup_not_by_a_call_it_holds(tmp_path):
@@ -641,3 +675,135 @@ def test_the_new_reasons_have_their_chinese_lines():
             "Code cell {n} runs a command or code it builds ({call}); the notebook "
             "was not run." in phrases
         )
+        assert (
+            "Code cell {n} is an older or changed copy of the cell that serves "
+            "custom code its reads. Re-export the notebook; it was not run." in phrases
+        )
+
+
+# --- ways around the check (review probes) ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "open(b'/etc/passwd').read()\n",
+        "import pandas as pd\npd.read_csv('file:///etc/passwd')\n",
+        "import pandas as pd\npd.read_csv('FILE:/etc/passwd')\n",
+        "import pandas as pd\npd.read_csv('~root/.profile')\n",
+        "from pathlib import Path\nPath('/', 'etc', 'passwd').read_text()\n",
+        "from pathlib import Path\n(Path('/') / 'etc' / 'passwd').read_text()\n",
+        "import os\nopen(os.path.join('/', 'etc', 'passwd')).read()\n",
+        "open('/' + 'etc/passwd').read()\n",
+    ],
+    ids=["bytes", "file-url", "file-url-short", "user-home", "Path-root", "Path-div",
+         "join-root", "concat"],
+)  # fmt: skip
+def test_a_path_written_another_way_is_refused(tmp_path, code):
+    reason = _refusal(tmp_path, code)
+    assert reason is not None and "outside this replay's folder" in reason, reason
+
+
+def test_a_lone_slash_and_a_formula_are_not_paths(tmp_path):
+    cell = (
+        "name = '/'.join(['a', 'b']).split('/')[0]\n"
+        "design = '~condition'\nother = '~nobody_here_xyz/batch'\n"
+    )
+    assert _refusal(tmp_path, cell) is None
+
+
+@pytest.mark.parametrize(
+    "code, call",
+    [
+        ("%%time\nopen('/etc/passwd').read()\n", "%%time"),
+        ("%%capture out\nopen('/etc/passwd').read()\n", "%%capture"),
+        ("%time open('/etc/passwd').read()\n", "%time"),
+        ("ip = get_ipython()\nip.system('ls')\n", "get_ipython"),
+    ],
+    ids=["time", "capture", "line-time", "shell-object"],
+)
+def test_a_magic_is_refused_in_any_cell(tmp_path, code, call):
+    expected = f"runs a command or code it builds ({call})"
+    assert expected in _refusal(tmp_path, code)
+    if not code.startswith("%%"):  # a cell magic is one only as a cell's start
+        assert expected in _custom_refusal(tmp_path, CUSTOM_HEAD + code + CUSTOM_TAIL)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import subprocess\nsubprocess.run(['bash', '-c', 'cat /etc/passwd'])\n",
+        "import subprocess\nsubprocess.getstatusoutput('cat /etc/passwd')\n",
+        "import subprocess\nsubprocess.Popen(args=['cat', '/etc/passwd'])\n",
+    ],
+    ids=["argv", "getstatusoutput", "keyword"],
+)
+def test_a_command_is_refused_and_a_custom_cells_command_paths_are_counted(
+    tmp_path, code
+):
+    assert "(import subprocess)" in _refusal(tmp_path, code)
+    reason = _custom_refusal(tmp_path, CUSTOM_HEAD + code + CUSTOM_TAIL)
+    assert "uses the path /etc/passwd" in reason, reason
+
+
+def test_only_written_values_of_the_first_parameters_cell_are_replaced(tmp_path):
+    runs = "workspace_path = open('/etc/passwd').read()\n"
+    assert "/etc/passwd" in _refusal(tmp_path, "x = 1\n", parameters=runs)
+    workspace = tmp_path / "ws"
+    second = _notebook(tmp_path, "open(workspace_path + '/passwd')\n",
+                       parameters="input_data = 'x'\n")  # fmt: skip
+    cells = json.loads(second.read_text())
+    cells["cells"].insert(
+        1,
+        {"cell_type": "code", "source": "workspace_path = '/etc'\n", "outputs": [],
+         "metadata": {"tags": ["parameters"]}, "execution_count": None},
+    )  # fmt: skip
+    second.write_text(json.dumps(cells))
+    assert "/etc" in replay_commands._path_refusal(second, workspace.resolve())
+
+
+SERVED_READ = (
+    "import anndata\na = anndata.read_h5ad('/home/me/session_ws/data/x.h5ad')\n"
+)
+
+
+@pytest.mark.parametrize(
+    "cells",
+    [
+        # no helper cell: the reads are nobody's to serve
+        (CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL,),
+        # a helper of its own
+        ("def _lobster_reads(*a, **k):\n    pass\n",
+         CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL),
+        # the exporter's helper, then a cell that replaces part of it
+        (CUSTOM_READS_HELPER, "def _lobster_target(path):\n    return path\n",
+         CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL),
+        # or undoes its patch of the readers
+        (CUSTOM_READS_HELPER, "import anndata\nanndata.read_h5ad = _orig\n",
+         CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL),
+        # a changed copy of the helper
+        (CUSTOM_READS_HELPER.replace("resolve()", "absolute()", 1),
+         CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL),
+    ],
+    ids=["no-helper", "own-helper", "replaced", "unpatched", "changed-helper"],
+)  # fmt: skip
+def test_reads_are_served_only_by_the_exporters_own_helper(tmp_path, cells):
+    assert _refusal(tmp_path, *cells) is not None
+    assert _custom_refusal(tmp_path, CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL) is None
+
+
+def test_an_older_helper_cell_is_named(tmp_path):
+    older = CUSTOM_READS_HELPER.replace("resolve()", "absolute()", 1)
+    assert _refusal(tmp_path, older, CUSTOM_HEAD + SERVED_READ + CUSTOM_TAIL) == (
+        "Code cell 1 is an older or changed copy of the cell that serves custom "
+        "code its reads. Re-export the notebook; it was not run."
+    )
+
+
+def test_a_served_name_that_is_a_path_is_not_served(tmp_path):
+    head = CUSTOM_HEAD.replace("{'x': adata}", "{'../../../Users/me/secret': adata}")
+    read = (
+        "import anndata\n"
+        "a = anndata.read_h5ad('/tmp/workspace/data/../../../Users/me/secret.h5ad')\n"
+    )
+    assert _custom_refusal(tmp_path, head + read + CUSTOM_TAIL) is not None
