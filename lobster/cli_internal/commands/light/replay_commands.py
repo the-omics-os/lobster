@@ -603,7 +603,9 @@ def _runs_commands(tree: Any) -> Optional[str]:
 
 def _ipython_use(tree: Any) -> Optional[str]:
     """A magic or shell line in the cell (``%x``, ``%%x`` and ``!x`` run as
-    ``get_ipython()`` calls), or any other use of IPython, named; None if none.
+    ``get_ipython()`` calls), or any other use of a ``get_ipython`` name, named;
+    None if none. IPython reached another way (``from IPython import
+    get_ipython as g``, ``IPython.get_ipython()``) is not seen here.
 
     No exported cell has one and a session's code runs without IPython, so the
     code a magic is given is not read for paths: the cell is refused."""
