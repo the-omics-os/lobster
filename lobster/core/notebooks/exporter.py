@@ -1792,6 +1792,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 binding = cls._result_binding(activity)
                 if binding:  # the cell binds adata to the result it stored
                     results = [binding[0]]
+                    source = source or binding[2]
             if not held and source:  # the first step that says what it read
                 held, made_at[source] = {source}, position - 1
                 saved_made_at[source] = position - 1
@@ -1853,19 +1854,45 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         return keep, rebind, save_at, plans, keep_vars
 
     @classmethod
-    def _result_binding(cls, activity: Dict[str, Any]) -> Optional[Tuple[str, str]]:
-        """(stored name, variable) for a step whose code leaves its result in a
-        variable of its own (``adata_qc, stats, _ = service.x(adata)``) and whose
-        tool stored that result under a new name; None otherwise. Its cell then
-        binds ``adata`` to the variable. A step that changes ``adata`` in place,
-        or stored nothing it made, is left as it is: the session's input may
-        hold the same change, or the result was never a modality."""
+    def _result_binding(
+        cls, activity: Dict[str, Any]
+    ) -> Optional[Tuple[str, str, str]]:
+        """(stored name, variable, parent) for a step whose code leaves its result
+        in a variable of its own (``adata_qc, stats, _ = service.x(adata)``) and
+        whose tool stored that result under a new name; None otherwise. Its cell
+        then binds ``adata`` to the variable. A step that changes ``adata`` in
+        place, or stored nothing it made, is left as it is: the session's input
+        may hold the same change, or the result was never a modality.
+
+        The parent is the step's recorded input or, with none recorded, the parent
+        its stored result names (none named: not bound). Custom code is never
+        bound: its cell, or the markdown shown when it is not run, keeps its names
+        the custom way."""
+        ir = activity.get("ir") if isinstance(activity.get("ir"), dict) else {}
+        if (
+            activity.get("type") in cls._EXCLUDED_STEP_TYPES
+            or ir.get("operation") in cls._EXCLUDED_STEP_TYPES
+        ):
+            return None
         if cls._adata_names(activity.get("outputs")):
             return None
         source = cls._adata_name(activity.get("inputs"))
         named = cls._named_result(activity, source)
         variable = cls._result_var(activity)
-        return (named, variable) if named and variable != "adata" else None
+        if not named or variable == "adata":
+            return None
+        if source is None:
+            parents = {
+                entry.get("parent")
+                for entry in activity.get("stored_modalities") or []
+                if isinstance(entry, dict) and entry.get("name") == named
+            }
+            if len(parents) != 1:
+                return None
+            source = parents.pop()
+            if not isinstance(source, str) or not source:
+                return None
+        return named, variable, source
 
     @staticmethod
     def _named_result(activity: Dict[str, Any], source: Optional[str]) -> Optional[str]:

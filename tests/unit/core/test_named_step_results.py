@@ -54,7 +54,7 @@ def test_the_sessions_saves_of_stored_results_are_written_where_made():
 
 
 def test_the_result_variable_is_bound_to_adata_after_its_step():
-    assert NotebookExporter._result_binding(STEPS[0]) == ("pr_qa", "adata_qc")
+    assert NotebookExporter._result_binding(STEPS[0]) == ("pr_qa", "adata_qc", "pr")
 
 
 @pytest.mark.parametrize(
@@ -117,4 +117,10 @@ def test_a_custom_code_step_is_never_bound(kind):
     path keeps its names, never a binding."""
     activity = _step("pr", "adata_x", "pr_x")
     activity["type"] = kind
+    assert NotebookExporter._result_binding(activity) is None
+
+
+def test_no_binding_when_the_stored_result_names_two_parents():
+    activity = _unrecorded("X", "adata_qc", "X_qc")
+    activity["stored_modalities"].append({"name": "X_qc", "parent": "Y"})
     assert NotebookExporter._result_binding(activity) is None
