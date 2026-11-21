@@ -39,6 +39,65 @@ logger = get_logger(__name__)
 # =============================================================================
 
 
+def _quality_assessment_ir(
+    sample_threshold: float, protein_threshold: float, cv_threshold: float
+) -> AnalysisStep:
+    """IR for ``assess_proteomics_quality``: the four checks the tool runs, in order,
+    each on the result of the one before."""
+    thresholds = {
+        "sample_threshold": "Threshold for high missing value samples (fraction)",
+        "protein_threshold": "Threshold for high missing value proteins (fraction)",
+        "cv_threshold": "Coefficient of variation threshold (fraction)",
+    }
+    return AnalysisStep(
+        operation="proteomics.qc.assess_quality",
+        tool_name="assess_proteomics_quality",
+        description=(
+            "Assess proteomics quality: missing values, coefficient of variation, "
+            "contaminants and dynamic range"
+        ),
+        library="lobster.services.quality.proteomics_quality_service",
+        code_template="""# Quality assessment: the four checks the tool ran, in order
+from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
+
+service = ProteomicsQualityService()
+adata_qc, stats, _ = service.assess_missing_value_patterns(
+    adata,
+    sample_threshold={{ sample_threshold }},
+    protein_threshold={{ protein_threshold }}
+)
+adata_qc, _, _ = service.assess_coefficient_variation(
+    adata_qc, cv_threshold={{ cv_threshold }}
+)
+adata_qc, _, _ = service.detect_contaminants(adata_qc)
+adata_qc, _, _ = service.evaluate_dynamic_range(adata_qc)
+print(f"Missing: {stats['total_missing_percentage']:.1f}%")""",
+        imports=[
+            "from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService"
+        ],
+        parameters={
+            "sample_threshold": sample_threshold,
+            "protein_threshold": protein_threshold,
+            "cv_threshold": cv_threshold,
+        },
+        parameter_schema={
+            name: ParameterSpec(
+                param_type="float",
+                papermill_injectable=True,
+                default_value=value,
+                required=False,
+                description=text,
+            )
+            for (name, text), value in zip(
+                thresholds.items(),
+                (sample_threshold, protein_threshold, cv_threshold),
+            )
+        },
+        input_entities=["adata"],
+        output_entities=["adata_qc"],
+    )
+
+
 def create_shared_tools(
     data_manager: DataManagerV2,
     quality_service: ProteomicsQualityService,
@@ -468,7 +527,11 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                     "platform_type": platform_config.platform_type,
                 },
                 description=f"Quality assessment for {platform_config.display_name} data",
-                ir=missing_ir,  # Use the first IR as representative
+                ir=_quality_assessment_ir(
+                    sample_threshold=platform_config.max_missing_per_sample,
+                    protein_threshold=platform_config.max_missing_per_protein,
+                    cv_threshold=platform_config.cv_threshold / 100,
+                ),
                 agent=agent_name,
             )
 

@@ -79,7 +79,7 @@ adata_imputed, stats, _ = service.impute_missing_values(
     mnar_width={{ mnar_width }},
     mnar_downshift={{ mnar_downshift }}
 )
-print(f"Imputed {stats['original_missing_count']} values using {method}")""",
+print(f"Imputed {stats['original_missing_count']} values using", {{ method | repr }})""",
             imports=[
                 "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
             ],
@@ -160,7 +160,7 @@ adata_norm, stats, _ = service.normalize_intensities(
     pseudocount_strategy={{ pseudocount_strategy | tojson }},
     reference_sample={{ reference_sample | tojson }}
 )
-print(f"Normalized using {method}, log_transform={log_transform}")""",
+print("Normalized using", {{ method | repr }}, "log_transform:", {{ log_transform | repr }})""",
             imports=[
                 "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
             ],
@@ -230,7 +230,7 @@ adata_corrected, stats, _ = service.correct_batch_effects(
     n_pcs={{ n_pcs }},
     reference_batch={{ reference_batch | tojson }}
 )
-print(f"Batch correction applied: {method}, batches: {stats['n_batches']}")""",
+print("Batch correction applied:", {{ method | repr }}, f"batches: {stats['n_batches']}")""",
             imports=[
                 "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
             ],
@@ -1028,7 +1028,7 @@ adata_protein, stats, _ = service.summarize_peptide_to_protein(
     method={{ method | tojson }},
     protein_column={{ protein_column | tojson }}
 )
-print(f"Summarized {stats['n_peptides_input']} peptides to {stats['n_proteins_output']} proteins using {method}")""",
+print(f"Summarized {stats['n_peptides_input']} peptides to {stats['n_proteins_output']} proteins using", {{ method | repr }})""",
             imports=[
                 "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
             ],

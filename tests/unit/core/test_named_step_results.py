@@ -41,8 +41,9 @@ STEPS = [
 
 def test_a_step_on_an_earlier_result_starts_from_its_kept_copy():
     keep, rebind, _, _, _ = NotebookExporter._lineage(STEPS, [])
-    assert rebind == {2: "pr_qa"}
-    assert keep == {0: ["pr_qa"]}
+    # the filter runs on the input as loaded, normalize on the QC result
+    assert rebind == {1: "pr", 2: "pr_qa"}
+    assert keep == {-1: ["pr"], 0: ["pr_qa"]}
 
 
 def test_the_sessions_saves_of_stored_results_are_written_where_made():

@@ -175,7 +175,7 @@ adata_reduced, stats, _ = service.perform_dimensionality_reduction(
     perplexity={{ perplexity }},
     random_state={{ random_state }}
 )
-print(f"Reduced to {stats['output_dimensions']} dimensions using {method}")""",
+print(f"Reduced to {stats['output_dimensions']} dimensions using", {{ method | repr }})""",
             imports=[
                 "from lobster.services.analysis.proteomics_analysis_service import ProteomicsAnalysisService"
             ],

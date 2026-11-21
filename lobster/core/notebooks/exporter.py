@@ -785,6 +785,12 @@ class NotebookExporter:
                 kept_any = kept_any or written_back is not None
             else:
                 code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
+                binding = self._result_binding(activity)
+                if binding:
+                    code_cell.source += (
+                        f"\nadata = {binding[1]}  # the session stored it as "
+                        f"{binding[0]!r}"
+                    )
             if "fig" in (ir.output_entities or []):
                 # replay names each figure it drew without comparing it
                 label = f"Step {idx}: {self._step_label(activity)}"
@@ -1777,11 +1783,15 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             return max(found) if found else None
 
         for position, activity in enumerate(steps):
+            binding = None
             if position in custom:
                 source, results = custom[position][0], []
             else:
                 source = cls._adata_name(activity.get("inputs"))
                 results = cls._adata_names(activity.get("outputs"))
+                binding = cls._result_binding(activity)
+                if binding:  # the cell binds adata to the result it stored
+                    results = [binding[0]]
             if not held and source:  # the first step that says what it read
                 held, made_at[source] = {source}, position - 1
                 saved_made_at[source] = position - 1
@@ -1820,7 +1830,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 if written_back:
                     made_at[written_back] = saved_made_at[written_back] = position
                     self_kept.add(written_back)
-            else:
+            elif not binding:
                 named = cls._named_result(activity, source)
                 if named:
                     named_at[named] = (position, cls._result_var(activity))
@@ -1841,6 +1851,21 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             if name in saved_made_at:
                 save_at.setdefault(saved_made_at[name], []).append(name)
         return keep, rebind, save_at, plans, keep_vars
+
+    @classmethod
+    def _result_binding(cls, activity: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        """(stored name, variable) for a step whose code leaves its result in a
+        variable of its own (``adata_qc, stats, _ = service.x(adata)``) and whose
+        tool stored that result under a new name; None otherwise. Its cell then
+        binds ``adata`` to the variable. A step that changes ``adata`` in place,
+        or stored nothing it made, is left as it is: the session's input may
+        hold the same change, or the result was never a modality."""
+        if cls._adata_names(activity.get("outputs")):
+            return None
+        source = cls._adata_name(activity.get("inputs"))
+        named = cls._named_result(activity, source)
+        variable = cls._result_var(activity)
+        return (named, variable) if named and variable != "adata" else None
 
     @staticmethod
     def _named_result(activity: Dict[str, Any], source: Optional[str]) -> Optional[str]:

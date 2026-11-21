@@ -45,16 +45,35 @@ def test_a_result_named_by_a_parameter_is_kept_for_the_read():
     assert keep_vars.get(0, {}) == {}  # the template changed adata in place
 
 
-def test_a_result_the_session_stored_from_the_input_is_kept_from_its_variable():
+def test_a_result_the_session_stored_from_the_input_is_what_adata_holds():
+    """The step's cell binds adata to its variable (``adata_clustered``)."""
     step = _step(
         "x",
         "adata_clustered",
         stored=[{"name": "x_clustered", "parent": "x"}],
         template="adata_clustered, stats, _ = service.cluster(adata)",
     )
-    keep, _, _, plans, keep_vars = _custom_reading("x_clustered", [step])
-    assert plans[1]["x_clustered"] == "kept"
-    assert keep_vars[0] == {"x_clustered": "adata_clustered"}
+    keep, _, _, plans, keep_vars = _custom_reading(
+        "x_clustered", [step], modality="x_clustered"
+    )
+    assert plans[1]["x_clustered"] == "adata"
+    assert keep == {} and keep_vars == {}
+
+
+def test_a_stored_result_a_later_step_changed_is_kept_where_it_was_made():
+    made = _step(
+        "x",
+        "adata_clustered",
+        stored=[{"name": "x_clustered", "parent": "x"}],
+        template="adata_clustered, stats, _ = service.cluster(adata)",
+    )
+    later = _step("x_clustered", "adata")
+    later["outputs"] = [{"name": "x_clustered_umap", "ir_name": "adata"}]
+    keep, _, _, plans, _ = _custom_reading(
+        "x_clustered", [made, later], modality="x_clustered_umap"
+    )
+    assert plans[2]["x_clustered"] == "kept"
+    assert keep == {0: ["x_clustered"]}  # copied from adata, bound after step 0
 
 
 @pytest.mark.parametrize(
