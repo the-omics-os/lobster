@@ -454,20 +454,29 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # What export_de_results and extract_and_export_de_results write (their
 # templates in de_analysis_expert): _TEXT is a string, _NUMBER a number, _TO the
 # writer (to_csv or to_excel). The writer's name is rendered as the tool got it.
-_EXPORT_CELLS = (
+# Since 1.3.1 the cell first makes the folder of the file it writes: _PATH is a
+# string, the same one in both lines. Without that line it is a 1.3.0 cell.
+_EXPORT_HEADS = (
     "results_df = adata.uns[_TEXT]['results_df']\n"
-    "results_df = results_df.sort_values(_TEXT)\n"
-    "results_df._TO(_TEXT, index=True)\n",
+    "results_df = results_df.sort_values(_TEXT)\n",
 ) + tuple(
     "results_df = adata.uns[_TEXT]['results_df'].copy()\n"
     + padj
     + lfc
     + "results_df = results_df.sort_values('padj')\n"
-    "results_df._TO(_TEXT, index=True)\n"
     for padj in ("", "results_df = results_df[results_df['padj'] <= _NUMBER]\n")
     for lfc in (
         "",
         "results_df = results_df[abs(results_df['log2FoldChange']) >= _NUMBER]\n",
+    )
+)
+_EXPORT_CELLS = tuple(
+    head + write
+    for head in _EXPORT_HEADS
+    for write in (
+        "results_df._TO(_TEXT, index=True)\n",
+        "Path(_PATH).parent.mkdir(parents=True, exist_ok=True)\n"
+        "results_df._TO(_PATH, index=True)\n",
     )
 )
 _EXPORT_WRITERS = frozenset({"to_csv", "to_excel"})
@@ -528,17 +537,23 @@ def _is_custom_cell(tree: Any) -> bool:
     )
 
 
-def _fits(shape: Any, node: Any) -> bool:
+def _fits(shape: Any, node: Any, bound: Optional[Dict[str, Any]] = None) -> bool:
     """``node`` is ``shape`` with its slots filled: _TEXT a string, _NUMBER a
-    number, the attribute _TO a known writer."""
+    number, _PATH a string equal everywhere it is used, the attribute _TO a known
+    writer."""
     import ast
 
+    bound = {} if bound is None else bound
     if isinstance(shape, list):
         return (
             isinstance(node, list)
             and len(shape) == len(node)
-            and all(_fits(a, b) for a, b in zip(shape, node))
+            and all(_fits(a, b, bound) for a, b in zip(shape, node))
         )
+    if isinstance(shape, ast.Name) and shape.id == "_PATH":
+        if not (isinstance(node, ast.Constant) and type(node.value) is str):
+            return False
+        return bound.setdefault("_PATH", node.value) == node.value
     if isinstance(shape, ast.Name) and shape.id in ("_TEXT", "_NUMBER"):
         kinds = (str,) if shape.id == "_TEXT" else (int, float)
         return (
@@ -556,7 +571,7 @@ def _fits(shape: Any, node: Any) -> bool:
         if isinstance(shape, ast.Attribute) and name == "attr" and value == "_TO":
             if other not in _EXPORT_WRITERS:
                 return False
-        elif not _fits(value, other):
+        elif not _fits(value, other, bound):
             return False
     return True
 
