@@ -397,3 +397,43 @@ def test_a_file_that_cannot_be_checked_is_kept(session):
             assert_export_allowed(dm.workspace_path, locked)
     finally:
         locked.chmod(0o600)
+
+
+@pytest.fixture
+def noted(tmp_path):
+    """An imported file and folder, known by their note only (no recorded load)."""
+    from lobster.core import session_inputs
+
+    ws = tmp_path / "ws"
+    dm = DataManagerV2(workspace_path=ws, enable_provenance=False)
+    (ws / "inputs").mkdir()
+    (ws / "quant").mkdir()
+    _counts(ws / "inputs" / "counts.csv")
+    (ws / "quant" / "quant.sf").write_text("Name\tNumReads\n")
+    session_inputs.note_input(dm, ws / "inputs" / "counts.csv")
+    session_inputs.note_input(dm, ws / "quant")
+    return dm, ws
+
+
+def test_a_hard_link_to_an_imported_file_is_refused(noted):
+    from lobster.core.figures.errors import ManagedPathError
+    from lobster.core.figures.export_guard import assert_export_allowed
+
+    dm, ws = noted
+    os.link(ws / "inputs" / "counts.csv", ws / "exports" / "hard.csv")
+
+    with pytest.raises(ManagedPathError):
+        assert_export_allowed(ws, ws / "exports" / "hard.csv")
+
+
+def test_another_case_of_an_imported_file_is_refused(noted):
+    from lobster.core.figures.errors import ManagedPathError
+    from lobster.core.figures.export_guard import assert_export_allowed
+
+    dm, ws = noted
+    if not (ws / "INPUTS" / "COUNTS.csv").exists():
+        pytest.skip("this file system tells case apart")
+
+    for spelling in ("inputs/COUNTS.csv", "INPUTS/counts.csv", "QUANT/quant.sf"):
+        with pytest.raises(ManagedPathError):
+            assert_export_allowed(ws, ws / spelling)
