@@ -19,19 +19,39 @@ MANN_WHITNEY_EXACT_MAX_SPLITS = 20_000
 # The exact test also needs its split matrix (splits x samples) to hold at most
 # this many values: 1 v 4,999 has 5,000 splits but a 5,000 x 5,000 matrix
 _EXACT_MAX_VALUES = 2**22
+# A split matrix is kept for the next call while it holds at most this many
+# values: the 4 kept then hold at most 32 MiB. A larger one has a group of 1 or
+# 2 samples and is built again from the kept list of splits: 2 v 198 then takes
+# 1.3 ms a protein instead of 0.9
+_KEPT_MAX_VALUES = 2**20
 
 # U of every split is computed for this many (split, gene) pairs at a time
 _BLOCK = 2**22
 
 
 @functools.lru_cache(maxsize=4)
-def _splits(n: int, n_x: int) -> np.ndarray:
-    """One row per split of ``n`` samples into ``n_x`` and the rest: 1 where a
-    sample is in the first group. Kept for the next call, which in a per-protein
-    loop has the same group sizes."""
+def _members(n: int, n_x: int) -> np.ndarray:
+    """The samples of the first group, one row per split: at most
+    MANN_WHITNEY_EXACT_MAX_SPLITS x ``n_x`` values, kept for the next call."""
     members = np.array(list(itertools.combinations(range(n), n_x)))
+    members.flags.writeable = False  # shared by every later call
+    return members
+
+
+def _split_matrix(n: int, n_x: int) -> np.ndarray:
+    """One row per split of ``n`` samples into ``n_x`` and the rest: 1 where a
+    sample is in the first group."""
+    members = _members(n, n_x)
     splits = np.zeros((len(members), n))
     splits[np.arange(len(members))[:, None], members] = 1
+    return splits
+
+
+@functools.lru_cache(maxsize=4)
+def _splits(n: int, n_x: int) -> np.ndarray:
+    """The split matrix, kept for the next call, which in a per-protein loop has
+    the same group sizes."""
+    splits = _split_matrix(n, n_x)
     splits.flags.writeable = False  # shared by every later call
     return splits
 
@@ -40,7 +60,10 @@ def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
     """Two-sided permutation p-value of ``u`` per column: twice the smaller tail
     over every split of the rows into ``n_x`` and the rest."""
     n, n_genes = ranks.shape
-    splits = _splits(n, n_x)
+    if math.comb(n, n_x) * n <= _KEPT_MAX_VALUES:
+        splits = _splits(n, n_x)
+    else:
+        splits = _split_matrix(n, n_x)
     p = np.empty(n_genes)
     step = max(1, _BLOCK // len(splits))
     for start in range(0, n_genes, step):
