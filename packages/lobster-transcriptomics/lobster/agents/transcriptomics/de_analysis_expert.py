@@ -435,6 +435,23 @@ def _replicate_summary_text(validation: Dict[str, Any]) -> str:
 # A DE table is exported in one of these formats. The notebook cell names the
 # writer itself and never renders the format text, which becomes code there.
 DE_EXPORT_FORMATS = ("csv", "xlsx")
+# The publication names export_de_results gives DE table columns
+_DE_COLUMN_RENAMES = {
+    "log2FoldChange": "log2FoldChange",
+    "logFC": "log2FoldChange",
+    "mean_log2FC": "log2FoldChange",
+    "padj": "padj",
+    "pvalue_adj": "padj",
+    "FDR": "padj",
+    "p_adj": "padj",
+    "pvalue": "pvalue",
+    "baseMean": "baseMean",
+    "base_mean": "baseMean",
+    "AveExpr": "baseMean",
+    "lfcSE": "lfcSE",
+    "stat": "stat",
+}
+
 _WRITE_DE_TABLE = (
     "results_df.{% if output_format == 'xlsx' %}to_excel{% else %}to_csv{% endif %}"
     "({{ output_path | string | repr }}, index=True)"
@@ -3385,23 +3402,7 @@ def de_analysis_expert(
             results_df = de_data["results_df"].copy()
 
             # Standardize column names for publication
-            column_renames = {
-                "log2FoldChange": "log2FoldChange",
-                "logFC": "log2FoldChange",
-                "mean_log2FC": "log2FoldChange",
-                "padj": "padj",
-                "pvalue_adj": "padj",
-                "FDR": "padj",
-                "p_adj": "padj",
-                "pvalue": "pvalue",
-                "baseMean": "baseMean",
-                "base_mean": "baseMean",
-                "AveExpr": "baseMean",
-                "lfcSE": "lfcSE",
-                "stat": "stat",
-            }
-
-            for old_name, new_name in column_renames.items():
+            for old_name, new_name in _DE_COLUMN_RENAMES.items():
                 if old_name in results_df.columns and old_name != new_name:
                     results_df = results_df.rename(columns={old_name: new_name})
 
@@ -3473,11 +3474,19 @@ def de_analysis_expert(
                     ),
                     "filtered_only": filtered_only,
                     "sort_by": sort_by,
+                    "column_renames": dict(_DE_COLUMN_RENAMES),
                 },
                 parameter_schema={},
+                # the session's renames, sort and index name, in its order
                 code_template=(
-                    "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df']\n"
-                    "results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
+                    "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df'].copy()\n"
+                    "for _old, _new in {{ column_renames | repr }}.items():\n"
+                    "    if _old in results_df.columns and _old != _new:\n"
+                    "        results_df = results_df.rename(columns={_old: _new})\n"
+                    "if {{ sort_by | string | repr }} in results_df.columns:\n"
+                    "    results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
+                    "if results_df.index.name is None:\n"
+                    "    results_df.index.name = 'gene'\n"
                     "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
                     + _WRITE_DE_TABLE
                 ),
