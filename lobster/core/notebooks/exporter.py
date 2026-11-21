@@ -1979,11 +1979,12 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 
         A tool logs the saves it makes before its own activity, so a save just
         before a step that stored that name (or recorded nothing about what it
-        stored) happened inside that step, after it made the name; unless an
-        earlier step already stored it, then the save was made on its own.
+        stored) happened inside that step, after it made the name, unless the
+        save records it was made on its own (``saved_during_step``).
 
-        shortcut: a tool that changes a name an earlier step made and saves it
-        itself is counted as saving before it ran; that replay is a MISMATCH.
+        shortcut: a save recorded before ``saved_during_step`` existed, made on
+        its own just before a step that stores the name, is counted as made in
+        that step; that replay is a MISMATCH.
         """
         order = {
             id(activity): i for i, activity in enumerate(self.provenance.activities)
@@ -1994,9 +1995,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             if at is None:
                 continue  # not in this session's record: where it was made decides
             before = sum(order.get(id(step), -1) < at for step in steps)
-            if before < len(steps) and not any(
-                name in _stored_names(step) for step in steps[:before]
-            ):
+            if before < len(steps) and save.get("saved_during_step") is not False:
                 stored = steps[before].get("stored_modalities")
                 if stored is None or name in _stored_names(steps[before]):
                     before += 1

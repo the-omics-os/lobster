@@ -501,6 +501,7 @@ class ProvenanceTracker:
         description: Optional[str] = None,
         ir: Optional["AnalysisStep"] = None,
         stored_modalities: Optional[List[Dict[str, Any]]] = None,
+        saved_during_step: Optional[bool] = None,
     ) -> str:
         """
         Create a new provenance activity record.
@@ -515,6 +516,9 @@ class ProvenanceTracker:
             ir: Optional AnalysisStep Intermediate Representation for notebook export
             stored_modalities: The modalities (``name``, ``parent``) the session
                 stored while the tool ran; recorded only when given
+            saved_during_step: For a save, whether the session stored the saved
+                modality since the last step was logged, so the save is part of
+                the step logged next; recorded only when given
 
         Returns:
             str: Unique activity ID
@@ -562,6 +566,8 @@ class ProvenanceTracker:
         }
         if stored_modalities:
             activity["stored_modalities"] = [dict(entry) for entry in stored_modalities]
+        if saved_during_step is not None:
+            activity["saved_during_step"] = bool(saved_during_step)
 
         # Store IR if provided (serialize to dict for JSON compatibility)
         if ir is not None:

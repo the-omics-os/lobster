@@ -3838,9 +3838,14 @@ class DataManagerV2:
             ``tests/unit/core/test_provenance_attribution_contract.py`` holds the audited set.
         """
         stored = None
+        during_step = None
+        pending = getattr(self, "_stored_since_log", None)
         if tool_name != "save_dataset":  # a tool saves what it stored, then logs
-            stored = getattr(self, "_stored_since_log", None) or None
+            stored = pending or None
             self._stored_since_log = []
+        elif isinstance(pending, list):  # saved after the next step stored it
+            name = (parameters or {}).get("name")
+            during_step = name in [entry.get("name") for entry in pending]
         if self.provenance:
             activity_id = self.provenance.create_activity(
                 activity_type=tool_name,
@@ -3849,6 +3854,7 @@ class DataManagerV2:
                 description=description or f"{tool_name} operation",
                 ir=ir,
                 **({"stored_modalities": stored} if stored else {}),
+                saved_during_step=during_step,
             )
 
             # AQUADIF monitoring: observe provenance call (fail-open)
