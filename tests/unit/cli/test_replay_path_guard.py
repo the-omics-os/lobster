@@ -12,6 +12,7 @@ of a saved modality by its typed path through a reader the custom cell points at
 this notebook's result (it never opens the file).
 """
 
+import ast
 import hashlib
 import json
 import os
@@ -361,14 +362,37 @@ def _nothing_ran(workspace):
     return not list(replays.glob("*/executed.ipynb"))
 
 
+def _as_1_3_0(notebook):
+    """The notebook with its export cells as 1.3.0 wrote them: no folder line,
+    and the session's file by its absolute path."""
+    cells = json.loads(notebook.read_text())
+    workspace = notebook.parent.parent.resolve()
+    found = False
+    for cell in cells["cells"]:
+        lines = "".join(cell["source"]).splitlines(keepends=True)
+        mkdir = [line for line in lines if ".parent.mkdir(parents=True" in line]
+        if cell["cell_type"] != "code" or not mkdir:
+            continue
+        (line,) = mkdir
+        relative = line[line.index("Path(") + 5 : line.index(").parent")]
+        absolute = repr(str(workspace / ast.literal_eval(relative)))
+        cell["source"] = "".join(
+            other.replace(relative, absolute) for other in lines if other != line
+        )
+        found = True
+    assert found, "no export cell"  # the shape these rows are about
+    notebook.write_text(json.dumps(cells))
+    return notebook
+
+
 @needs_kernel
 @pytest.mark.parametrize("where", ["workspace", "copy"])
 def test_a_de_export_to_the_sessions_exports_is_refused_and_nothing_runs(
     tmp_path, monkeypatch, where
 ):
-    """export_de_results writes the session's exports/ by its absolute path: on
-    the workspace or on a copy of it, the replay runs nothing and the session's
-    file is untouched."""
+    """A notebook 1.3.0 exported writes the session's exports/ by its absolute
+    path (1.3.1 writes a path in the replay's own folder): on the workspace or on
+    a copy of it, the replay runs nothing and the session's file is untouched."""
     dm, source = _bulk(tmp_path, monkeypatch)
     tools = factory_tools(de_module.de_analysis_expert, de_module.__name__, dm)
     tools["run_bulk_de_direct"].invoke(
@@ -379,8 +403,7 @@ def test_a_de_export_to_the_sessions_exports_is_refused_and_nothing_runs(
         {"modality_name": "bulk_de_ctrl_vs_treat", "output_format": "csv"}
     )
     (exported,) = (dm.workspace_path / "exports").glob("de_results_*.csv")
-    notebook = dm.export_notebook("nb", "S", filter_strategy="successful")
-    assert str(exported) in notebook.read_text()  # the shape this row is about
+    notebook = _as_1_3_0(dm.export_notebook("nb", "S", filter_strategy="successful"))
     before = _state(exported)
     workspace = dm.workspace_path
     if where == "copy":
@@ -402,7 +425,7 @@ def test_a_de_export_to_the_sessions_exports_is_refused_and_nothing_runs(
 def test_an_extract_and_export_to_the_sessions_exports_is_refused(
     tmp_path, monkeypatch
 ):
-    """extract_and_export_de_results writes exports/ by its absolute path too."""
+    """The same for extract_and_export_de_results in a notebook 1.3.0 exported."""
     dm, source = _bulk(tmp_path, monkeypatch)
     tools = factory_tools(de_module.de_analysis_expert, de_module.__name__, dm)
     tools["run_bulk_de_direct"].invoke(
@@ -414,8 +437,7 @@ def test_an_extract_and_export_to_the_sessions_exports_is_refused(
     )
     exports = dm.workspace_path / "exports"
     files = {p: _state(p) for p in exports.rglob("*") if p.is_file()}
-    notebook = dm.export_notebook("nb", "S", filter_strategy="successful")
-    assert any(str(p) in notebook.read_text() for p in files), files
+    notebook = _as_1_3_0(dm.export_notebook("nb", "S", filter_strategy="successful"))
     code, out = _verify(notebook, source, dm.workspace_path)
     assert code == 4 and out["verdict"] == "REFUSED", out
     assert "in the workspace; a replay uses only its own folder" in (
@@ -615,6 +637,59 @@ def _a2(padj=True, lfc=True, method="to_csv"):
 )
 def test_an_export_cell_as_its_step_writes_it_is_admitted(tmp_path, cell):
     assert _refusal(tmp_path, cell) is None
+
+
+def _with_mkdir(cell, folder_of=None):
+    """The cell as 1.3.1 writes it: the folder of the file made first. With
+    *folder_of*, the folder of another file."""
+    lines = cell.splitlines(keepends=True)
+    write = lines[-1]
+    path = write[write.index("(") + 1 : write.index(", index=True")]
+    made = folder_of if folder_of is not None else path
+    mkdir = f"Path({made}).parent.mkdir(parents=True, exist_ok=True)\n"
+    return "".join(lines[:-1]) + mkdir + write
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        _with_mkdir(A1),
+        _with_mkdir(A1.replace("to_csv", "to_excel")),
+        _with_mkdir(A1.replace("'exports/de.csv'", "'exports/sub/de.csv'")),
+        _with_mkdir(_a2()),
+        _with_mkdir(_a2(padj=False, lfc=False, method="to_excel")),
+    ],
+    ids=["A1", "A1-excel", "A1-subfolder", "A2", "A2-none"],
+)
+def test_an_export_cell_that_makes_its_folder_first_is_admitted(tmp_path, cell):
+    assert _refusal(tmp_path, cell) is None
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        _with_mkdir(A1, folder_of="'exports/other/de.csv'"),
+        _with_mkdir(A1, folder_of="'/home/me/elsewhere/de.csv'"),
+        _with_mkdir(A1).replace("parents=True", "parents=False"),
+        _with_mkdir(A1).replace(".parent.mkdir", ".mkdir"),
+        _with_mkdir(A1).replace("Path(", "pathlib.Path("),
+        A1 + "\nPath('exports/de.csv').parent.mkdir(parents=True, exist_ok=True)",
+        _with_mkdir(_with_mkdir(A1)),
+        _with_mkdir(A1.replace("'exports/de.csv'", "b'exports/de.csv'")),
+    ],
+    ids=["other-folder", "outside-folder", "parents", "not-parent", "module",
+         "after", "twice", "bytes"],
+)  # fmt: skip
+def test_an_export_cell_that_makes_another_folder_is_refused(tmp_path, cell):
+    assert _refusal(tmp_path, cell) == NOT_EXPORT
+
+
+def test_an_export_cell_that_makes_its_folder_keeps_the_path_rules(tmp_path):
+    """The shape admits the folder line; the path in it is still checked."""
+    cell = _with_mkdir(
+        A1.replace("'exports/de.csv'", "'/home/me/session_ws/exports/de.csv'")
+    )
+    assert "/home/me/session_ws/exports/de.csv" in _refusal(tmp_path, cell)
 
 
 def test_other_cells_that_use_results_df_are_not_export_cells(tmp_path):
