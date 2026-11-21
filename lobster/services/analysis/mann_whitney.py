@@ -6,6 +6,7 @@ its default method uses a normal approximation whenever a value ties, even at
 3 v 3.
 """
 
+import functools
 import itertools
 import math
 from typing import Tuple
@@ -20,15 +21,25 @@ MANN_WHITNEY_EXACT_MAX_SPLITS = 20_000
 _BLOCK = 2**22
 
 
+@functools.lru_cache(maxsize=4)
+def _splits(n: int, n_x: int) -> np.ndarray:
+    """One row per split of ``n`` samples into ``n_x`` and the rest: 1 where a
+    sample is in the first group. Kept for the next call, which in a per-protein
+    loop has the same group sizes."""
+    members = np.array(list(itertools.combinations(range(n), n_x)))
+    splits = np.zeros((len(members), n))
+    splits[np.arange(len(members))[:, None], members] = 1
+    splits.flags.writeable = False  # shared by every later call
+    return splits
+
+
 def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
     """Two-sided permutation p-value of ``u`` per column: twice the smaller tail
     over every split of the rows into ``n_x`` and the rest."""
     n, n_genes = ranks.shape
-    members = np.array(list(itertools.combinations(range(n), n_x)))
-    splits = np.zeros((len(members), n))
-    splits[np.arange(len(members))[:, None], members] = 1
+    splits = _splits(n, n_x)
     p = np.empty(n_genes)
-    step = max(1, _BLOCK // len(members))
+    step = max(1, _BLOCK // len(splits))
     for start in range(0, n_genes, step):
         block = slice(start, start + step)
         every_u = splits @ ranks[:, block] - n_x * (n_x + 1) / 2
