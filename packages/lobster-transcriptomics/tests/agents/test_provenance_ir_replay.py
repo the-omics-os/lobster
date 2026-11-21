@@ -521,7 +521,7 @@ class TestDEExplicitResultKeys:
     @pytest.mark.parametrize("source", ["custom_contrast", "generated_filtered"])
     @pytest.mark.parametrize("tool_name", ["filter_de_results", "export_de_results"])
     def test_explicit_non_discovery_keys_filter_and_export(
-        self, de_setup, tmp_path, source, tool_name
+        self, de_setup, tmp_path, monkeypatch, source, tool_name
     ):
         _, dm, tools = de_setup
         adata = dm.modalities["pb"]
@@ -589,7 +589,9 @@ class TestDEExplicitResultKeys:
                 pd.read_csv(output_path, index_col=0), expected, check_names=False
             )
             # Execute the recorded export as well; its selected table must match.
+            # The recorded path is relative to the workspace, as a replay runs it.
             output_path.unlink()
+            monkeypatch.chdir(dm.workspace_path)
             replay_ir(ir, adata=before)
             pd.testing.assert_frame_equal(
                 pd.read_csv(output_path, index_col=0), expected, check_names=False
