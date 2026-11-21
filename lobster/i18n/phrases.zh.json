@@ -2120,6 +2120,8 @@
   "Loaded input, no saved file: {names}": "已加载的输入，没有已保存文件：{names}",
   "The export record predates input roles v2; re-export the notebook.": "导出记录早于输入角色记录 v2；请重新导出 notebook。",
   "A custom-code cell was recorded before 1.3.0 and reads the session's workspace; the notebook was not run.": "某个自定义代码单元格是在 1.3.0 之前记录的，会读取会话的工作区；notebook 未运行。",
+  "Code cell {n} reads or writes {path} in the workspace; a replay uses only its own folder. The notebook was not run.": "第 {n} 个代码单元格读取或写入工作区中的 {path}；replay 只使用自己的文件夹。notebook 未运行。",
+  "Code cell {n} uses the path {path}, outside this replay's folder; a replay reads and writes only its own folder, so a file the notebook reads must be imported in the session. The notebook was not run.": "第 {n} 个代码单元格使用了路径 {path}，它在此次 replay 的文件夹之外；replay 只读写自己的文件夹，因此 notebook 读取的文件必须在会话中导入。notebook 未运行。",
   "A custom-code cell was exported before 1.3.0 final and reads the session's workspace. Re-export the notebook.": "某个自定义代码单元格是在 1.3.0 正式版之前导出的，会读取会话的工作区。请重新导出 notebook。",
   "In-memory input not anchorable in this version.": "此版本无法锚定内存中的输入。",
   "The input is not an h5ad file: its shape and columns were not checked.": "输入不是 h5ad 文件：未检查其形状和列。",

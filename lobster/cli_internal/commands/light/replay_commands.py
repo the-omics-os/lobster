@@ -420,6 +420,283 @@ def _reads_session_workspace(notebook: Path) -> bool:
     return False
 
 
+# A path text the check counts: absolute (POSIX, home, Windows drive or share).
+_ABSOLUTE = re.compile(r"^(/.|~($|/)|[A-Za-z]:[\\/]|\\\\)")
+# Parameters the replay replaces before the run: their written values never run.
+_INJECTED = frozenset({"input_data", "output_prefix", "workspace_path"})
+# Readers a custom cell points at this notebook's result for the names it reads
+# (exporter's CUSTOM_READS_HELPER); open(), pandas and the rest open the file.
+_SERVED_READERS = frozenset({"read_h5ad", "read"})
+# Calls whose string is a command line (``!cmd`` is ``get_ipython().system``):
+# each word of it is checked as a path.
+_COMMAND_CALLS = frozenset(
+    {"system", "getoutput", "popen", "run_line_magic", "run_cell_magic"}
+    | {"run", "call", "check_call", "check_output", "Popen"}
+)
+
+
+def _python_of(source: str) -> Optional[Any]:
+    """The cell as the kernel runs it (magics and ``!`` lines are calls), parsed;
+    None when it is not Python, which the kernel cannot run either."""
+    import ast
+
+    try:
+        from IPython.core.inputtransformer2 import TransformerManager
+
+        source = TransformerManager().transform_cell(source)
+    except ImportError:  # no IPython: no kernel runs this notebook
+        pass
+    try:
+        return ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _is_load_cell(source: str, tree: Any) -> bool:
+    """The cell is exactly the exporter's load_modality cell: it opens the
+    session's file read-only, only to print where it came from, into ``_loaded``.
+
+    Its parameters are read back from the cell and the template rendered again; any
+    other text (a changed read, an added line) is not this cell."""
+    import ast
+
+    lines = source.split("\n")
+    head = re.fullmatch(r"# Load modality (.+) from file", lines[0])
+    used = re.fullmatch(
+        r"# (.+) adapter \(dataset_type=(.+)\)\.", lines[2] if len(lines) > 2 else ""
+    )
+    paths = [
+        node.value.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and [getattr(t, "id", None) for t in node.targets] == ["_src"]
+        and isinstance(node.value, ast.Call)
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Constant)
+    ]
+    if not (head and used and len(paths) == 1):
+        return False
+    try:
+        from lobster.services.data_management.modality_management_service import (
+            ModalityManagementService,
+        )
+
+        name, adapter, kind = (
+            ast.literal_eval(text)
+            for text in (head.group(1), used.group(1), used.group(2))
+        )
+        rendered = object.__new__(ModalityManagementService)._create_load_ir(
+            name, paths[0], adapter, kind
+        )
+        return rendered.render() == source
+    except Exception:  # not this cell's text, or no service to render it
+        return False
+
+
+def _served_paths(tree: Any) -> set:
+    """Typed paths a custom cell's reads are served this notebook's result for.
+
+    The cell's ``_lobster_reads(cell, session_workspace, sources, missing)`` call
+    names the session's workspace and the modalities the cell reads; the prelude
+    serves ``<root>/data/<name>.h5ad``, ``<root>/modalities/<name>.h5ad`` and the
+    bare file name, for the session's workspace and ``/tmp/workspace``."""
+    import ast
+
+    served: set = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "id", "") == "_lobster_reads"
+            and len(node.args) >= 4
+        ):
+            continue
+        session, sources, missing = node.args[1], node.args[2], node.args[3]
+        roots = {"/tmp/workspace"}
+        if isinstance(session, ast.Constant) and isinstance(session.value, str):
+            roots.add(os.path.normpath(session.value))
+        names = [
+            key.value
+            for key in getattr(sources, "keys", []) + getattr(missing, "elts", [])
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        ]
+        for name in names:
+            served.add(f"{name}.h5ad")
+            for root in roots:
+                served |= {f"{root}/data/{name}.h5ad", f"{root}/modalities/{name}.h5ad"}
+    return served
+
+
+def _exempt_nodes(tree: Any, parameters: bool, load_cell: bool) -> set:
+    """ids of string nodes that never reach a file: the prelude's workspace
+    argument, the parameters cell's injected values, typed reads the prelude
+    serves, and the load cell's recorded path."""
+    import ast
+
+    exempt: set = set()
+    served = _served_paths(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_lobster_reads":
+            # the prelude's fixed root for a session run in a container
+            exempt |= {
+                id(element)
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Assign)
+                and [getattr(t, "id", None) for t in inner.targets] == ["roots"]
+                and isinstance(inner.value, ast.Set)
+                for element in inner.value.elts
+                if isinstance(element, ast.Constant)
+                and element.value == "/tmp/workspace"
+            }
+        if (
+            load_cell
+            and isinstance(node, ast.Assign)
+            and [getattr(t, "id", None) for t in node.targets] == ["_src"]
+            and isinstance(node.value, ast.Call)
+            and getattr(node.value.func, "id", "") == "Path"
+            and len(node.value.args) == 1
+        ):
+            exempt.add(id(node.value.args[0]))
+        if isinstance(node, ast.Call):
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", "")
+            if name == "_lobster_reads" and len(node.args) > 1:
+                exempt.add(id(node.args[1]))
+            if not node.args or not served:
+                continue
+            target = node.args[0]
+            if (
+                isinstance(target, ast.Call)
+                and getattr(target.func, "id", "") in ("Path", "str")
+                and len(target.args) == 1
+            ):
+                target = target.args[0]  # Path('<typed path>')
+            if not (isinstance(target, ast.Constant) and isinstance(target.value, str)):
+                continue
+            if name == "File":  # h5py: served for reads only
+                mode = node.args[1] if len(node.args) > 1 else None
+                mode = next((k.value for k in node.keywords if k.arg == "mode"), mode)
+                if mode is not None and not (
+                    isinstance(mode, ast.Constant) and mode.value in ("r", "r+")
+                ):
+                    continue
+            elif name not in _SERVED_READERS:
+                continue
+            text = target.value
+            if {text, os.path.normpath(text), os.path.basename(text)} & served:
+                exempt.add(id(target))
+        elif (
+            parameters
+            and isinstance(node, ast.Assign)
+            and all(getattr(t, "id", None) in _INJECTED for t in node.targets)
+        ):
+            exempt |= {id(n) for n in ast.walk(node.value)}
+    return exempt
+
+
+def _path_texts(tree: Any, parameters: bool, load_cell: bool = False):
+    """Each string a cell's code holds that could name a file, with the ones
+    that never reach a file left out. An f-string counts by its fixed start."""
+    import ast
+
+    exempt = _exempt_nodes(tree, parameters, load_cell)
+    for node in ast.walk(tree):
+        name = isinstance(node, ast.Call) and (
+            getattr(node.func, "id", None) or getattr(node.func, "attr", "")
+        )
+        if name in _COMMAND_CALLS:
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    for word in arg.value.split():
+                        yield word.strip("'\"")
+                        if "=" in word:  # --out=/path
+                            yield word.split("=", 1)[1].strip("'\"")
+    inner: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            inner |= {id(v) for v in node.values}
+            head = node.values[0] if node.values else None
+            if isinstance(head, ast.Constant) and id(node) not in exempt:
+                yield head.value
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in inner | exempt
+        ):
+            yield node.value
+
+
+def _path_refusal(
+    notebook: Path, workspace: Path, input_data: Optional[Path] = None
+) -> Optional[str]:
+    """Why the notebook is not run: a code cell names a path outside the replay's
+    folder (absolute, or relative and climbing out of it); None when none does.
+
+    The replay's folder is made for the run, so no path written in the notebook
+    can be in it; the one file outside it a cell may name is the replay's input.
+    Paths the code builds while it runs are not seen here."""
+    workspace = Path(os.path.realpath(workspace))
+    bound = Path(os.path.realpath(input_data)) if input_data is not None else None
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None  # unreadable: the run refuses it
+    import ast
+
+    run_folder = workspace / REPLAYS_DIR / "run"
+    code = []  # (number, source, tree, tags) of each code cell
+    for cell in cells:
+        if not isinstance(cell, dict) or cell.get("cell_type") != "code":
+            continue
+        source = cell.get("source", "")
+        if isinstance(source, list):
+            source = "".join(source)
+        if not isinstance(source, str):
+            continue
+        tags = (cell.get("metadata") or {}).get("tags") or []
+        code.append((len(code) + 1, source, _python_of(source), tags))
+    loads = {
+        number
+        for number, source, tree, _ in code
+        if tree and _is_load_cell(source, tree)
+    }
+    # a load cell's object is never used: any other cell naming it voids the exemption
+    if any(
+        isinstance(node, ast.Name) and node.id == "_loaded"
+        for number, _, tree, _ in code
+        if tree is not None and number not in loads
+        for node in ast.walk(tree)
+    ):
+        loads = set()
+    for number, source, tree, tags in code:
+        if tree is None:
+            continue  # not Python: the kernel cannot run it either
+        for text in _path_texts(
+            tree, parameters="parameters" in tags, load_cell=number in loads
+        ):
+            if "\n" in text or len(text) > 4096:
+                continue
+            if _ABSOLUTE.match(text):
+                where = Path(os.path.expanduser(text)) if text[0] == "~" else Path(text)
+            elif ".." in Path(text).parts and os.path.normpath(text).startswith(".."):
+                where = run_folder / text
+            else:
+                continue
+            real = Path(os.path.realpath(where))
+            if real == bound:
+                continue  # the file the replay is told to read
+            if real == workspace or workspace in real.parents:
+                return h(
+                    "Code cell {n} reads or writes {path} in the workspace; a replay "
+                    "uses only its own folder. The notebook was not run."
+                ).format(n=number, path=real.relative_to(workspace).as_posix())
+            return h(
+                "Code cell {n} uses the path {path}, outside this replay's folder; a "
+                "replay reads and writes only its own folder, so a file the notebook "
+                "reads must be imported in the session. The notebook was not run."
+            ).format(n=number, path=text)
+    return None
+
+
 def _manifest(notebook: Path) -> Dict[str, Any]:
     """The ``data_integrity_manifest`` of the export record, as written.
 
@@ -1061,6 +1338,19 @@ def verify_notebook(
                     None,
                     RefusalOrigin.PRODUCT,
                 ),
+            )
+        )
+    outside = _path_refusal(notebook, workspace, input_data)
+    if outside is not None:
+        # it would read or write a file the replay does not own: never run
+        return finish(
+            report(
+                base_policy,
+                verification_status=VerificationStatus.NOT_RUN,
+                preflight=Preflight.REFUSED,
+                execution=Execution.NOT_RUN,
+                verdict=Verdict.REFUSED,
+                refusal=Refusal(outside, None, RefusalOrigin.PRODUCT),
             )
         )
     outputs = replay_dir.resolve() / f"{OUTPUT_PREFIX}"
