@@ -3094,7 +3094,7 @@ def de_analysis_expert(
 **Filter Thresholds:**
 - Adjusted p-value < {padj_threshold}
 - |log2FoldChange| > {lfc_threshold}
-- Base mean > {min_base_mean}
+- Base mean > {min_base_mean}{"" if basemean_col else " (not applied: no base-mean column)"}
 
 **Results:**
 - Input genes: {len(results_df):,}
