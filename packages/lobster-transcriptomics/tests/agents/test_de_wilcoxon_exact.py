@@ -189,18 +189,21 @@ def test_a_group_of_one_against_thousands_builds_no_sample_by_sample_matrix():
     assert peak < 32 * 2**20, f"{peak / 2**20:.0f} MiB"
 
 
-def test_the_split_matrices_kept_between_calls_hold_at_most_32_mib():
+@pytest.mark.parametrize("one_first", [True, False])
+def test_the_split_matrices_kept_between_calls_hold_at_most_32_mib(one_first):
     """A Cloud worker keeps them for its lifetime: four 1 v ~2,045 matrices, each
-    near 2**22 values, kept 166 MiB."""
+    near 2**22 values, kept 128 MiB. The group of 1 may be the second one."""
     mann_whitney_module._splits.cache_clear()
+    mann_whitney_module._members.cache_clear()
     rng = np.random.default_rng(5)
 
     tracemalloc.start()
     try:
         for n in range(2_045, 2_049):
             x = rng.normal(size=(n, 1))
-            mann_whitney(x[:1], x[1:])
-        del x
+            one, rest = x[:1], x[1:]
+            mann_whitney(one, rest) if one_first else mann_whitney(rest, one)
+        del x, one, rest
         kept = tracemalloc.get_traced_memory()[0]
     finally:
         tracemalloc.stop()
