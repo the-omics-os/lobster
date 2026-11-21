@@ -1,7 +1,7 @@
 """A protein with the same value in every sample no longer wipes out a result.
 
-A t-test or a correlation gives no p-value (NaN) for such a protein, and so does
-a Mann-Whitney test from scipy 1.18 (scipy 1.16 gives p = 1). Benjamini-Hochberg
+A t-test, a Mann-Whitney test or a correlation gives no p-value (NaN) for such
+a protein. Benjamini-Hochberg
 over a list holding one NaN made every adjusted p-value NaN, so no protein was
 significant; Holm and Bonferroni counted the NaN among the tests. The correction
 now runs over the finite p-values only, and the reply counts the tests without
@@ -13,7 +13,6 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import stats as scipy_stats
 
 from lobster.agents.proteomics.de_analysis_expert import de_analysis_expert
 from lobster.core.runtime.data_manager import DataManagerV2
@@ -42,13 +41,6 @@ def _proteins(flat):
     return ad.AnnData(x, obs=obs, var=pd.DataFrame(index=[f"P{i}" for i in range(50)]))
 
 
-def _ties_give_no_p_value():
-    flat = [2.0] * 6
-    return np.isnan(
-        scipy_stats.mannwhitneyu(flat, flat, alternative="two-sided").pvalue
-    )
-
-
 def _results(adata, uns_key):
     return {r["protein"]: r for r in adata.uns[uns_key]["results"]}
 
@@ -70,11 +62,6 @@ def test_a_flat_protein_changes_nothing_for_the_others(method, fdr):
     with_flat, stats = run(_proteins(flat=True))
     without, stats_without = run(_proteins(flat=False)[:, :49].copy())
 
-    if method == "mann_whitney" and not _ties_give_no_p_value():
-        # scipy < 1.18: an ordinary test of p = 1, as before
-        assert with_flat["P49"]["p_value"] == 1.0
-        assert stats["n_tests_without_pvalue"] == 0
-        return
     assert np.isnan(with_flat.pop("P49")["p_adjusted"])
     assert with_flat.keys() == without.keys()
     for protein, result in without.items():

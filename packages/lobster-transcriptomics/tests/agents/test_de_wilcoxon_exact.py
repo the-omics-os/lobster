@@ -147,3 +147,14 @@ def test_a_gene_with_a_missing_value_gets_no_p_value():
 
     assert p[0] == pytest.approx(0.1)
     assert np.isnan(p[1]) and np.isnan(z[1])
+
+
+@pytest.mark.parametrize("n", [3, 12], ids=["exact", "normal"])
+def test_a_gene_tied_in_every_sample_gets_no_p_value(n):
+    """Every split gives the same U, so the samples tell the groups apart in no
+    way: no p-value on either path (the normal path's z is 0 / 0)."""
+    x = np.full((2 * n, 1), 5.0)
+
+    z, p = mann_whitney(x[:n], x[n:])
+
+    assert np.isnan(z[0]) and np.isnan(p[0])
