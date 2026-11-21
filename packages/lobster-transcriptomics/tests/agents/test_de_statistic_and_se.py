@@ -3,7 +3,8 @@ made up.
 
 The fold change is log2 of group2 over group1, but the t-test statistic was
 group1 against group2, so the two had opposite signs. The Wilcoxon and
-deseq2_like statistics were copies of the fold change. Every method wrote an
+deseq2_like statistics were copies of the fold change (the Wilcoxon one is
+pinned in test_de_wilcoxon_exact.py). Every method wrote an
 lfcSE of 1.0 that no test estimated; it is now not a number. Under Wilcoxon a
 gene with one value in every sample got p = 1 from an all-tied rank test (its
 z is 0 / 0); like the t-test, it now has no p-value.
@@ -43,15 +44,6 @@ def test_the_t_statistic_is_treat_against_ctrl(tmp_path, monkeypatch, method):
 
     ctrl, treat = _groups(adata, "GENE0100")
     expected = scipy_stats.ttest_ind(treat, ctrl).statistic
-    np.testing.assert_allclose(out.var.loc["GENE0100", "stat"], expected, rtol=1e-6)
-
-
-def test_the_wilcoxon_statistic_is_the_rank_sum_z(tmp_path, monkeypatch):
-    adata = _c2()
-    out, _, _ = _analysed(tmp_path, monkeypatch, adata, "wilcoxon")
-
-    ctrl, treat = _groups(adata, "GENE0100")
-    expected = scipy_stats.ranksums(treat, ctrl).statistic
     np.testing.assert_allclose(out.var.loc["GENE0100", "stat"], expected, rtol=1e-6)
 
 
