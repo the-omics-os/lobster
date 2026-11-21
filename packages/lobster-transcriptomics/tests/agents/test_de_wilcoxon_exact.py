@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 from scipy import stats as scipy_stats
 
+from lobster.services.analysis import mann_whitney as mann_whitney_module
 from lobster.services.analysis.mann_whitney import mann_whitney
 
 from .test_de_zero_within_group_variance import _analysed
@@ -158,3 +159,15 @@ def test_a_gene_tied_in_every_sample_gets_no_p_value(n):
     z, p = mann_whitney(x[:n], x[n:])
 
     assert np.isnan(z[0]) and np.isnan(p[0])
+
+
+def test_a_loop_over_proteins_of_one_group_size_builds_the_splits_once():
+    """Proteomics tests one protein at a time: 5,000 proteins at 8 v 8 took 24 s
+    when each call listed the 12,870 splits again."""
+    mann_whitney_module._splits.cache_clear()
+    x = np.random.default_rng(2).normal(size=(16, 50))
+
+    for j in range(50):
+        mann_whitney(x[:8, j : j + 1], x[8:, j : j + 1])
+
+    assert mann_whitney_module._splits.cache_info().misses == 1
