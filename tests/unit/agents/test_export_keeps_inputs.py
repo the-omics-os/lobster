@@ -347,3 +347,53 @@ def test_a_modality_save_over_its_loaded_file_is_not_checked_here(
     dm.save_modality("counts", "counts.h5ad")
 
     assert source.exists()
+
+
+@needs_tx
+def test_a_session_without_a_record_refuses_by_the_real_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "ws"
+    dm = DataManagerV2(workspace_path=ws, enable_provenance=False)
+    dm.store_modality("de_results", _results_modality())
+    source = ws / "counts.csv"
+    original = _counts(source)
+    dm.load_modality("counts", source, adapter="transcriptomics_bulk")
+
+    reply = _de_export(dm, "export_de_results", str(source))
+
+    assert reply == REFUSAL, reply
+    assert source.read_bytes() == original
+
+
+def test_every_file_under_an_imported_folder_is_an_input(tmp_path):
+    from lobster.core import session_inputs
+    from lobster.core.figures.errors import ManagedPathError
+    from lobster.core.figures.export_guard import assert_export_allowed
+
+    ws = tmp_path / "ws"
+    dm = DataManagerV2(workspace_path=ws)
+    for folder in ("quant", "quant2"):
+        (ws / folder).mkdir()
+        (ws / folder / "quant.sf").write_text("Name\tNumReads\n")
+    session_inputs.note_input(dm, ws / "quant")
+
+    with pytest.raises(ManagedPathError):
+        assert_export_allowed(ws, ws / "quant" / "quant.sf")
+    assert assert_export_allowed(ws, ws / "quant2" / "quant.sf") is None
+    assert assert_export_allowed(ws, ws / "quant" / "new.csv") is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
+def test_a_file_that_cannot_be_checked_is_kept(session):
+    from lobster.core.figures.errors import ManagedPathError
+    from lobster.core.figures.export_guard import assert_export_allowed
+
+    dm, source, original = session
+    locked = dm.exports_dir / "locked.csv"
+    locked.write_bytes(bytes(reversed(original)))  # same size: its bytes are read
+    locked.chmod(0)
+    try:
+        with pytest.raises(ManagedPathError):
+            assert_export_allowed(dm.workspace_path, locked)
+    finally:
+        locked.chmod(0o600)
