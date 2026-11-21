@@ -448,6 +448,23 @@ def _unknown_format_text(output_format: Any) -> Optional[str]:
     return f"Unknown output_format {output_format!r}: use 'csv' or 'xlsx'."
 
 
+def _invalid_de_results_text(key: str, value: Any, expected: str) -> str:
+    """Why the DE result at ``key`` cannot be read, and what to do."""
+    # Lobster before 1.3.1 stored a wilcoxon or t-test table as to_dict():
+    # each column a {gene: value} mapping, with no "results_df"
+    if (
+        isinstance(value, dict)
+        and value
+        and "results_df" not in value
+        and all(isinstance(column, dict) for column in value.values())
+    ):
+        return (
+            f"DE results at {key!r} were saved by Lobster before 1.3.1; "
+            "run the differential expression again."
+        )
+    return f"Invalid DE results format at {key!r}.{expected}"
+
+
 def _de_result_keys(adata) -> List[str]:
     """Include explicit historical choices, but never infer their chronology."""
     return sorted(
@@ -476,8 +493,9 @@ def _resolve_de_results_key(adata, requested: Optional[str] = None) -> str:
             result.get("results_df"), pd.DataFrame
         ):
             raise ValueError(
-                f"Invalid DE results format at {key!r}. "
-                "Expected dict with 'results_df' DataFrame."
+                _invalid_de_results_text(
+                    key, result, " Expected dict with 'results_df' DataFrame."
+                )
             )
         return key
     if len(available) == 1:
@@ -3132,7 +3150,9 @@ def de_analysis_expert(
             de_results_key = _resolve_de_results_key(adata, de_results_key)
             de_data = adata.uns[de_results_key]
             if not isinstance(de_data, dict) or "results_df" not in de_data:
-                return f"Invalid DE results format at '{de_results_key}'. Expected dict with 'results_df'."
+                return _invalid_de_results_text(
+                    de_results_key, de_data, " Expected dict with 'results_df'."
+                )
 
             results_df = de_data["results_df"]
 
@@ -3348,7 +3368,7 @@ def de_analysis_expert(
 
             de_data = adata.uns[actual_key]
             if not isinstance(de_data, dict) or "results_df" not in de_data:
-                return f"Invalid DE results format at '{actual_key}'."
+                return _invalid_de_results_text(actual_key, de_data, "")
 
             results_df = de_data["results_df"].copy()
 
@@ -3585,7 +3605,9 @@ def de_analysis_expert(
             de_results_key = _resolve_de_results_key(adata, de_results_key)
             de_data = adata.uns[de_results_key]
             if not isinstance(de_data, dict) or "results_df" not in de_data:
-                return f"Invalid DE results format at '{de_results_key}'. Expected dict with 'results_df'."
+                return _invalid_de_results_text(
+                    de_results_key, de_data, " Expected dict with 'results_df'."
+                )
 
             results_df = de_data["results_df"]
 
@@ -3793,7 +3815,7 @@ def de_analysis_expert(
             de_results_key = _resolve_de_results_key(adata, de_results_key)
             de_data = adata.uns[de_results_key]
             if not isinstance(de_data, dict) or "results_df" not in de_data:
-                return f"Invalid DE results format at '{de_results_key}'."
+                return _invalid_de_results_text(de_results_key, de_data, "")
 
             results_df = de_data["results_df"].copy()
 
