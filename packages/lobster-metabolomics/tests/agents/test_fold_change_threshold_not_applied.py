@@ -45,7 +45,7 @@ def test_the_unapplied_threshold_is_named_and_not_recorded(tmp_path, arguments):
 
     value = arguments.get("fold_change_threshold", 1.5)
     assert (
-        f"- fold_change_threshold {value}: not applied yet; up/down use "
+        f"- fold_change_threshold {value}: not applied; up/down use "
         "|log2FC| > 1 (2-fold)" in reply
     ), reply
     (call,) = calls
