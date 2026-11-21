@@ -367,6 +367,9 @@ _lobster_reads_done()
 
 # Cell metadata (under "lobster") naming the step of a cell that draws a figure.
 FIGURE_CELL_KEY = "figure"
+# Cell metadata (under "lobster") on the cell that stands in for custom code left
+# out: {"step": <step number>, "reason": "unrecognised_record"}. Replay refuses it.
+OMITTED_CUSTOM_CODE_KEY = "omitted_custom_code"
 UNRECORDED_INPUT_NOTE = (
     "*Input not recorded: this step runs on the result of the cells above.*"
 )
@@ -403,6 +406,8 @@ class NotebookExporter:
         self.data_manager = data_manager
         # Set by each export of a migrated session: links in data/ that point nowhere
         self.dangling_links: List[str] = []
+        # Set by each export: the steps whose custom code was left out
+        self.omitted_custom_code: List[int] = []
         logger.debug("Initialized NotebookExporter with IR support")
 
     def _migrated_origin(self) -> Optional[Dict[str, Any]]:
@@ -436,7 +441,9 @@ class NotebookExporter:
             or ir.operation in NotebookExporter._EXCLUDED_STEP_TYPES
         )
 
-    def _unrun_cell(self, ir: AnalysisStep, origin: Dict[str, Any]) -> NotebookNode:
+    def _unrun_cell(
+        self, ir: AnalysisStep, origin: Dict[str, Any], step: int
+    ) -> NotebookNode:
         """Custom code of an earlier version: shown, never a code cell."""
         from lobster.services.execution.custom_code_execution_service import (
             recorded_custom_code,
@@ -448,7 +455,11 @@ class NotebookExporter:
                 "Not shown: custom code from a {source} whose record has a form "
                 "Lobster did not write"
             ).format(source=self._source_words(origin))
-            return new_markdown_cell(f"**{label}**\n")
+            cell = new_markdown_cell(f"**{label}**\n")
+            cell.metadata["lobster"] = {
+                OMITTED_CUSTOM_CODE_KEY: {"step": step, "reason": "unrecognised_record"}
+            }
+            return cell
         longest = max((len(m) for m in re.findall(r"`+", code)), default=0)
         fence = "`" * max(3, longest + 1)
         label = h(
@@ -556,6 +567,15 @@ class NotebookExporter:
             for activity, ir in exportable_pairs
             if origin and self._is_custom_code(activity, ir)
         }
+        from lobster.services.execution.custom_code_execution_service import (
+            recorded_custom_code,
+        )
+
+        self.omitted_custom_code = [
+            idx
+            for idx, (activity, ir) in enumerate(exportable_pairs, start=1)
+            if id(activity) in unrun and recorded_custom_code(ir) is None
+        ]
         exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
         excluded_activity_types = [
             self._omitted_label(activity)
@@ -685,7 +705,7 @@ class NotebookExporter:
 
             # Add executable code cell from IR (no placeholder fallback)
             if id(activity) in unrun:
-                notebook.cells.append(self._unrun_cell(ir, origin))
+                notebook.cells.append(self._unrun_cell(ir, origin, idx))
                 after(position)
                 continue
             if position in custom:
@@ -1092,6 +1112,12 @@ code recorded for it.
                 "(restore or remove before replay)."
             ).format(names=", ".join(self.dangling_links))
             lines += f"**{note}**\n\n"
+        if self.omitted_custom_code:
+            note = h(
+                "Custom code in a form Lobster did not write is left out "
+                "(steps: {steps}); replay cannot verify this notebook."
+            ).format(steps=", ".join(map(str, self.omitted_custom_code)))
+            lines += f"**{note}**\n\n"
         return lines
 
     def _client_session_identity(self) -> Optional[str]:
@@ -1150,6 +1176,7 @@ code recorded for it.
                 **origin,
                 "input": "not recorded by the source version",
                 "dangling_links": list(self.dangling_links),
+                "omitted_custom_code": list(self.omitted_custom_code),
             }
 
         content = f"""## Export record (hashes)

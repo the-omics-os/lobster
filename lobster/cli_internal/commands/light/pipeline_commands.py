@@ -165,6 +165,25 @@ def pipeline_export(
                 ],
             )
 
+        omitted = getattr(
+            getattr(client.data_manager, "notebook_exporter", None),
+            "omitted_custom_code",
+            None,
+        )
+        if isinstance(omitted, list) and omitted:  # replay refuses the notebook
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        h(
+                            "Custom code in a form Lobster did not write is left out "
+                            "(steps: {steps}); replay cannot verify this notebook."
+                        ).format(steps=", ".join(map(str, omitted))),
+                        level="warning",
+                    )
+                ],
+            )
+
         _render_blocks(
             output,
             [
