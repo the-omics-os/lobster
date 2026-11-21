@@ -5,17 +5,21 @@ samples a complete separation got p = 0.0495, below 0.05, where an exact test
 cannot go below 0.10. The test is now an exact permutation Mann-Whitney (ties
 handled) while the two groups can be split at most 20,000 ways, and the
 tie-corrected normal approximation above that. The statistic is the
-tie-corrected z, signed like the fold change.
+tie-corrected z, signed like the fold change, and the approximate p-value is
+the one of that z (no continuity correction).
 """
 
 import itertools
 import math
+import tracemalloc
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
 from scipy import stats as scipy_stats
+
+from lobster.services.analysis.mann_whitney import mann_whitney
 
 from .test_de_zero_within_group_variance import _analysed
 
@@ -80,9 +84,9 @@ def test_the_exact_test_runs_while_the_groups_split_20000_ways_or_fewer(
             vectorized=True,
             axis=0,
         ).pvalue
-    else:  # 8 v 9: 24,310; 9 v 9: 48,620
+    else:  # 8 v 9: 24,310; 9 v 9: 48,620; no continuity correction, as the z
         expected = scipy_stats.mannwhitneyu(
-            treat, ctrl, method="asymptotic", axis=0
+            treat, ctrl, method="asymptotic", use_continuity=False, axis=0
         ).pvalue
     reported = list(p.index)
     columns = [adata.var_names.get_loc(g) for g in reported]
@@ -103,3 +107,29 @@ def test_the_statistic_is_the_tie_corrected_z_signed_like_the_fold_change(
         sigma = math.sqrt(36 / 12 * (13 - (ties**3 - ties).sum() / (12 * 11)))
         assert out.var.loc[gene, "stat"] == pytest.approx((u - 18) / sigma)
     assert out.var.loc["GENE0000", "stat"] > 0
+
+
+@pytest.mark.parametrize("n", [6, 8])
+def test_the_exact_test_holds_a_bounded_block_of_splits_in_memory(n):
+    """Every split times every gene at once took 12 GB at 8 v 8 with 20,000 genes."""
+    rng = np.random.default_rng(1)
+    x = rng.negative_binomial(5, 0.1, size=(2 * n, 2_000)).astype(np.float64)
+
+    tracemalloc.start()
+    try:
+        mann_whitney(x[n:], x[:n])
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    assert peak < 128 * 2**20, f"{peak / 2**20:.0f} MiB"
+
+
+def test_a_gene_with_a_missing_value_gets_no_p_value():
+    x = np.arange(12, dtype=np.float64).reshape(6, 2)
+    x[0, 1] = np.nan
+
+    z, p = mann_whitney(x[3:], x[:3])
+
+    assert p[0] == pytest.approx(0.1)
+    assert np.isnan(p[1]) and np.isnan(z[1])
