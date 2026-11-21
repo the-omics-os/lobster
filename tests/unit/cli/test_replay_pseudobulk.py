@@ -4,8 +4,9 @@
 pseudobulk sample and saves it as ``<modality>_pseudobulk``. The exported cell
 must make that same object (its rows, the ``raw_aggregated`` layer, the obs, var
 and uns the service writes) with every setting the session used, so that
-``lobster replay --verify`` compares the saved file with it. Skipped without the transcriptomics
-package, pyDESeq2 or a Jupyter kernel.
+``lobster replay --verify`` compares the saved file with it, also when a DE step
+changes the pseudobulk matrix after the session saved it. Skipped without the
+transcriptomics package, pyDESeq2 or a Jupyter kernel.
 """
 
 import json
@@ -102,14 +103,9 @@ def test_the_exported_pseudobulk_matrix_replays_to_match(
     assert (code, out["verdict"]) == (0, "MATCH"), out
 
 
-@needs_kernel
-def test_a_de_step_after_the_saved_pseudobulk_matrix_is_still_a_mismatch(
-    tmp_path, monkeypatch
-):
-    """The session saved the pseudobulk matrix before a DE step wrote its results
-    into it; the notebook writes that save after the DE cell. Until the save is
-    placed where the session made it, replay must answer MISMATCH with exactly
-    that difference, never MATCH."""
+def _with_de(tmp_path, monkeypatch):
+    """The pseudobulk session, then a DE step on the saved pseudobulk matrix: it
+    writes its results into that matrix after the session saved it."""
     dm, source, tools = _session(tmp_path, monkeypatch)
     reply = tools["run_differential_expression"].invoke(
         {
@@ -122,14 +118,38 @@ def test_a_de_step_after_the_saved_pseudobulk_matrix_is_still_a_mismatch(
         }
     )
     assert "Complete" in reply, reply
+    return dm, source
+
+
+def test_a_save_is_written_where_the_session_saved_it(tmp_path, monkeypatch):
+    """The pseudobulk matrix is saved right after its own cell, before the DE cell
+    changes it; the DE result is saved after the DE cell."""
+    dm, _ = _with_de(tmp_path, monkeypatch)
+    notebook = dm.export_notebook("pb", "pseudobulk", filter_strategy="successful")
+    code = [
+        "".join(cell["source"])
+        for cell in json.loads(notebook.read_text())["cells"]
+        if cell["cell_type"] == "code"
+    ]
+
+    def where(text):
+        (found,) = [i for i, source in enumerate(code) if text in source]
+        return found
+
+    pseudobulk_cell = where("PseudobulkService().aggregate_to_pseudobulk(")
+    de_cell = where("run_pydeseq2_from_pseudobulk(")
+    assert where("'sc_pseudobulk' }.h5ad") == pseudobulk_cell + 1
+    assert de_cell > pseudobulk_cell + 1
+    assert where("'sc_pseudobulk_de_ctrl_vs_treat' }.h5ad") > de_cell
+
+
+@needs_kernel
+def test_a_de_step_after_the_saved_pseudobulk_matrix_replays_to_match(
+    tmp_path, monkeypatch
+):
+    dm, source = _with_de(tmp_path, monkeypatch)
     code, out = _replay(dm, source)
-    assert (code, out["verdict"]) == (1, "MISMATCH"), out
-    diffs = [d for slot in out["report"]["slots"] for d in slot["diffs"]]
-    assert sorted(diffs) == [
-        "files/sc_pseudobulk.h5ad/uns/de_current_results_key: not in the reference",
-        "files/sc_pseudobulk.h5ad/uns/de_results_condition_treat_vs_ctrl: "
-        "not in the reference",
-    ], diffs
+    assert (code, out["verdict"]) == (0, "MATCH"), out
 
 
 def test_the_step_records_what_it_read_and_made(tmp_path, monkeypatch):
