@@ -32,9 +32,9 @@ def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
     for start in range(0, n_genes, step):
         block = slice(start, start + step)
         every_u = splits @ ranks[:, block] - n_x * (n_x + 1) / 2
-        # midranks make U a multiple of 1/2: a quarter is far beyond rounding
-        below = (every_u <= u[block] + 0.25).mean(axis=0)
-        above = (every_u >= u[block] - 0.25).mean(axis=0)
+        # midranks are multiples of 1/2, and so are their sums: exact in floats
+        below = (every_u <= u[block]).mean(axis=0)
+        above = (every_u >= u[block]).mean(axis=0)
         p[block] = np.minimum(1.0, 2 * np.minimum(below, above))
     return p
 
