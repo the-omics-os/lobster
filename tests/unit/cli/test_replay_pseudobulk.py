@@ -162,12 +162,10 @@ def test_a_record_without_what_each_step_stored_places_saves_the_same(
     _assert_saves_in_place(dm)
 
 
-def test_a_save_made_between_two_steps_is_written_after_the_first(
-    tmp_path, monkeypatch
-):
-    """Saved on its own after the pseudobulk step: the DE step after it stores
-    the same name (its results go into it), but did not make the save."""
-    dm, _, tools = _session(tmp_path, monkeypatch, save_result=False)
+def _saved_between(tmp_path, monkeypatch):
+    """The pseudobulk matrix saved on its own, then a DE step that writes its
+    results into it."""
+    dm, source, tools = _session(tmp_path, monkeypatch, save_result=False)
     dm.save_modality("sc_pseudobulk", "sc_pseudobulk.h5ad")
     reply = tools["run_differential_expression"].invoke(
         {
@@ -180,7 +178,35 @@ def test_a_save_made_between_two_steps_is_written_after_the_first(
         }
     )
     assert "Complete" in reply, reply
+    return dm, source
+
+
+def test_a_save_made_between_two_steps_is_written_after_the_first(
+    tmp_path, monkeypatch
+):
+    """Saved on its own after the pseudobulk step: the DE step after it stores
+    the same name (its results go into it), but did not make the save."""
+    dm, _ = _saved_between(tmp_path, monkeypatch)
     _assert_saves_in_place(dm)
+
+
+@needs_kernel
+def test_a_save_between_two_steps_in_an_older_record_is_still_a_mismatch(
+    tmp_path, monkeypatch
+):
+    """A record from before saves said whether a step made them: the save just
+    before the DE step is taken as made in it, as 1.3.0 did, and the replay
+    finds the saved matrix differs from the one the session saved."""
+    dm, source = _saved_between(tmp_path, monkeypatch)
+    for activity in dm.provenance.activities:
+        activity.pop("saved_during_step", None)
+    code, out = _replay(dm, source)
+    assert (code, out["verdict"]) == (1, "MISMATCH"), out
+    diffs = [d for slot in out["report"]["slots"] for d in slot.get("diffs", [])]
+    assert sorted(diffs) == [
+        f"files/sc_pseudobulk.h5ad/uns/{key}: not in the reference"
+        for key in ("de_current_results_key", "de_results_condition_treat_vs_ctrl")
+    ], diffs
 
 
 @needs_kernel

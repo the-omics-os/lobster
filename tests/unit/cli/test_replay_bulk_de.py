@@ -313,6 +313,27 @@ def test_later_de_on_the_same_modality_replays_to_match(
     assert out["verdict"] == "MATCH", out
 
 
+@needs_kernel
+def test_later_de_in_a_record_that_does_not_say_where_saves_were_made_matches(
+    tmp_path, monkeypatch
+):
+    """A session recorded before saves said whether a step made them: a save just
+    before the step that stores the name is read as made in that step."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "bulk.h5ad"
+    _rank_fixture(False).write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("bulk", str(source), adapter="transcriptomics_bulk")
+    for method, group2 in SEQUENCES["wilcoxon-then-deseq2"]:
+        reply = _run_de(dm, "run_differential_expression", method, group2=group2)
+        assert "Complete" in reply, reply
+    for activity in dm.provenance.activities:
+        activity.pop("saved_during_step", None)
+    notebook = dm.export_notebook("de", "bulk DE", filter_strategy="successful")
+    result, out = _verify(notebook, source, dm.workspace_path)
+    assert result.exit_code == 0 and out["verdict"] == "MATCH", out
+
+
 @pytest.mark.parametrize("save", [False, True], ids=["no_save", "save"])
 def test_deseq2_names_the_copy_it_wrote_only_when_it_saved_one(
     tmp_path, monkeypatch, save

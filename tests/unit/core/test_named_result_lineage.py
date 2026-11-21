@@ -102,3 +102,67 @@ def test_the_activity_records_what_the_tool_stored_and_not_its_save(tmp_path):
     assert activity["stored_modalities"] == [{"name": "x_done", "parent": "x"}]
     later = dm.log_tool_usage(tool_name="other", parameters={})
     assert "stored_modalities" not in later
+
+
+def _save_record(dm, name):
+    (save,) = [
+        a
+        for a in dm.provenance.activities
+        if a["type"] == "save_dataset" and a["parameters"]["name"] == name
+    ][-1:]
+    return save
+
+
+def test_a_save_records_whether_the_step_logged_next_made_it(tmp_path):
+    """A tool stores a modality, saves it and then logs: that save is part of the
+    step. A save of a name nothing stored since the last step is made on its own,
+    also when an earlier step made the name."""
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    x = ad.AnnData(X=np.ones((3, 2), dtype=np.float32))
+    dm.store_modality(name="x", adata=x)
+    dm.log_tool_usage(tool_name="load", parameters={})
+    dm.store_modality(name="x_done", adata=x.copy(), parent_name="x")
+    dm.save_modality("x_done", "x_done.h5ad")
+    assert _save_record(dm, "x_done")["saved_during_step"] is True
+    dm.log_tool_usage(tool_name="step", parameters={"modality_name": "x"})
+    dm.save_modality("x_done", "x_done.h5ad")
+    assert _save_record(dm, "x_done")["saved_during_step"] is False
+    dm.store_modality(name="x_other", adata=x.copy(), parent_name="x")
+    dm.save_modality("x_done", "x_done.h5ad")  # stored since the step: another name
+    assert _save_record(dm, "x_done")["saved_during_step"] is False
+
+
+def _placed(save, next_step):
+    """How many steps ran before *save*, logged just before *next_step*."""
+    from types import SimpleNamespace
+
+    first = {"type": "make", "stored_modalities": [{"name": "x", "parent": None}]}
+    record = SimpleNamespace(activities=[first, save, next_step])
+    exporter = SimpleNamespace(provenance=record)
+    return NotebookExporter._steps_before_saves(
+        exporter, [first, next_step], {"x": save}
+    )["x"]
+
+
+@pytest.mark.parametrize(
+    "flag, stored, steps",
+    [
+        (None, [{"name": "x", "parent": None}], 2),
+        (None, None, 2),
+        (None, [{"name": "y", "parent": "x"}], 1),
+        (True, [{"name": "x", "parent": None}], 2),
+        (True, [{"name": "y", "parent": "x"}], 1),
+        (False, [{"name": "x", "parent": None}], 1),
+        (False, None, 1),
+    ],
+    ids=["old-stored", "old-unknown", "old-other", "during", "during-other",
+         "own", "own-unknown"],
+)  # fmt: skip
+def test_a_save_is_placed_by_what_it_and_the_next_step_record(flag, stored, steps):
+    save = {"type": "save_dataset", "parameters": {"name": "x"}}
+    if flag is not None:
+        save["saved_during_step"] = flag
+    step = {"type": "step"}
+    if stored is not None:
+        step["stored_modalities"] = stored
+    assert _placed(save, step) == steps
