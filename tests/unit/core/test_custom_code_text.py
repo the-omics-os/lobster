@@ -188,7 +188,7 @@ def _record(nb) -> dict:
 OMITTED_KEY = "omitted_custom_code"  # exporter.OMITTED_CUSTOM_CODE_KEY
 OMITTED_NOTE = (
     "Custom code in a form Lobster did not write is left out (steps: 2); "
-    "replay cannot verify this notebook."
+    "replay cannot check this notebook."
 )
 
 

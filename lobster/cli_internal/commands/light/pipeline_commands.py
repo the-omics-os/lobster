@@ -177,7 +177,7 @@ def pipeline_export(
                     alert_block(
                         h(
                             "Custom code in a form Lobster did not write is left out "
-                            "(steps: {steps}); replay cannot verify this notebook."
+                            "(steps: {steps}); replay cannot check this notebook."
                         ).format(steps=", ".join(map(str, omitted))),
                         level="warning",
                     )

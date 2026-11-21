@@ -2228,7 +2228,7 @@
   "Links in the workspace that point to missing files: {names} (restore or remove before replay).": "工作区中指向缺失文件的链接：{names}（重放前请恢复或移除）。",
   "Not executed: custom code from a {source} (it may use paths of the machine it ran on)": "未执行：来自 {source} 的自定义代码（它可能使用了运行它的那台机器上的路径）",
   "Not shown: custom code from a {source} whose record has a form Lobster did not write": "未显示：来自 {source} 的自定义代码，其记录的形式并非 Lobster 所写",
-  "Custom code in a form Lobster did not write is left out (steps: {steps}); replay cannot verify this notebook.": "形式并非 Lobster 所写的自定义代码已被略去（步骤：{steps}）；replay 无法验证此 notebook。",
+  "Custom code in a form Lobster did not write is left out (steps: {steps}); replay cannot check this notebook.": "形式并非 Lobster 所写的自定义代码已被略去（步骤：{steps}）；replay 无法检查此 notebook。",
   "Lobster {version} session": "Lobster {version} 会话",
   "Lobster session of unknown version": "未知版本的 Lobster 会话",
   "migrated: input not recorded. Per file, not a verdict:": "迁移：未记录输入。逐文件结果，不是结论：",

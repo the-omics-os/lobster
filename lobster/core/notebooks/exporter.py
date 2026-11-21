@@ -1115,7 +1115,7 @@ code recorded for it.
         if self.omitted_custom_code:
             note = h(
                 "Custom code in a form Lobster did not write is left out "
-                "(steps: {steps}); replay cannot verify this notebook."
+                "(steps: {steps}); replay cannot check this notebook."
             ).format(steps=", ".join(map(str, self.omitted_custom_code)))
             lines += f"**{note}**\n\n"
         return lines

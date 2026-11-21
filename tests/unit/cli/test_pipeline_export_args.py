@@ -194,7 +194,7 @@ def test_export_names_the_custom_code_it_left_out(tmp_path):
         pipeline_export(client, Mock(), "nb", "")
     assert (
         "Custom code in a form Lobster did not write is left out (steps: 2, 5); "
-        "replay cannot verify this notebook." in "\n".join(shown)
+        "replay cannot check this notebook." in "\n".join(shown)
     )
 
 
