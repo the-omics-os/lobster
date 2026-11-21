@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from jinja2 import Environment
+from jinja2.sandbox import SandboxedEnvironment
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 # notebook cell; current callers only pass literal-shaped params. A
 # python-literal-hardening filter is tracked as separate future work.
 # Generates Python source, not HTML; HTML escaping would corrupt Python literals.
-_JINJA_ENV = Environment(autoescape=False)  # nosec B701
+# Sandboxed: text that reaches a template through an f-string must not be able to
+# reach this process's objects (its environment holds the provider keys).
+_JINJA_ENV = SandboxedEnvironment(autoescape=False)  # nosec B701
 
 
 def _python_literal(value: Any) -> str:
