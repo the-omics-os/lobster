@@ -289,3 +289,58 @@ def test_a_group_of_one_or_two_without_ties_gets_scipys_exact_p_value(n_small, n
         x[:n_small], x[n_small:], alternative="two-sided", method="exact", axis=0
     ).pvalue
     np.testing.assert_allclose(p, expected, rtol=1e-9)
+
+
+def _detected_in_four(n_ctrl, n_treat):
+    """GENE0001 is 0 in every sample but four treat ones: 16 of 20 tie."""
+    adata = _cohort(n_ctrl, n_treat)
+    adata.X[:, 1] = 0.0
+    adata.X[n_ctrl : n_ctrl + 4, 1] = [3.0, 4.0, 5.0, 6.0]
+    return adata
+
+
+def test_a_tie_heavy_gene_on_the_normal_path_is_flagged_and_counted(
+    tmp_path, monkeypatch
+):
+    """10 v 10 has 184,756 splits: the normal approximation, which for this gene
+    gives p = 0.031 where the exact p-value is 0.087."""
+    out, stats, _ = _analysed(
+        tmp_path, monkeypatch, _detected_in_four(10, 10), "wilcoxon"
+    )
+
+    flagged = out.var["approximate_with_ties"]
+    assert list(flagged[flagged].index) == ["GENE0001"]
+    assert stats["n_approximate_with_ties"] == 1
+
+
+def test_an_exact_test_flags_no_gene(tmp_path, monkeypatch):
+    out, stats, _ = _analysed(
+        tmp_path, monkeypatch, _detected_in_four(8, 8), "wilcoxon"
+    )
+
+    assert not out.var["approximate_with_ties"].any()
+    assert stats["n_approximate_with_ties"] == 0
+
+
+@pytest.mark.parametrize(
+    "n, line",
+    [
+        (0, ""),
+        (
+            1,
+            "\n- Of the genes tested, 1 has many tied values (such as zeros): its "
+            "Wilcoxon p-value is the normal approximation, which can be far smaller "
+            "than the exact p-value; check it with DESeq2 on counts.",
+        ),
+        (
+            3,
+            "\n- Of the genes tested, 3 have many tied values (such as zeros): their "
+            "Wilcoxon p-values are the normal approximation, which can be far "
+            "smaller than the exact p-values; check them with DESeq2 on counts.",
+        ),
+    ],
+)
+def test_the_reply_names_the_tie_heavy_genes(n, line):
+    from lobster.agents.transcriptomics.de_analysis_expert import _tied_text
+
+    assert _tied_text({"n_approximate_with_ties": n}) == line
