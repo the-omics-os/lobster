@@ -82,3 +82,34 @@ def test_run_gsea_analysis_reads_it(tmp_path, monkeypatch, method):
 
     assert "Invalid DE results format" not in reply, reply
     assert len(ranked) == 1 and len(ranked[0]) == 2000, reply
+
+
+LEGACY = (
+    "DE results at 'de_results_ctrl_vs_treat' were saved by Lobster before 1.3.1; "
+    "run the differential expression again."
+)
+TOOLS = {
+    "filter_de_results": {},
+    "export_de_results": {},
+    "run_gsea_analysis": {},
+    "extract_and_export_de_results": {"shrink_lfc": False},
+}
+
+
+@pytest.mark.parametrize("current", [True, False], ids=["current", "only"])
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_result_saved_before_1_3_1_says_to_run_the_de_again(
+    tmp_path, monkeypatch, tool, current
+):
+    """Lobster 1.3.0 stored a wilcoxon or t-test table as ``to_dict()``: a column
+    to {gene: value} mapping, which a saved file gives back as nested dicts."""
+    dm, result, tools = _analysed(tmp_path, monkeypatch, "t_test")
+    adata = dm.get_modality(result)
+    key = adata.uns["de_current_results_key"]
+    adata.uns[key] = adata.uns[key]["results_df"].to_dict()
+    if not current:
+        del adata.uns["de_current_results_key"]
+
+    reply = tools[tool].invoke({"modality_name": result, **TOOLS[tool]})
+
+    assert LEGACY in reply, reply
