@@ -1049,6 +1049,61 @@ def _path_refusal(
     return None
 
 
+# The exporter's cell for custom code in a record of a form Lobster did not write
+# (exporter._unrun_cell), with {source} any session name.
+_OMITTED_LABEL = (
+    "Not shown: custom code from a {source} whose record has a form Lobster did "
+    "not write"
+)
+
+
+@lru_cache(maxsize=1)
+def _omitted_labels() -> Tuple[Any, ...]:
+    """The omitted cell's text in every language Lobster writes it in."""
+    from lobster.i18n import catalog_dir, h, use_lang
+
+    codes = {"en"} | {
+        path.name.split(".")[1] for path in catalog_dir().glob("phrases.*.json")
+    }
+    shapes = []
+    for code in sorted(codes):
+        with use_lang(code):
+            text = h(_OMITTED_LABEL)
+        head, tail = text.split("{source}", 1)
+        shapes.append(
+            re.compile(rf"\*\*{re.escape(head)}.+{re.escape(tail)}\*\*", re.DOTALL)
+        )
+    return tuple(shapes)
+
+
+def _omits_custom_code(notebook: Path) -> bool:
+    """The notebook leaves out custom code of a form Lobster did not write: a cell
+    carries the exporter's mark, a markdown cell is its label, or the export record
+    names the step. Any one is enough, so removing one does not hide the others."""
+    from lobster.core.notebooks.exporter import OMITTED_CUSTOM_CODE_KEY
+
+    migrated = _manifest(notebook).get("migrated")
+    if isinstance(migrated, dict) and migrated.get(OMITTED_CUSTOM_CODE_KEY):
+        return True
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False  # unreadable: the run refuses it
+    for cell in cells if isinstance(cells, list) else []:
+        if not isinstance(cell, dict):
+            continue
+        marks = (cell.get("metadata") or {}).get("lobster")
+        if isinstance(marks, dict) and OMITTED_CUSTOM_CODE_KEY in marks:
+            return True
+        source = cell.get("source", "")
+        source = "".join(source) if isinstance(source, list) else str(source)
+        if cell.get("cell_type") == "markdown" and any(
+            shape.fullmatch(source.strip()) for shape in _omitted_labels()
+        ):
+            return True
+    return False
+
+
 def _manifest(notebook: Path) -> Dict[str, Any]:
     """The ``data_integrity_manifest`` of the export record, as written.
 
@@ -1665,6 +1720,25 @@ def verify_notebook(
     base_policy = user_policy or _default_policy([])
     if refusal is not None:
         return refused(base_policy, refusal, anchor["name"])
+    if _omits_custom_code(notebook):
+        # what the left-out code did is not in the notebook: nothing to verify
+        return finish(
+            report(
+                base_policy,
+                verification_status=VerificationStatus.NOT_RUN,
+                preflight=Preflight.REFUSED,
+                execution=Execution.NOT_RUN,
+                verdict=Verdict.REFUSED,
+                refusal=Refusal(
+                    h(
+                        "This notebook omits custom code Lobster did not write, so a "
+                        "replay cannot check it; it was not run."
+                    ),
+                    None,
+                    RefusalOrigin.PRODUCT,
+                ),
+            )
+        )
     if _reads_session_workspace(notebook):
         # its code reads (and writes) the session's own files: never run
         return finish(
