@@ -900,11 +900,7 @@ def create_shared_tools(
 
                     pathway_service = PathwayEnrichmentBridgeService()
                 except ImportError:
-                    return (
-                        "Pathway enrichment service not available. "
-                        "Install lobster-ai with pathway support or ensure "
-                        "PathwayEnrichmentBridgeService is accessible."
-                    )
+                    return "Metabolomics pathway enrichment is not available in this release."
 
             # Extract significant metabolite names
             metabolite_names = []
