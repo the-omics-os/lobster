@@ -362,6 +362,14 @@ def _nothing_ran(workspace):
     return not list(replays.glob("*/executed.ipynb"))
 
 
+def _as_1_3_0_head(lines):
+    """export_de_results' cell lines with the head 1.3.0 wrote: the table, then
+    the sort, then (unchanged) the folder line and the write."""
+    table = lines[0].replace("['results_df'].copy()", "['results_df']")
+    (sort,) = [line.strip() + "\n" for line in lines if "sort_values(" in line]
+    return [table, sort, *lines[-2:]]
+
+
 def _as_1_3_0(notebook):
     """The notebook with its export cells as 1.3.0 wrote them: no folder line,
     and the session's file by its absolute path."""
@@ -376,6 +384,8 @@ def _as_1_3_0(notebook):
         (line,) = mkdir
         relative = line[line.index("Path(") + 5 : line.index(").parent")]
         absolute = repr(str(workspace / ast.literal_eval(relative)))
+        if any(other.startswith("for _old, _new in") for other in lines):
+            lines = _as_1_3_0_head(lines)  # 1.3.0 neither renamed nor named
         cell["source"] = "".join(
             other.replace(relative, absolute) for other in lines if other != line
         )
