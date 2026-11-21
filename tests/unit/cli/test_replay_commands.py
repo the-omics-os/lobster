@@ -51,11 +51,9 @@ def _built(path) -> str:
     sees, so their paths are made at run time."""
     parts = Path(path).parts
     if parts and parts[0] == os.sep:
-        return (
-            f"__import__('os').sep + __import__('os').path.join(*{list(parts[1:])!r})"
-        )
-    words = ("__import__('os').pardir" if p == ".." else repr(p) for p in parts)
-    return f"__import__('os').path.join({', '.join(words)})"
+        return f"str(Path(Path.cwd().anchor, {', '.join(map(repr, parts[1:]))}))"
+    steps = "".join(".parent" if p == ".." else f" / {p!r}" for p in parts)
+    return f"str(Path.cwd(){steps})"
 
 
 def _kernel_installed() -> bool:
@@ -1348,7 +1346,7 @@ def test_a_data_folder_that_is_a_symlink_is_watched(tmp_path, monkeypatch):
     nb = nbformat.read(notebook, as_version=4)
     nb.cells.append(
         nbformat.v4.new_code_cell(
-            "import anndata, numpy\n"
+            "import anndata, numpy\nfrom pathlib import Path\n"
             "anndata.AnnData(numpy.zeros((2, 2), 'float32'))"
             f".write_h5ad({_built('../../data/other_saved.h5ad')})"
         )

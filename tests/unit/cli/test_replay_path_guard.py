@@ -442,3 +442,202 @@ def test_the_reasons_have_their_chinese_lines():
     ):
         for catalog in catalogs:
             assert reason in json.loads(catalog.read_text()), (catalog, reason)
+
+
+# --- the export cell and code that runs commands (L136) -------------------------
+
+NOT_EXPORT = (
+    "Code cell 1 is not the code the export step writes; the notebook was not run."
+)
+A1 = (
+    "results_df = adata.uns['de_results_x']['results_df']\n"
+    "results_df = results_df.sort_values('padj')\n"
+    "results_df.to_csv('exports/de.csv', index=True)"
+)
+
+
+def _a2(padj=True, lfc=True, method="to_csv"):
+    return (
+        "# Extract and export DE results\n"
+        "results_df = adata.uns['de_results_x']['results_df'].copy()\n"
+        + ("results_df = results_df[results_df['padj'] <= 0.05]\n" if padj else "")
+        + (
+            "results_df = results_df[abs(results_df['log2FoldChange']) >= 1.0]\n"
+            if lfc
+            else ""
+        )
+        + "results_df = results_df.sort_values('padj')\n"
+        f"results_df.{method}('exports/de.xlsx', index=True)"
+    )
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        A1,
+        A1.replace("to_csv", "to_excel"),
+        _a2(),
+        _a2(padj=False),
+        _a2(lfc=False),
+        _a2(padj=False, lfc=False, method="to_excel"),
+    ],
+    ids=["A1", "A1-excel", "A2", "A2-lfc", "A2-padj", "A2-none"],
+)
+def test_an_export_cell_as_its_step_writes_it_is_admitted(tmp_path, cell):
+    assert _refusal(tmp_path, cell) is None
+
+
+@pytest.mark.parametrize(
+    "cell",
+    [
+        A1.replace("to_csv", "to_tsv"),
+        # the reported payload: the method text runs two more statements
+        A1.replace(
+            "results_df.to_csv(",
+            "results_df.to_csv('x.csv');open('marker.txt','w').write('x');"
+            "results_df.to_csv(",
+        ),
+        # the path hidden in a comment, the cell otherwise without one
+        A1.replace(
+            "to_csv('exports/de.csv', index=True)",
+            "to_csv('x.csv'); print(1) #('exports/de.csv', index=True)",
+        ),
+        A1.replace("results_df.to_csv", "(results_df.to_csv if 1 else exec)"),
+        _a2().replace("<= 0.05", "<= float('0.05')"),
+    ],
+    ids=["method", "statements", "comment", "expression", "threshold"],
+)
+def test_an_export_cell_its_step_does_not_write_is_refused(tmp_path, cell):
+    assert _refusal(tmp_path, cell) == NOT_EXPORT
+
+
+@pytest.mark.parametrize(
+    "code, call",
+    [
+        ("x = eval('1')\n", "eval"),
+        ("exec('x = 1')\n", "exec"),
+        ("m = __import__('os')\n", "__import__"),
+        ("import subprocess\n", "import subprocess"),
+        ("from importlib import import_module\n", "import importlib"),
+        ("import os\nos.system('ls')\n", "os.system"),
+        ("import os as o\no.popen('ls')\n", "os.popen"),
+        ("!ls\n", "a shell command"),
+    ],
+    ids=["eval", "exec", "__import__", "subprocess", "importlib", "system", "alias",
+         "shell"],
+)  # fmt: skip
+def test_a_cell_that_runs_commands_or_built_code_is_refused(tmp_path, code, call):
+    assert _refusal(tmp_path, "x = 1\n", code) == (
+        f"Code cell 2 runs a command or code it builds ({call}); the notebook was "
+        "not run."
+    )
+
+
+CUSTOM_HEAD = (
+    "# Workspace setup (a replay runs in its own folder)\n"
+    "from pathlib import Path\nimport sys\n\n"
+    "WORKSPACE = Path(workspace_path)\nsys.path.append(str(WORKSPACE))\n\n"
+    "OUTPUT_DIR = WORKSPACE / 'exports'\n"
+    "OUTPUT_DIR.mkdir(parents=True, exist_ok=True)\n"
+    "(WORKSPACE / 'data').mkdir(exist_ok=True)\n"
+    "_lobster_reads(1, '/home/me/session_ws', {'x': adata}, [], runs_on=None)\n\n"
+    "_lobster_held, adata = adata, (adata.copy() if adata is not None else None)\n\n"
+    "# User code\n"
+)
+CUSTOM_TAIL = "\n_lobster_reads_done()\nadata = _lobster_held\n"
+
+
+def test_a_custom_cell_is_the_users_code_and_not_checked_for_commands(tmp_path):
+    """Custom code is the user's (the session ran it): only its paths are checked."""
+    user = (
+        "import subprocess\nresults_df = adata.obs\n"
+        "results_df.to_csv(OUTPUT_DIR / 'obs.csv')\n"
+    )
+    assert _refusal(tmp_path, CUSTOM_HEAD + user + CUSTOM_TAIL) is None
+
+
+def test_a_cell_is_custom_by_its_setup_not_by_a_call_it_holds(tmp_path):
+    """A template value cannot write the custom cell's setup lines before the
+    template's own: a cell holding a _lobster_reads call is not custom for it."""
+    forged = (
+        "_lobster_reads(1, '/home/me/session_ws', {'x': adata}, [], runs_on=None)\n"
+        "x = eval('1')\n"
+    )
+    assert "(eval)" in _refusal(tmp_path, forged)
+    # nor are its typed paths served
+    read = (
+        "_lobster_reads(1, '/home/me/session_ws', {'x': adata}, [], runs_on=None)\n"
+        "import anndata\na = anndata.read_h5ad('/home/me/session_ws/data/x.h5ad')\n"
+    )
+    assert "/home/me/session_ws" in _refusal(tmp_path, read)
+
+
+def _de_export_session(tmp_path, monkeypatch):
+    dm, source = _bulk(tmp_path, monkeypatch)
+    tools = factory_tools(de_module.de_analysis_expert, de_module.__name__, dm)
+    tools["run_bulk_de_direct"].invoke(
+        {"modality_name": "bulk", "group_key": "condition", "group1": "ctrl",
+         "group2": "treat", "save_result": True}
+    )  # fmt: skip
+    tools["export_de_results"].invoke(
+        {"modality_name": "bulk_de_ctrl_vs_treat", "output_format": "csv"}
+    )
+    notebook = dm.export_notebook("nb", "S", filter_strategy="successful")
+    return dm, source, notebook
+
+
+def _edit_export(notebook, payload, tmp_path):
+    """The notebook as an injected output_format renders it: the text after
+    results_df.to_ is the payload."""
+    cells = json.loads(notebook.read_text())
+    for cell in cells["cells"]:
+        text = "".join(cell["source"])
+        if cell["cell_type"] == "code" and "results_df.to_csv(" in text:
+            cell["source"] = text.replace("results_df.to_csv(", payload, 1)
+    edited = tmp_path / "injected.ipynb"
+    edited.write_text(json.dumps(cells))
+    return edited
+
+
+@needs_kernel
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # the b7 exploit (MATCH, marker written)
+        "results_df.to_csv('/dev/null');open('marker.txt','w').write('x');"
+        "results_df.to_csv(",
+        # no path left in the code: the session's path is in a comment
+        "results_df.to_csv('x.csv');open('marker.txt','w').write('x') #(",
+    ],
+    ids=["working-first-call", "comment"],
+)
+def test_an_injected_export_cell_is_refused_and_nothing_runs(
+    tmp_path, monkeypatch, payload
+):
+    dm, source, notebook = _de_export_session(tmp_path, monkeypatch)
+    code, out = _verify(
+        _edit_export(notebook, payload, tmp_path), source, dm.workspace_path
+    )
+    assert code == 4 and out["verdict"] == "REFUSED", out
+    assert "is not the code the export step writes" in (
+        out["report"]["refusal"]["reason"]
+    )
+    assert _nothing_ran(dm.workspace_path)
+    assert not list(dm.workspace_path.rglob("marker.txt"))
+
+
+def test_the_new_reasons_have_their_chinese_lines():
+    root = Path(replay_commands.__file__).resolve().parents[4]
+    for catalog in (
+        root / "lobster" / "i18n" / "phrases.zh.json",
+        root / "lobster-tui" / "internal" / "i18n" / "catalogs" / "phrases.zh.json",
+    ):
+        phrases = json.loads(catalog.read_text())
+        assert (
+            "Code cell {n} is not the code the export step writes; the notebook was "
+            "not run." in phrases
+        )
+        assert (
+            "Code cell {n} runs a command or code it builds ({call}); the notebook "
+            "was not run." in phrases
+        )
