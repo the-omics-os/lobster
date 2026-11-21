@@ -86,3 +86,17 @@ def test_a_sample_name_stays_text_in_the_cell(name):
     assert "__import__" not in {
         n.id for n in ast.walk(ast.parse(cell)) if isinstance(n, ast.Name)
     }
+
+
+@pytest.mark.parametrize(
+    "join_type, comment",
+    [
+        ("inner", "# Join type: 'inner' (inner join = common genes only)\n"),
+        (
+            "outer",
+            "# Join type: 'outer' (outer join = all genes, fill missing with 0)\n",
+        ),
+    ],
+)
+def test_the_cell_says_which_join_it_uses(join_type, comment):
+    assert comment in _cell(["a", "b"], join_type)
