@@ -646,10 +646,12 @@ Next suggested step: Import quantification data with tximport for differential e
                 else 0
             )
 
-            n_approximate_with_ties = (
-                int(results_df["approximate_with_ties"].sum())
-                if "approximate_with_ties" in results_df
-                else 0
+            rough = results_df.get(
+                "approximate_with_ties", pd.Series(False, index=results_df.index)
+            ).astype(bool)
+            n_approximate_with_ties = int(rough.sum())
+            n_approximate_with_ties_significant = int(
+                (rough & (results_df["padj"] < 0.05)).sum()
             )
 
             # Calculate gene confidence scores
@@ -706,6 +708,9 @@ Next suggested step: Import quantification data with tximport for differential e
                 "n_genes_without_pvalue": n_genes_without_pvalue,
                 "n_zero_within_group_variance": n_zero_within_group_variance,
                 "n_approximate_with_ties": n_approximate_with_ties,
+                "n_approximate_with_ties_significant": (
+                    n_approximate_with_ties_significant
+                ),
                 "n_genes_with_missing_value": n_genes_with_missing_value,
                 "n_significant_genes": len(significant_genes),
                 "n_upregulated": len(upregulated),

@@ -286,19 +286,35 @@ def _no_variance_text(de_stats) -> str:
 
 def _tied_text(de_stats) -> str:
     """A line naming the Wilcoxon genes whose p-value is the normal approximation
-    with many tied values, or "" when there is none."""
+    with many tied values, and how many of them are significant, or "" when
+    there is none."""
     n = de_stats.get("n_approximate_with_ties", 0)
     if not n:
         return ""
+    significant = de_stats.get("n_approximate_with_ties_significant", 0)
     if n == 1:
-        has, its, value, them = "has", "its", "p-value is", "it"
+        which = "significant" if significant else "not significant"
+        has, its, value, exact, them = (
+            "has",
+            "its",
+            "p-value is",
+            "p-value",
+            "this gene",
+        )
     else:
-        has, its, value, them = "have", "their", "p-values are", "them"
+        which = f"{significant:,} of them significant"
+        has, its, value, exact, them = (
+            "have",
+            "their",
+            "p-values are",
+            "p-values",
+            "these genes",
+        )
     return (
-        f"\n- Of the genes tested, {n:,} {has} many tied values (such as zeros): "
-        f"{its} Wilcoxon {value} the normal approximation, which can be far smaller "
-        f"than the exact {'p-value' if n == 1 else 'p-values'}; check {them} with "
-        "DESeq2 on counts."
+        f"\n- Of the genes tested, {n:,} ({which}) {has} many tied values (such as "
+        f"zeros): {its} Wilcoxon {value} the normal approximation, which can be far "
+        f"smaller than the exact {exact}; rerun with the default DESeq2 method "
+        f"(needs raw counts), or check {them}."
     )
 
 

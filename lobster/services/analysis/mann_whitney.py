@@ -28,8 +28,10 @@ _KEPT_MAX_VALUES = 2**20
 # Below this share of the rank variance left by ties, the normal approximation
 # of the tie-corrected z can give a p-value far below the exact one: 10 v 10
 # with 16 samples tied gave 0.031 for an exact 0.087, 3 v 51 with the 51 tied
-# 3e-13 for 8e-5
+# 3e-13 for 8e-5. A group of at most four is flagged below the second: at
+# 3 v 100 with 45 tied (0.92 left) the normal gave 0.047 for an exact 0.057
 MANN_WHITNEY_TIE_FACTOR_MIN = 0.9
+MANN_WHITNEY_SMALL_GROUP_TIE_FACTOR_MIN = 0.99
 
 # U of every split is computed for this many (split, gene) pairs at a time
 _BLOCK = 2**22
@@ -125,7 +127,9 @@ def _exact(n_x: int, n_y: int) -> bool:
 
 def approximate_with_ties(x, y) -> np.ndarray:
     """Per column: mann_whitney(x, y) gives the normal approximation, and ties
-    leave less than MANN_WHITNEY_TIE_FACTOR_MIN of the rank variance."""
+    leave less than MANN_WHITNEY_TIE_FACTOR_MIN of the rank variance
+    (MANN_WHITNEY_SMALL_GROUP_TIE_FACTOR_MIN when the smaller group has at most
+    four samples)."""
     from scipy import stats
 
     n_x, n_y = len(x), len(y)
@@ -136,9 +140,12 @@ def approximate_with_ties(x, y) -> np.ndarray:
     spread = ((ranks - (n + 1) / 2) ** 2).sum(axis=0)
     # without ties the spread is n (n^2 - 1) / 12; a missing value is not flagged
     # one value in every sample has no p-value at all
-    return (spread > 0) & (
-        spread * 12 / (n * (n * n - 1)) < MANN_WHITNEY_TIE_FACTOR_MIN
+    least = (
+        MANN_WHITNEY_SMALL_GROUP_TIE_FACTOR_MIN
+        if min(n_x, n_y) <= 4
+        else MANN_WHITNEY_TIE_FACTOR_MIN
     )
+    return (spread > 0) & (spread * 12 / (n * (n * n - 1)) < least)
 
 
 def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
