@@ -181,6 +181,23 @@ def test_export_lists_the_dangling_links_of_a_migrated_workspace(tmp_path):
     assert "data/in.h5ad" in text and "restore or remove before replay" in text
 
 
+def test_export_names_the_custom_code_it_left_out(tmp_path):
+    shown = []
+    client = _client(tmp_path)
+    client.data_manager.notebook_exporter = SimpleNamespace(
+        dangling_links=[], omitted_custom_code=[2, 5]
+    )
+    with patch(
+        "lobster.cli_internal.commands.light.pipeline_commands._render_blocks",
+        lambda output, blocks: shown.extend(map(repr, blocks)),
+    ):
+        pipeline_export(client, Mock(), "nb", "")
+    assert (
+        "Custom code in a form Lobster did not write is left out (steps: 2, 5); "
+        "replay cannot verify this notebook." in "\n".join(shown)
+    )
+
+
 def test_export_says_nothing_of_links_when_there_are_none(tmp_path):
     shown = []
     client = _client(tmp_path)
@@ -191,3 +208,4 @@ def test_export_says_nothing_of_links_when_there_are_none(tmp_path):
     ):
         pipeline_export(client, Mock(), "nb", "")
     assert "restore or remove" not in "\n".join(shown)
+    assert "left out (steps:" not in "\n".join(shown)

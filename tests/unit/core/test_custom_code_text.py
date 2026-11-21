@@ -13,6 +13,7 @@ import json
 import nbformat
 import pytest
 
+from lobster.core.notebooks import exporter as exporter_module
 from lobster.core.notebooks.exporter import NotebookExporter
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
@@ -75,10 +76,30 @@ def test_a_new_custom_step_renders_its_code_exactly(tmp_path, code):
     ), rendered
 
 
-def _migrated(tmp_path, template, code):
+def _step(operation, tool, template, parameters):
+    return AnalysisStep(
+        operation=operation,
+        tool_name=tool,
+        description=operation,
+        library="custom",
+        code_template=template,
+        imports=[],
+        parameters=parameters,
+        parameter_schema={},
+        exportable=True,
+        replayable=True,
+    )
+
+
+def _migrated_notebook(tmp_path, template, code):
+    """The export of a session an earlier version wrote: one plain step, then
+    the custom step (step 2)."""
     ws = tmp_path / "ws"
     folder = ws / ".lobster" / "sessions" / "s1"
     dm = DataManagerV2(workspace_path=ws, session_dir=folder)
+    dm.provenance.create_activity(
+        "normalize", "a", description="normalize", ir=_step("n", "n", "x = 1", {})
+    )
     dm.provenance.create_activity(
         "execute_custom_code",
         "a",
@@ -103,7 +124,11 @@ def _migrated(tmp_path, template, code):
     (folder / "metadata.json").write_text(json.dumps({"software_versions": OLD}))
     dm = DataManagerV2(workspace_path=ws, session_dir=folder)
     path = dm.notebook_exporter.export("nb", filter_strategy="successful")
-    return [c.source for c in nbformat.read(path, as_version=4).cells]
+    return dm.notebook_exporter, nbformat.read(path, as_version=4)
+
+
+def _migrated(tmp_path, template, code):
+    return [c.source for c in _migrated_notebook(tmp_path, template, code)[1].cells]
 
 
 @pytest.mark.parametrize("setup", RECORDED_SETUPS, ids=["quoted", "repr"])
@@ -152,3 +177,43 @@ def test_a_step_with_the_code_as_a_value_but_no_code_is_not_shown(tmp_path):
     cells = _migrated(tmp_path, template, None)
 
     assert any("Not shown: custom code" in s for s in cells), cells
+
+
+def _record(nb) -> dict:
+    cell = next(c for c in nb.cells if "data_integrity_manifest" in c.source)
+    record = json.loads(cell.source.split("```json\n", 1)[1].split("\n```", 1)[0])
+    return record["data_integrity_manifest"]
+
+
+OMITTED_KEY = "omitted_custom_code"  # exporter.OMITTED_CUSTOM_CODE_KEY
+OMITTED_NOTE = (
+    "Custom code in a form Lobster did not write is left out (steps: 2); "
+    "replay cannot verify this notebook."
+)
+
+
+def test_an_omitted_step_is_marked_and_named_in_the_header_and_record(tmp_path):
+    template = "WORKSPACE = Path('{{ workspace_path }}')\n# User code\nprint(1)"
+
+    exporter, nb = _migrated_notebook(tmp_path, template, "print(1)")
+
+    (cell,) = [c for c in nb.cells if "Not shown: custom code" in c.source]
+    assert cell.cell_type == "markdown"
+    assert cell.metadata["lobster"] == {
+        OMITTED_KEY: {"step": 2, "reason": "unrecognised_record"}
+    }
+    assert OMITTED_NOTE in nb.cells[0].source
+    assert _record(nb)["migrated"]["omitted_custom_code"] == [2]
+    assert exporter.omitted_custom_code == [2]
+    assert exporter_module.OMITTED_CUSTOM_CODE_KEY == OMITTED_KEY
+
+
+def test_a_step_read_by_its_shape_is_not_marked(tmp_path):
+    template = RECORDED_SETUPS[1] + "\n# User code\nprint(1)"
+
+    exporter, nb = _migrated_notebook(tmp_path, template, "print(1)")
+
+    assert not any(OMITTED_KEY in c.metadata.get("lobster", {}) for c in nb.cells)
+    assert "left out (steps:" not in nb.cells[0].source
+    assert _record(nb)["migrated"]["omitted_custom_code"] == []
+    assert exporter.omitted_custom_code == []
