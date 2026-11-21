@@ -372,6 +372,14 @@ def create_filesystem_tools(workspace_path: Path) -> List:
                 "Save figures with submit_figure(...) in execute_custom_code instead."
             )
 
+        from lobster.core.figures.export_guard import (
+            MANAGED_EXPORT_MESSAGE,
+            is_session_input,
+        )
+
+        if is_session_input(workspace_path, resolved):  # never over a loaded file
+            return MANAGED_EXPORT_MESSAGE
+
         try:
             resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text(content)
