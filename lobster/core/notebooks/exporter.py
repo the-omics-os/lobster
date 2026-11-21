@@ -131,6 +131,11 @@ print(f"Saved processed data to: {{output_path}}")
 """
 
 
+def _stored_names(step: Dict[str, Any]) -> List[str]:
+    """The modalities the session recorded storing during *step*."""
+    return [entry.get("name") for entry in step.get("stored_modalities") or []]
+
+
 def _keep_cell(
     names: List[str], first: bool, sources: Optional[Dict[str, str]] = None
 ) -> NotebookNode:
@@ -1738,9 +1743,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         modality was made. Each modality in *saved* is written right after the
         step that made it, last before the session saved it: *saved_before*
         gives, per name, how many steps ran before its save, and a step at or
-        after that position changed it after it was saved. Returns, per step position (-1: before the first
-        step), the names to keep after it, the name to restore before it, and
-        the saved names to write after it. A step without a recorded ``adata``
+        after that position changed it after it was saved. Returns, per step
+        position (-1: before the first step), the names to keep after it, the
+        name to restore before it, and the saved names to write after it. A step without a recorded ``adata``
         input runs on what the step above left, as before; a saved name no step
         made is in none of them.
 
@@ -1837,9 +1842,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                     plan.setdefault(loaded, "input")
                 written_back = custom[position][2]
                 if written_back:
-                    made_at[written_back] = position
-                    if position < saved_before.get(written_back, len(steps)):
-                        saved_made_at[written_back] = position
+                    # shortcut: a custom step still moves a save of the name it
+                    # writes back, also one the session made before it ran
+                    made_at[written_back] = saved_made_at[written_back] = position
                     self_kept.add(written_back)
             elif not binding:
                 named = cls._named_result(activity, source)
@@ -1974,7 +1979,11 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 
         A tool logs the saves it makes before its own activity, so a save just
         before a step that stored that name (or recorded nothing about what it
-        stored) happened inside that step, after it made the name.
+        stored) happened inside that step, after it made the name; unless an
+        earlier step already stored it, then the save was made on its own.
+
+        shortcut: a tool that changes a name an earlier step made and saves it
+        itself is counted as saving before it ran; that replay is a MISMATCH.
         """
         order = {
             id(activity): i for i, activity in enumerate(self.provenance.activities)
@@ -1985,9 +1994,11 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             if at is None:
                 continue  # not in this session's record: where it was made decides
             before = sum(order.get(id(step), -1) < at for step in steps)
-            if before < len(steps):
+            if before < len(steps) and not any(
+                name in _stored_names(step) for step in steps[:before]
+            ):
                 stored = steps[before].get("stored_modalities")
-                if stored is None or name in [entry.get("name") for entry in stored]:
+                if stored is None or name in _stored_names(steps[before]):
                     before += 1
             counts[name] = before
         return counts
