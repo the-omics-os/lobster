@@ -809,7 +809,7 @@ concatenated_adata = ad.concat(
     merge='unique',
 {% if join_type == "outer" %}    fill_value=0,
 {% endif %}    label={{ batch_key | string | repr }},
-    keys={% if sample_ids is none %}[f'sample_{i}' for i in range(len(sample_adatas))]{% else %}{{ sample_ids | repr }}{% endif %},
+    keys={% if not sample_ids %}[f'sample_{i}' for i in range(len(sample_adatas))]{% else %}{{ sample_ids | repr }}{% endif %},
 )
 print(f"Concatenated {len(sample_adatas)} samples: {concatenated_adata.n_obs} cells × {concatenated_adata.n_vars} genes")
 """
