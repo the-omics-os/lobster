@@ -433,6 +433,7 @@ Next suggested step: Import quantification data with tximport for differential e
         min_fold_change: float = 1.5,
         min_pct_expressed: float = 0.1,
         max_out_pct_expressed: float = 0.5,
+        alpha: float = 0.05,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Run differential expression analysis on bulk RNA-seq data.
@@ -447,6 +448,7 @@ Next suggested step: Import quantification data with tximport for differential e
             min_fold_change: Minimum fold-change threshold for biological significance (default: 1.5)
             min_pct_expressed: Minimum fraction expressing in group1 (default: 0.1)
             max_out_pct_expressed: Maximum fraction expressing in group2 (default: 0.5)
+            alpha: Adjusted p-value below which a gene is counted significant
 
         Returns:
             Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -621,7 +623,7 @@ Next suggested step: Import quantification data with tximport for differential e
                 )
 
             # Count significant genes
-            significant_genes = results_df[results_df["padj"] < 0.05]
+            significant_genes = results_df[results_df["padj"] < alpha]
             upregulated = significant_genes[significant_genes["log2FoldChange"] > 0]
             downregulated = significant_genes[significant_genes["log2FoldChange"] < 0]
 

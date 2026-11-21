@@ -1566,6 +1566,7 @@ def de_analysis_expert(
                         group1=group1,
                         group2=group2,
                         method=internal_method,
+                        alpha=alpha,
                         **bulk_filters,
                     )
                 )
