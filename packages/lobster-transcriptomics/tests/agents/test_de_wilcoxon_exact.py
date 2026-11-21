@@ -258,3 +258,34 @@ def test_the_exact_test_runs_while_the_split_matrix_holds_2_22_values(
     mann_whitney(x[:1], x[1:])
 
     assert bool(called) is exact
+
+
+@pytest.mark.parametrize("n_small, n_rest", [(1, 2_100), (2, 199), (2, 400)])
+def test_a_group_of_one_or_two_gets_the_exact_p_value_beyond_the_split_matrix(
+    n_small, n_rest
+):
+    """A gene detected only in the small group, the rest tied at 0. The normal
+    approximation of the tie-corrected z gave 2v199 p = 2e-45 and 1v2100 p = 0,
+    where no split is more extreme than the observed one: p = 2 / C(n, k)."""
+    x = np.full((n_small, 1), 5.0)
+    y = np.zeros((n_rest, 1))
+
+    for a, b in ((x, y), (y, x)):
+        _, p = mann_whitney(a, b)
+        assert p[0] == pytest.approx(2 / math.comb(n_small + n_rest, n_small))
+
+
+@pytest.mark.parametrize("n_small, n_rest", [(1, 2_100), (2, 250)])
+def test_a_group_of_one_or_two_without_ties_gets_scipys_exact_p_value(n_small, n_rest):
+    from scipy import stats
+
+    rng = np.random.default_rng(8)
+    x = rng.permutation(np.arange(float(n_small + n_rest) * 6)).reshape(-1, 6)
+    x = x[: n_small + n_rest]
+
+    _, p = mann_whitney(x[:n_small], x[n_small:])
+
+    expected = stats.mannwhitneyu(
+        x[:n_small], x[n_small:], alternative="two-sided", method="exact", axis=0
+    ).pvalue
+    np.testing.assert_allclose(p, expected, rtol=1e-9)
