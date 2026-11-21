@@ -94,3 +94,96 @@ def test_applied_export_filters_are_shown_as_thresholds(tmp_path, monkeypatch):
     assert "- padj threshold: 0.05\n" in reply
     assert "- |LFC| threshold: 1.0\n" in reply
     assert "- Genes after filtering: 2" in reply
+
+
+def _enrichment_reply(tmp_path, monkeypatch, padj):
+    from lobster.core.provenance.analysis_ir import AnalysisStep
+    from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+
+    received = []
+
+    def enrichment(self, gene_list, analysis_type="GO", **_):
+        received.append(list(gene_list))
+        stats = {
+            "n_genes_input": len(gene_list),
+            "enrichment_database": "GO",
+            "n_terms_total": 0,
+            "n_significant_terms": 0,
+            "top_terms": [],
+        }
+        ir = AnalysisStep(
+            operation="enrichment",
+            tool_name="run_pathway_enrichment",
+            description="",
+            library="gseapy",
+            code_template="",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+            input_entities=[],
+            output_entities=[],
+        )
+        return pd.DataFrame(), stats, ir
+
+    monkeypatch.setattr(BulkRNASeqService, "run_pathway_enrichment", enrichment)
+    genes = [f"GENE{i}" for i in range(len(padj))]
+    table = pd.DataFrame({"padj": padj, "log2FoldChange": 1.0}, index=genes)
+    tools = _tools(tmp_path, monkeypatch, table)
+    reply = tools["run_pathway_enrichment"].invoke(
+        {"gene_list": [], "modality_name": "de"}
+    )
+    return reply, received[0]
+
+
+def test_enrichment_from_a_de_result_names_the_threshold_it_took_genes_at(
+    tmp_path, monkeypatch
+):
+    reply, genes = _enrichment_reply(tmp_path, monkeypatch, [0.01, 0.04, 0.2])
+
+    assert genes == ["GENE0", "GENE1"]
+    assert f"- Genes from DE result '{KEY}': padj < 0.05, 2 genes\n" in reply, reply
+
+
+def test_enrichment_names_the_genes_it_left_out_beyond_500(tmp_path, monkeypatch):
+    reply, genes = _enrichment_reply(tmp_path, monkeypatch, [0.01] * 600)
+
+    assert len(genes) == 500
+    assert (
+        f"- Genes from DE result '{KEY}': padj < 0.05, 600 genes (the first 500 in "
+        "table order were used)\n" in reply
+    ), reply
+
+
+def test_enrichment_of_a_given_gene_list_names_no_de_threshold(tmp_path, monkeypatch):
+    from lobster.core.provenance.analysis_ir import AnalysisStep
+    from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+
+    ir = AnalysisStep(
+        operation="enrichment",
+        tool_name="run_pathway_enrichment",
+        description="",
+        library="gseapy",
+        code_template="",
+        imports=[],
+        parameters={},
+        parameter_schema={},
+        input_entities=[],
+        output_entities=[],
+    )
+    stats = {
+        "n_genes_input": 2,
+        "enrichment_database": "GO",
+        "n_terms_total": 0,
+        "n_significant_terms": 0,
+        "top_terms": [],
+    }
+    monkeypatch.setattr(
+        BulkRNASeqService,
+        "run_pathway_enrichment",
+        lambda self, gene_list, analysis_type="GO", **_: (pd.DataFrame(), stats, ir),
+    )
+    tools = _tools(tmp_path, monkeypatch, _table())
+
+    reply = tools["run_pathway_enrichment"].invoke({"gene_list": ["A", "B"]})
+
+    assert "Genes from DE result" not in reply
