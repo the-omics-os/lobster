@@ -73,3 +73,39 @@ def test_the_reply_counts_every_protein_when_all_were_tested(tmp_path):
     reply = _reply(tmp_path, _proteins(n_sparse=0))
 
     assert "- Proteins tested: 50\n" in reply, reply
+
+
+def test_a_protein_tested_in_three_comparisons_counts_once():
+    adata = _proteins(n_sparse=0)
+    adata.obs["group"] = ["a"] * 4 + ["b"] * 4 + ["c"] * 4
+
+    _, stats, _ = ProteomicsDifferentialService().perform_differential_expression(
+        adata, group_column="group", test_method="t_test"
+    )
+
+    assert stats["n_proteins_tested"] == 50
+
+
+def test_the_ptm_reply_counts_the_sites_and_proteins_tested(tmp_path):
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.store_modality("sites", _proteins(n_sparse=5))
+    dm.store_modality("prot", _proteins(n_sparse=2))
+
+    reply = factory_tools(de_analysis_expert, DE, dm)[
+        "run_differential_ptm_analysis"
+    ].invoke(
+        {
+            "modality_name": "sites",
+            "protein_modality_name": "prot",
+            "group_column": "group",
+        }
+    )
+
+    assert (
+        "- PTM sites tested: 45 of 50 (5 with fewer than 2 values in a compared "
+        "group were not tested)\n" in reply
+    ), reply
+    assert (
+        "- Proteins tested: 48 of 50 (2 with fewer than 2 values in a compared "
+        "group were not tested)\n" in reply
+    ), reply
