@@ -6,6 +6,7 @@ its default method uses a normal approximation whenever a value ties, even at
 3 v 3.
 """
 
+import itertools
 import math
 from typing import Tuple
 
@@ -15,25 +16,36 @@ import numpy as np
 # 12,870 for 8 v 8, 48,620 for 9 v 9
 MANN_WHITNEY_EXACT_MAX_SPLITS = 20_000
 
+# U of every split is computed for this many (split, gene) pairs at a time
+_BLOCK = 2**22
 
-def mann_whitney_u(x, y, axis):
-    """Mann-Whitney U of ``x`` against ``y`` along ``axis``, ties at midranks."""
-    from scipy import stats
 
-    ranks = stats.rankdata(np.concatenate([x, y], axis=axis), axis=axis)
-    n_x = x.shape[axis]
-    return np.take(ranks, np.arange(n_x), axis=axis).sum(axis=axis) - (
-        n_x * (n_x + 1) / 2
-    )
+def _exact_p(ranks: np.ndarray, n_x: int, u: np.ndarray) -> np.ndarray:
+    """Two-sided permutation p-value of ``u`` per column: twice the smaller tail
+    over every split of the rows into ``n_x`` and the rest."""
+    n, n_genes = ranks.shape
+    members = np.array(list(itertools.combinations(range(n), n_x)))
+    splits = np.zeros((len(members), n))
+    splits[np.arange(len(members))[:, None], members] = 1
+    p = np.empty(n_genes)
+    step = max(1, _BLOCK // len(members))
+    for start in range(0, n_genes, step):
+        block = slice(start, start + step)
+        every_u = splits @ ranks[:, block] - n_x * (n_x + 1) / 2
+        # midranks make U a multiple of 1/2: a quarter is far beyond rounding
+        below = (every_u <= u[block] + 0.25).mean(axis=0)
+        above = (every_u >= u[block] - 0.25).mean(axis=0)
+        p[block] = np.minimum(1.0, 2 * np.minimum(below, above))
+    return p
 
 
 def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     """Per column (gene): the tie-corrected z of ``x`` against ``y``, and the
-    two-sided p-value. The p-value is exact, a permutation test over every split
+    two-sided p-value. The p-value is exact, over every split of the samples
     (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them;
-    above, the tie-corrected normal approximation. A normal approximation without
+    above, the normal approximation of that z. A normal approximation without
     tie correction gave p = 0.0495 to a complete separation at 3 v 3, where an
-    exact test cannot go below 0.10."""
+    exact test cannot go below 0.10. A column with a missing value has neither."""
     from scipy import stats
 
     n_x, n_y = len(x), len(y)
@@ -45,14 +57,8 @@ def mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
     with np.errstate(divide="ignore", invalid="ignore"):
         z = (u - n_x * n_y / 2) / np.sqrt(n_x * n_y * spread / (n * (n - 1)))
     if math.comb(n, n_x) <= MANN_WHITNEY_EXACT_MAX_SPLITS:
-        p = stats.permutation_test(
-            (x, y),
-            mann_whitney_u,
-            permutation_type="independent",
-            n_resamples=np.inf,
-            vectorized=True,
-            axis=0,
-        ).pvalue
+        p = _exact_p(ranks, n_x, u)
     else:
-        p = stats.mannwhitneyu(x, y, method="asymptotic", axis=0).pvalue
-    return z, np.asarray(p, dtype=float)
+        p = 2 * stats.norm.sf(np.abs(z))
+    p[np.isnan(u)] = np.nan
+    return z, p
