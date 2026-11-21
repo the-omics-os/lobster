@@ -36,3 +36,18 @@ def test_the_pathway_count_says_raw_p_not_corrected(tmp_path, monkeypatch):
     reply = tool.invoke({"modality_name": "met"})
 
     assert "**Significant Pathways (raw p < 0.05, not corrected): 2**" in reply, reply
+
+
+def test_the_missing_service_is_named_as_not_in_this_release(tmp_path, monkeypatch):
+    """No service provides it: the reply advised installing pathway support."""
+    from lobster.core.component_registry import component_registry
+
+    monkeypatch.setattr(component_registry, "get_service", lambda name: None)
+    adata = ad.AnnData(np.ones((4, 2)))
+    dm = RecordingDataManager({"met": adata}, workspace_path=tmp_path / "ws")
+    tools = create_shared_tools(dm, MagicMock(), MagicMock(), MagicMock(), MagicMock())
+    tool = {t.name: t for t in tools}["run_pathway_enrichment"]
+
+    reply = tool.invoke({"modality_name": "met"})
+
+    assert reply == "Metabolomics pathway enrichment is not available in this release."
