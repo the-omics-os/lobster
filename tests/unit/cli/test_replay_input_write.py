@@ -166,3 +166,14 @@ def test_an_export_to_the_imported_file_is_refused_without_input(tmp_path, monke
     reason = out["report"]["refusal"]["reason"]
     assert f"names the replay's input file {geo.RAW} and writes files" in reason
     assert base._sha(imported) == before
+
+
+@pytest.mark.parametrize("first", ["input", "other"])
+def test_a_reading_cell_naming_the_input_still_has_its_other_paths_checked(
+    tmp_path, source, first
+):
+    """Naming the input exempts that file only, not the cell."""
+    reads = [f"d = pd.read_csv({str(source)!r})", "e = pd.read_csv('/srv/lab/x.csv')"]
+    cell = "\n".join(reads if first == "input" else reads[::-1])
+    reason = _reason(tmp_path, source, cell)
+    assert reason is not None and "/srv/lab/x.csv" in reason, reason
