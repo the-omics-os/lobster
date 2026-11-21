@@ -125,6 +125,20 @@ def test_the_exact_test_holds_a_bounded_block_of_splits_in_memory(n):
     assert peak < 128 * 2**20, f"{peak / 2**20:.0f} MiB"
 
 
+def test_every_gene_gets_its_own_p_value_across_blocks(monkeypatch):
+    """Blocks of 3 genes over 10: each p equals the gene tested alone."""
+    from lobster.services.analysis import mann_whitney as module
+
+    rng = np.random.default_rng(2)
+    x = rng.normal(size=(8, 10))
+    alone = [mann_whitney(x[4:, [g]], x[:4, [g]])[1][0] for g in range(10)]
+    monkeypatch.setattr(module, "_BLOCK", 3 * math.comb(8, 4))
+
+    _, p = mann_whitney(x[4:], x[:4])
+
+    assert p.tolist() == alone
+
+
 def test_a_gene_with_a_missing_value_gets_no_p_value():
     x = np.arange(12, dtype=np.float64).reshape(6, 2)
     x[0, 1] = np.nan
