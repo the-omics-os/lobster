@@ -712,8 +712,12 @@ class NotebookExporter:
             and id(activity) not in unrun
             and isinstance(ir.parameters.get("code"), str)  # else rendered as recorded
         }
+        step_activities = [activity for _, activity, _ in steps]
         keep, rebind, save_at, read_plans, keep_vars = self._lineage(
-            [activity for _, activity, _ in steps], list(saves), custom
+            step_activities,
+            list(saves),
+            custom,
+            self._steps_before_saves(step_activities, saves),
         )
         placed = set()
         kept_any = False
@@ -1719,6 +1723,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         custom: Optional[
             Dict[int, Tuple[Optional[str], List[str], Optional[str]]]
         ] = None,
+        saved_before: Optional[Dict[str, int]] = None,
     ) -> Tuple[
         Dict[int, List[str]],
         Dict[int, str],
@@ -1731,7 +1736,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         Every step cell works on one ``adata``. A step whose recorded input is
         not the modality ``adata`` holds then starts from a copy kept when that
         modality was made. Each modality in *saved* is written right after the
-        step that made it. Returns, per step position (-1: before the first
+        step that made it, last before the session saved it: *saved_before*
+        gives, per name, how many steps ran before its save, and a step at or
+        after that position changed it after it was saved. Returns, per step position (-1: before the first
         step), the names to keep after it, the name to restore before it, and
         the saved names to write after it. A step without a recorded ``adata``
         input runs on what the step above left, as before; a saved name no step
@@ -1755,6 +1762,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
         stops on a read of it.
         """
         custom = custom or {}
+        saved_before = saved_before or {}
         held: set = set()  # the modalities adata holds
         made_at: Dict[str, int] = {}  # where adata last became each modality
         saved_made_at: Dict[str, int] = {}  # the same, custom steps left out
@@ -1829,7 +1837,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                     plan.setdefault(loaded, "input")
                 written_back = custom[position][2]
                 if written_back:
-                    made_at[written_back] = saved_made_at[written_back] = position
+                    made_at[written_back] = position
+                    if position < saved_before.get(written_back, len(steps)):
+                        saved_made_at[written_back] = position
                     self_kept.add(written_back)
             elif not binding:
                 named = cls._named_result(activity, source)
@@ -1842,7 +1852,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 for result in results:
                     self_kept.discard(result)
                     made_at[result] = position
-                    if position not in custom:
+                    if position not in custom and position < saved_before.get(
+                        result, len(steps)
+                    ):
                         # shortcut: a save is placed after the last non-custom
                         # step that made the name; a session that saved a name a
                         # custom step changed after that save would differ.
@@ -1954,6 +1966,31 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
     def _is_split_save(activity: Dict[str, Any], split_saves: set) -> bool:
         saved = activity.get("parameters", {})
         return (saved.get("name"), Path(saved.get("path") or "").name) in split_saves
+
+    def _steps_before_saves(
+        self, steps: List[Dict[str, Any]], saves: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """Per saved name, how many of *steps* ran before the session saved it.
+
+        A tool logs the saves it makes before its own activity, so a save just
+        before a step that stored that name (or recorded nothing about what it
+        stored) happened inside that step, after it made the name.
+        """
+        order = {
+            id(activity): i for i, activity in enumerate(self.provenance.activities)
+        }
+        counts: Dict[str, int] = {}
+        for name, save in saves.items():
+            at = order.get(id(save))
+            if at is None:
+                continue  # not in this session's record: where it was made decides
+            before = sum(order.get(id(step), -1) < at for step in steps)
+            if before < len(steps):
+                stored = steps[before].get("stored_modalities")
+                if stored is None or name in [entry.get("name") for entry in stored]:
+                    before += 1
+            counts[name] = before
+        return counts
 
     def _saves(
         self, emitted_irs: Optional[List[AnalysisStep]]
