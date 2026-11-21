@@ -1530,7 +1530,10 @@ Please check:
                 tool_name="import_bulk_counts",
                 description=f"Imported bulk RNA-seq counts from {detected_source}",
                 library="pandas",
-                code_template=f'adata = sc.read_csv("{file_path}")  # source={detected_source}',
+                code_template=(
+                    "adata = sc.read_csv({{ file_path | string | repr }})"
+                    "  # source={{ source }}"
+                ),
                 imports=["import scanpy as sc"],
                 parameters={
                     "file_path": file_path,
@@ -1669,8 +1672,8 @@ Please check:
                 description=f"Merged external metadata from {metadata_file}",
                 library="pandas",
                 code_template=(
-                    f'meta = pd.read_csv("{metadata_file}")\n'
-                    f'meta = meta.set_index("{sample_id_column}")\n'
+                    "meta = pd.read_csv({{ metadata_file | string | repr }})\n"
+                    "meta = meta.set_index({{ sample_id_column | string | repr }})\n"
                     "adata.obs = adata.obs.join(meta)"
                 ),
                 imports=["import pandas as pd"],
