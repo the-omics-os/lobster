@@ -496,7 +496,7 @@ def create_shared_tools(
             group_column: Column in obs containing group labels (e.g., "condition")
             method: Statistical test: "auto", "ttest", "wilcoxon", "anova", or "kruskal"
             fdr_method: FDR correction method (default: Benjamini-Hochberg)
-            fold_change_threshold: Fold change threshold for reporting
+            fold_change_threshold: Not applied yet; up/down use |log2FC| > 1 (2-fold)
 
         Returns:
             str: Statistical analysis results with significant features and fold changes
@@ -535,7 +535,6 @@ def create_shared_tools(
                     "group_column": group_column,
                     "method": method,
                     "fdr_method": fdr_method,
-                    "fold_change_threshold": fold_change_threshold,
                 },
                 description="Ran univariate statistics with fold change analysis",
                 ir=stats_ir,
@@ -555,6 +554,7 @@ def create_shared_tools(
             response += (
                 f"- Downregulated (log2FC < -1): {fc_stats['n_downregulated']}\n"
             )
+            response += f"- fold_change_threshold {fold_change_threshold}: not applied yet; up/down use |log2FC| > 1 (2-fold)\n"
 
             response += f"\n**New modality created**: '{result_name}'"
             return response
