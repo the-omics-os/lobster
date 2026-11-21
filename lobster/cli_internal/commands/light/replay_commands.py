@@ -1081,9 +1081,24 @@ _OMITTED_LABEL = (
 )
 
 
+# The exporter's cell for a step recorded with a template this Lobster does not
+# write for its tool (exporter._outdated_cell), with {tool} the tool's name.
+_OUTDATED_LABEL = (
+    "Not shown: a {tool} step recorded with code this Lobster no longer writes "
+    "(run the step again to include it)"
+)
+
+
 @lru_cache(maxsize=1)
 def _omitted_labels() -> Tuple[Any, ...]:
     """The omitted cell's text in every language Lobster writes it in."""
+    return _label_shapes(_OMITTED_LABEL, "{source}")
+
+
+@lru_cache(maxsize=2)
+def _label_shapes(label: str, slot: str) -> Tuple[Any, ...]:
+    """The bold markdown of *label* in every language Lobster writes it in,
+    with any text in *slot*."""
     from lobster.i18n import catalog_dir, h, use_lang
 
     codes = {"en"} | {
@@ -1092,8 +1107,8 @@ def _omitted_labels() -> Tuple[Any, ...]:
     shapes = []
     for code in sorted(codes):
         with use_lang(code):
-            text = h(_OMITTED_LABEL)
-        head, tail = text.split("{source}", 1)
+            text = h(label)
+        head, tail = text.split(slot, 1)
         shapes.append(
             re.compile(rf"\*\*{re.escape(head)}.+{re.escape(tail)}\*\*", re.DOTALL)
         )
@@ -1123,6 +1138,39 @@ def _omits_custom_code(notebook: Path) -> bool:
         source = "".join(source) if isinstance(source, list) else str(source)
         if cell.get("cell_type") == "markdown" and any(
             shape.fullmatch(source.strip()) for shape in _omitted_labels()
+        ):
+            return True
+    return False
+
+
+def _omits_outdated_step(notebook: Path) -> bool:
+    """The notebook leaves out a step recorded with a template this Lobster does
+    not write: a cell's mark gives that reason, a markdown cell is its label, or
+    the export record lists the step. Any one is enough."""
+    from lobster.core.notebooks.exporter import (
+        OMITTED_CUSTOM_CODE_KEY,
+        OUTDATED_STEPS_KEY,
+        OUTDATED_TEMPLATE_REASON,
+    )
+
+    if _manifest(notebook).get(OUTDATED_STEPS_KEY):
+        return True
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False  # unreadable: the run refuses it
+    for cell in cells if isinstance(cells, list) else []:
+        if not isinstance(cell, dict):
+            continue
+        marks = (cell.get("metadata") or {}).get("lobster")
+        mark = marks.get(OMITTED_CUSTOM_CODE_KEY) if isinstance(marks, dict) else None
+        if isinstance(mark, dict) and mark.get("reason") == OUTDATED_TEMPLATE_REASON:
+            return True
+        source = cell.get("source", "")
+        source = "".join(source) if isinstance(source, list) else str(source)
+        if cell.get("cell_type") == "markdown" and any(
+            shape.fullmatch(source.strip())
+            for shape in _label_shapes(_OUTDATED_LABEL, "{tool}")
         ):
             return True
     return False
@@ -1744,6 +1792,26 @@ def verify_notebook(
     base_policy = user_policy or _default_policy([])
     if refusal is not None:
         return refused(base_policy, refusal, anchor["name"])
+    if _omits_outdated_step(notebook):
+        # what the left-out step did is not in the notebook: nothing to verify
+        return finish(
+            report(
+                base_policy,
+                verification_status=VerificationStatus.NOT_RUN,
+                preflight=Preflight.REFUSED,
+                execution=Execution.NOT_RUN,
+                verdict=Verdict.REFUSED,
+                refusal=Refusal(
+                    h(
+                        "This notebook leaves out a step recorded with code this "
+                        "Lobster no longer writes, so a replay cannot check it; it "
+                        "was not run."
+                    ),
+                    None,
+                    RefusalOrigin.PRODUCT,
+                ),
+            )
+        )
     if _omits_custom_code(notebook):
         # what the left-out code did is not in the notebook: nothing to verify
         return finish(

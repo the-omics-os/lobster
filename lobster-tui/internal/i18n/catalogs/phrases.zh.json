@@ -2235,5 +2235,6 @@
   "migrated: input not recorded. Per file, not a verdict:": "迁移：未记录输入。逐文件结果，不是结论：",
   "{name}: {result}": "{name}：{result}",
   "Not shown: a {tool} step recorded with code this Lobster no longer writes (run the step again to include it)": "未显示：一个 {tool} 步骤，其记录的代码此版本 Lobster 已不再写出（重新运行该步骤即可纳入）",
-  "Steps recorded with code this Lobster no longer writes are left out (steps: {steps}); replay cannot check this notebook.": "记录的代码此版本 Lobster 已不再写出的步骤已被略去（步骤：{steps}）；replay 无法检查此 notebook。"
+  "Steps recorded with code this Lobster no longer writes are left out (steps: {steps}); replay cannot check this notebook.": "记录的代码此版本 Lobster 已不再写出的步骤已被略去（步骤：{steps}）；replay 无法检查此 notebook。",
+  "This notebook leaves out a step recorded with code this Lobster no longer writes, so a replay cannot check it; it was not run.": "此 notebook 略去了一个记录的代码此版本 Lobster 已不再写出的步骤，因此 replay 无法检查它；notebook 未运行。"
 }
