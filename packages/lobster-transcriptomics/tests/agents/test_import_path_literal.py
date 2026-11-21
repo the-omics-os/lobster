@@ -1,13 +1,15 @@
 """The bulk import and metadata merge cells write their paths as Python literals.
 
 Both templates put the path inside double quotes in an f-string: a ``"`` in the
-path broke the cell, and a ``{{`` was read as a template expression.
+path broke the cell, and a ``{{`` was read as a template expression, which
+Lobster evaluated in its own process when it rendered the cell.
 """
 
 import ast
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.agents.transcriptomics.transcriptomics_expert import (
     transcriptomics_expert,
@@ -26,8 +28,11 @@ def _literals(code):
     ]
 
 
-def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch):
-    folder = tmp_path / 'a"b {{ c }}'
+@pytest.mark.parametrize(
+    "name", ['a"b {{ c }}', "x{{ cycler.__init__.__globals__.os.getpid() }}y"]
+)
+def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch, name):
+    folder = tmp_path / name
     folder.mkdir()
     samples = [f"S{i}" for i in range(1, 7)]
     counts = pd.DataFrame(
