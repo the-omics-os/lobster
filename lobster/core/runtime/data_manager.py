@@ -26,6 +26,7 @@ from unittest.mock import Mock
 
 import pandas as pd
 
+from lobster.core import session_inputs
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.factory import create_default_adapters
 from lobster.core.catalog.null import NullCatalog
@@ -967,6 +968,8 @@ class DataManagerV2:
             if enable_provenance
             else None
         )
+        # An export never overwrites a file this session loaded (its record included).
+        session_inputs.track(self)
 
         # Notebook-based pipeline support (lazy initialization to avoid circular imports)
         self._notebook_exporter = None
@@ -2014,6 +2017,7 @@ class DataManagerV2:
             f"Loaded modality '{name}': {adata.shape} using adapter '{adapter}'"
         )
         self._catalog_link_input(source)
+        session_inputs.note_input(self, source)
         if load_entity is not None and loaded_object:
             self._import_candidates[name] = (
                 weakref.ref(self.modalities.get(name, adata)),
@@ -2955,7 +2959,8 @@ class DataManagerV2:
             # A relative save stays inside the workspace (a '..' or a link leading
             # out raises WorkspaceExportError); an absolute path is the caller's own.
             assert_inside_workspace(self.workspace_path, target)
-        assert_export_allowed(self.workspace_path, target)
+        # Not checked against the session's inputs: a save writes where it is told.
+        assert_export_allowed(self.workspace_path, target, inputs=False)
 
     def _backend_path(self, resolved_path: Path) -> Union[str, Path]:
         """The path handed to a backend: relative to data_dir, else to the
