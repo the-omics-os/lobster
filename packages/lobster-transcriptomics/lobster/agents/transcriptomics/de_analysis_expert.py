@@ -3683,8 +3683,19 @@ def de_analysis_expert(
                 if old_name in results_df.columns and old_name != new_name:
                     results_df = results_df.rename(columns={old_name: new_name})
 
-            # Apply optional filtering
+            # Apply optional filtering; a threshold whose column is missing is
+            # named as not applied in the reply
             total_genes = len(results_df)
+            padj_note = (
+                " (not applied: no padj column)"
+                if padj_threshold < 1.0 and "padj" not in results_df.columns
+                else ""
+            )
+            lfc_note = (
+                " (not applied: no log2FoldChange column)"
+                if lfc_threshold > 0 and "log2FoldChange" not in results_df.columns
+                else ""
+            )
             if padj_threshold < 1.0 and "padj" in results_df.columns:
                 results_df = results_df[results_df["padj"] <= padj_threshold]
             if lfc_threshold > 0 and "log2FoldChange" in results_df.columns:
@@ -3834,8 +3845,8 @@ def de_analysis_expert(
 **Export Details:**
 - Total genes in DE results: {total_genes:,}
 - Genes after filtering: {sig_genes:,}
-- padj threshold: {padj_threshold}
-- |LFC| threshold: {lfc_threshold}
+- padj threshold: {padj_threshold}{padj_note}
+- |LFC| threshold: {lfc_threshold}{lfc_note}
 - Format: {output_format.upper()}
 - Output: {output_path}
 
