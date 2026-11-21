@@ -28,7 +28,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import (
+    _JINJA_ENV,
+    AnalysisStep,
+    ParameterSpec,
+)
 from lobster.services.execution.execution_context_builder import ExecutionContextBuilder
 from lobster.utils.ipc_read import RefusedRead, read_regular, regular_identity
 from lobster.utils.logger import get_logger
@@ -168,6 +172,53 @@ def h5ad_references(code: str) -> List[str]:
     for pattern in _H5AD_READ_PATTERNS:
         refs.extend(re.findall(pattern, code))
     return refs
+
+
+# Defines WORKSPACE and OUTPUT_DIR when the notebook runs
+WORKSPACE_SETUP = """# Workspace setup (for notebook execution)
+from pathlib import Path
+import sys
+
+WORKSPACE = Path({{ workspace_path | string | repr }})
+sys.path.append(str(WORKSPACE))
+
+# OUTPUT_DIR: Recommended directory for CSV/TSV/Excel exports
+OUTPUT_DIR = WORKSPACE / 'exports'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+"""
+USER_CODE_MARK = "\n# User code\n"
+CODE_SLOT = "{{ code }}"
+QUOTED_WORKSPACE = "Path('{{ workspace_path }}')"
+# The setups earlier versions recorded, with the code itself after the mark
+RECORDED_WORKSPACE_SETUPS = (
+    WORKSPACE_SETUP.replace(
+        "Path({{ workspace_path | string | repr }})", QUOTED_WORKSPACE
+    ),
+    WORKSPACE_SETUP,
+)
+
+
+def recorded_custom_code(ir: Any) -> Optional[str]:
+    """The cell a custom-code step's template stands for, with its code exactly
+    as written; None when the template has a shape Lobster did not write.
+
+    Before the code became a template value, it was written into the template
+    after ``USER_CODE_MARK``: that text is code, never template source.
+    """
+    setup, *rest = ir.code_template.split(USER_CODE_MARK)
+    if len(rest) != 1 or setup not in RECORDED_WORKSPACE_SETUPS:
+        return None
+    code = rest[0]
+    if code == CODE_SLOT:
+        code = ir.parameters.get("code")
+        if not isinstance(code, str):
+            return None
+    workspace = ir.parameters.get("workspace_path")
+    return (
+        _JINJA_ENV.from_string(WORKSPACE_SETUP).render(workspace_path=workspace)
+        + USER_CODE_MARK
+        + code
+    )
 
 
 class CustomCodeExecutionService:
@@ -1669,23 +1720,9 @@ with open(EXEC_CACHE / '.execution_result.json', 'w') as _lobster_rf:
         imports = self._extract_imports(code)
         uses_helpers = _uses_figure_helpers(code)
 
-        # Build workspace setup code for notebook export
-        # This ensures WORKSPACE and OUTPUT_DIR are defined when notebook runs
-        workspace_setup = """# Workspace setup (for notebook execution)
-from pathlib import Path
-import sys
-
-WORKSPACE = Path({{ workspace_path | string | repr }})
-sys.path.append(str(WORKSPACE))
-
-# OUTPUT_DIR: Recommended directory for CSV/TSV/Excel exports
-OUTPUT_DIR = WORKSPACE / 'exports'
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-"""
-
-        # Combine workspace setup with user code for notebook export
-        # Uses Jinja2 template syntax for workspace_path parameter injection
-        code_template = f"{workspace_setup}\n# User code\n{code}"
+        # The code is a template value: written into the template it would be
+        # read as Jinja source
+        code_template = WORKSPACE_SETUP + USER_CODE_MARK + CODE_SLOT
 
         # Get workspace path for parameter default
         workspace_path_str = str(self.data_manager.workspace_path)

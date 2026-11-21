@@ -438,10 +438,17 @@ class NotebookExporter:
 
     def _unrun_cell(self, ir: AnalysisStep, origin: Dict[str, Any]) -> NotebookNode:
         """Custom code of an earlier version: shown, never a code cell."""
-        try:
-            code = ir.render()
-        except Exception:  # shown, not run: the raw template is enough
-            code = ir.code_template
+        from lobster.services.execution.custom_code_execution_service import (
+            recorded_custom_code,
+        )
+
+        code = recorded_custom_code(ir)
+        if code is None:
+            label = h(
+                "Not shown: custom code from a {source} whose record has a form "
+                "Lobster did not write"
+            ).format(source=self._source_words(origin))
+            return new_markdown_cell(f"**{label}**\n")
         longest = max((len(m) for m in re.findall(r"`+", code)), default=0)
         fence = "`" * max(3, longest + 1)
         label = h(
