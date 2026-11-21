@@ -73,6 +73,18 @@ def _without_pvalue_text(stats: dict, why: str) -> str:
     return f"- Tests without a p-value: {n:,} ({why}); left out of the FDR correction\n"
 
 
+def _tested_text(stats: dict, label: str) -> str:
+    """The reply line counting what was tested, and what was not and why."""
+    tested = stats.get("n_proteins_tested", 0)
+    total = stats.get("proteins_processed", 0)
+    if tested == total:
+        return f"- {label}: {tested}\n"
+    return (
+        f"- {label}: {tested} of {total} ({total - tested} with fewer than 2 "
+        "values in a compared group were not tested)\n"
+    )
+
+
 def _no_pvalue_refusal(what: str, n: int, stats: dict, cause: str, advice: str):
     """The refusal when none of the ``n`` tests has a p-value, else None: there is
     no result, so nothing is stored or logged."""
@@ -412,7 +424,7 @@ def de_analysis_expert(
 
             response += "**Results:**\n"
             response += f"- Samples processed: {de_stats.get('samples_processed', 0)}\n"
-            response += f"- Proteins tested: {de_stats.get('proteins_processed', 0)}\n"
+            response += _tested_text(de_stats, "Proteins tested")
             response += (
                 f"- Total tests performed: {de_stats.get('total_tests_performed', 0)}\n"
             )
@@ -1189,13 +1201,9 @@ def de_analysis_expert(
             response += f"**Protein Modality**: '{protein_modality_name}'\n\n"
 
             response += "**Summary:**\n"
-            response += (
-                f"- PTM sites tested: {ptm_stats.get('proteins_processed', 0)}\n"
-            )
+            response += _tested_text(ptm_stats, "PTM sites tested")
             response += f"- Significant PTM sites: {len(significant_sites)}\n"
-            response += (
-                f"- Proteins tested: {prot_stats.get('proteins_processed', 0)}\n"
-            )
+            response += _tested_text(prot_stats, "Proteins tested")
             n_discordant = sum(1 for s in significant_sites if s["discordant"])
             response += (
                 f"- Discordant sites (PTM vs protein direction): {n_discordant}\n\n"

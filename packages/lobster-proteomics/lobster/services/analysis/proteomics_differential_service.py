@@ -459,6 +459,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "group_column": group_column,
                     "samples_processed": adata_de.n_obs,
                     "proteins_processed": adata_de.n_vars,
+                    "n_proteins_tested": len({r["protein"] for r in de_results}),
                     "analysis_type": "differential_expression",
                     "n_tests_without_pvalue": _n_without_pvalue(de_results),
                     "n_zero_within_group_variance": sum(
