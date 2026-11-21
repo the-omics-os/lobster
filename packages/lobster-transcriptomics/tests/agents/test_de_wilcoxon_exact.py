@@ -189,6 +189,37 @@ def test_a_group_of_one_against_thousands_builds_no_sample_by_sample_matrix():
     assert peak < 32 * 2**20, f"{peak / 2**20:.0f} MiB"
 
 
+def test_the_split_matrices_kept_between_calls_hold_at_most_32_mib():
+    """A Cloud worker keeps them for its lifetime: four 1 v ~2,045 matrices, each
+    near 2**22 values, kept 166 MiB."""
+    mann_whitney_module._splits.cache_clear()
+    rng = np.random.default_rng(5)
+
+    tracemalloc.start()
+    try:
+        for n in range(2_045, 2_049):
+            x = rng.normal(size=(n, 1))
+            mann_whitney(x[:1], x[1:])
+        del x
+        kept = tracemalloc.get_traced_memory()[0]
+    finally:
+        tracemalloc.stop()
+
+    assert kept < 32 * 2**20, f"{kept / 2**20:.0f} MiB"
+
+
+@pytest.mark.parametrize("n, kept", [(1_024, 1), (1_025, 0)])
+def test_a_split_matrix_is_kept_while_it_holds_2_20_values(n, kept):
+    """1 v 1,023: 1,024 splits x 1,024 samples is 2**20 values (8 MiB), still
+    kept; four of them hold 32 MiB."""
+    mann_whitney_module._splits.cache_clear()
+    x = np.random.default_rng(6).normal(size=(n, 1))
+
+    mann_whitney(x[:1], x[1:])
+
+    assert mann_whitney_module._splits.cache_info().currsize == kept
+
+
 @pytest.mark.parametrize("n, exact", [(2_048, True), (2_049, False)])
 def test_the_exact_test_runs_while_the_split_matrix_holds_2_22_values(
     monkeypatch, n, exact
