@@ -6,7 +6,6 @@ data into bulk-like expression matrices by aggregating counts per sample and
 cell type, enabling proper differential expression analysis at the sample level.
 """
 
-import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import anndata
@@ -228,6 +227,10 @@ class PseudobulkService:
                 celltype_col=celltype_col,
                 aggregation_method=aggregation_method,
                 min_cells=min_cells,
+                layer=layer,
+                min_genes=min_genes,
+                filter_zeros=filter_zeros,
+                gene_subset=gene_subset,
             )
 
             # Create statistics dictionary
@@ -580,8 +583,7 @@ class PseudobulkService:
             "filter_zeros": filter_zeros,
             "original_n_cells": original_adata.n_obs,
             "original_n_genes": original_adata.n_vars,
-            "aggregation_timestamp": datetime.datetime.now().isoformat(),
-        }
+        }  # no wall-clock time: a replayed matrix must equal the saved one
 
         # Aggregation statistics
         sample_counts = pseudobulk_adata.obs["sample_id"].value_counts().to_dict()
@@ -682,54 +684,33 @@ class PseudobulkService:
         celltype_col: str,
         aggregation_method: str,
         min_cells: int,
-        **kwargs,
+        layer: Optional[str] = None,
+        min_genes: int = 200,
+        filter_zeros: bool = True,
+        gene_subset: Optional[List[str]] = None,
     ) -> AnalysisStep:
         """Create AnalysisStep IR for pseudobulk aggregation."""
 
+        # The cell calls the service with every setting the session used, rather
+        # than a second copy of the aggregation: the copy left out the layer, the
+        # gene and sample filters and the metadata the service writes, so a
+        # replayed pseudobulk matrix never matched the saved one.
         code_template = """
 # Pseudobulk aggregation from single-cell data
-import scanpy as sc
-import pandas as pd
-import numpy as np
+from lobster.services.analysis.pseudobulk_service import PseudobulkService
 
-# Group cells by sample and cell type
-groups = adata.obs.groupby([{{ sample_col | string | repr }}, {{ celltype_col | string | repr }}]).groups
-
-# Aggregate expression for each group
-pseudobulk_data = []
-pseudobulk_obs = []
-
-for (sample, celltype), indices in groups.items():
-    if len(indices) >= {{ min_cells }}:
-        # Get cells for this group
-        group_adata = adata[indices]
-
-        # Aggregate expression (a sparse matrix is made dense for the group, as the
-        # service does, so every method gives one value per gene)
-        group_X = group_adata.X
-        if hasattr(group_X, "toarray"):
-            group_X = group_X.toarray()
-        {% if aggregation_method == 'sum' %}
-        aggregated = np.asarray(group_X.sum(axis=0)).ravel()
-        {% elif aggregation_method == 'mean' %}
-        aggregated = np.asarray(group_X.mean(axis=0)).ravel()
-        {% elif aggregation_method == 'median' %}
-        aggregated = np.median(group_X, axis=0)
-        {% endif %}
-
-        pseudobulk_data.append(aggregated)
-        pseudobulk_obs.append({
-            'sample_id': sample,
-            'cell_type': celltype,
-            'n_cells_aggregated': len(indices)
-        })
-
-# Create pseudobulk AnnData
-pseudobulk_adata = sc.AnnData(
-    X=np.array(pseudobulk_data),
-    obs=pd.DataFrame(pseudobulk_obs),
-    var=adata.var.copy()
+adata, _pseudobulk_stats, _pseudobulk_ir = PseudobulkService().aggregate_to_pseudobulk(
+    adata,
+    sample_col={{ sample_col | repr }},
+    celltype_col={{ celltype_col | repr }},
+    layer={{ layer | repr }},
+    min_cells={{ min_cells | repr }},
+    aggregation_method={{ aggregation_method | repr }},
+    min_genes={{ min_genes | repr }},
+    filter_zeros={{ filter_zeros | repr }},
+    gene_subset={{ gene_subset | repr }},
 )
+print(f"Pseudobulk matrix: {adata.n_obs} samples x {adata.n_vars} genes")
 """
 
         return AnalysisStep(
@@ -748,6 +729,10 @@ pseudobulk_adata = sc.AnnData(
                 "celltype_col": celltype_col,
                 "aggregation_method": aggregation_method,
                 "min_cells": min_cells,
+                "layer": layer,
+                "min_genes": min_genes,
+                "filter_zeros": filter_zeros,
+                "gene_subset": gene_subset,
             },
             parameter_schema={
                 "sample_col": {
@@ -769,9 +754,29 @@ pseudobulk_adata = sc.AnnData(
                     "description": "Minimum cells required per pseudobulk sample",
                     "default": 10,
                 },
+                "layer": {
+                    "type": "string",
+                    "description": "Layer aggregated (None: X)",
+                    "default": None,
+                },
+                "min_genes": {
+                    "type": "integer",
+                    "description": "Minimum genes detected per pseudobulk sample",
+                    "default": 200,
+                },
+                "filter_zeros": {
+                    "type": "boolean",
+                    "description": "Drop genes with no counts in any pseudobulk sample",
+                    "default": True,
+                },
+                "gene_subset": {
+                    "type": "array",
+                    "description": "Genes aggregated (None: all)",
+                    "default": None,
+                },
             },
-            input_entities=["singlecell_adata"],
-            output_entities=["pseudobulk_adata"],
+            input_entities=["adata"],
+            output_entities=["adata"],
         )
 
     def get_aggregation_summary(self, adata: anndata.AnnData) -> Dict[str, Any]:

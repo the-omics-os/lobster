@@ -795,7 +795,6 @@ class TranscriptomicsSchema:
             #         'aggregation_method': 'sum',
             #         'filter_zeros': True,
             #         'original_n_cells': 15234,
-            #         'aggregation_timestamp': '2024-01-15T10:30:00Z'
             #     },
             #     'aggregation_stats': {  # Aggregation statistics
             #         'n_samples': 2,

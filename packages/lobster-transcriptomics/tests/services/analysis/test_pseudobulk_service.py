@@ -1138,8 +1138,8 @@ class TestPseudobulkIR:
         assert isinstance(ir.output_entities, list)
         assert len(ir.input_entities) > 0
         assert len(ir.output_entities) > 0
-        assert "singlecell_adata" in ir.input_entities
-        assert "pseudobulk_adata" in ir.output_entities
+        assert ir.input_entities == ["adata"]
+        assert ir.output_entities == ["adata"]
 
 
 @pytest.mark.unit
@@ -1496,7 +1496,7 @@ def test_the_exported_pseudobulk_cells_give_what_the_service_gave(sparse_x, meth
     scope = {"adata": adata.copy()}
     code = "\n".join(extract_unique_imports([ir])) + "\n" + ir.render()
     exec(compile(code, "<cells>", "exec"), scope)  # nosec B102
-    made = scope["pseudobulk_adata"]
+    made = scope["adata"]
     key = ["sample_id", "cell_type"]
     want = result.obs.reset_index(drop=True)
     got = made.obs.reset_index(drop=True)

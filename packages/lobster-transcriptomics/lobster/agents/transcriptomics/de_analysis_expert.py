@@ -1194,6 +1194,7 @@ def de_analysis_expert(
                 tool_name="create_pseudobulk_matrix",
                 parameters={
                     "modality_name": modality_name,
+                    "result_modality_name": pseudobulk_modality_name,
                     "sample_col": sample_col,
                     "celltype_col": celltype_col,
                     "aggregation_method": aggregation_method,
