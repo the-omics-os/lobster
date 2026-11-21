@@ -437,3 +437,12 @@ def test_another_case_of_an_imported_file_is_refused(noted):
     for spelling in ("inputs/COUNTS.csv", "INPUTS/counts.csv", "QUANT/quant.sf"):
         with pytest.raises(ManagedPathError):
             assert_export_allowed(ws, ws / spelling)
+
+
+def test_a_source_that_is_not_a_file_on_this_disk_is_not_noted(noted):
+    from lobster.core import session_inputs
+
+    dm, ws = noted
+
+    session_inputs.note_input(dm, "GSE12345")
+    session_inputs.note_input(dm, ws / "missing.csv")
