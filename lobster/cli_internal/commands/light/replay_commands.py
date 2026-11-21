@@ -470,6 +470,36 @@ _EXPORT_HEADS = (
         "results_df = results_df[abs(results_df['log2FoldChange']) >= _NUMBER]\n",
     )
 )
+# Since 1.3.1 export_de_results also renames the columns by its fixed table,
+# sorts only by a column the table has (_SORT, the same string in both lines)
+# and names an unnamed index, as the session does; it always makes its folder.
+_DE_COLUMN_RENAMES = (
+    "'log2FoldChange': 'log2FoldChange', "
+    "'logFC': 'log2FoldChange', "
+    "'mean_log2FC': 'log2FoldChange', "
+    "'padj': 'padj', "
+    "'pvalue_adj': 'padj', "
+    "'FDR': 'padj', "
+    "'p_adj': 'padj', "
+    "'pvalue': 'pvalue', "
+    "'baseMean': 'baseMean', "
+    "'base_mean': 'baseMean', "
+    "'AveExpr': 'baseMean', "
+    "'lfcSE': 'lfcSE', "
+    "'stat': 'stat', "
+)
+_EXPORT_RENAMED_CELL = (
+    "results_df = adata.uns[_TEXT]['results_df'].copy()\n"
+    "for _old, _new in {" + _DE_COLUMN_RENAMES + "}.items():\n"
+    "    if _old in results_df.columns and _old != _new:\n"
+    "        results_df = results_df.rename(columns={_old: _new})\n"
+    "if _SORT in results_df.columns:\n"
+    "    results_df = results_df.sort_values(_SORT)\n"
+    "if results_df.index.name is None:\n"
+    "    results_df.index.name = 'gene'\n"
+    "Path(_PATH).parent.mkdir(parents=True, exist_ok=True)\n"
+    "results_df._TO(_PATH, index=True)\n"
+)
 _EXPORT_CELLS = tuple(
     head + write
     for head in _EXPORT_HEADS
@@ -478,7 +508,7 @@ _EXPORT_CELLS = tuple(
         "Path(_PATH).parent.mkdir(parents=True, exist_ok=True)\n"
         "results_df._TO(_PATH, index=True)\n",
     )
-)
+) + (_EXPORT_RENAMED_CELL,)
 _EXPORT_WRITERS = frozenset({"to_csv", "to_excel"})
 # Calls that write or remove a file at a path given to them (pandas, anndata,
 # numpy, matplotlib, json, pickle, pathlib); a cell holding one may not name the
@@ -539,8 +569,8 @@ def _is_custom_cell(tree: Any) -> bool:
 
 def _fits(shape: Any, node: Any, bound: Optional[Dict[str, Any]] = None) -> bool:
     """``node`` is ``shape`` with its slots filled: _TEXT a string, _NUMBER a
-    number, _PATH a string equal everywhere it is used, the attribute _TO a known
-    writer."""
+    number, _PATH and _SORT each a string equal everywhere it is used, the
+    attribute _TO a known writer."""
     import ast
 
     bound = {} if bound is None else bound
@@ -550,10 +580,10 @@ def _fits(shape: Any, node: Any, bound: Optional[Dict[str, Any]] = None) -> bool
             and len(shape) == len(node)
             and all(_fits(a, b, bound) for a, b in zip(shape, node))
         )
-    if isinstance(shape, ast.Name) and shape.id == "_PATH":
+    if isinstance(shape, ast.Name) and shape.id in ("_PATH", "_SORT"):
         if not (isinstance(node, ast.Constant) and type(node.value) is str):
             return False
-        return bound.setdefault("_PATH", node.value) == node.value
+        return bound.setdefault(shape.id, node.value) == node.value
     if isinstance(shape, ast.Name) and shape.id in ("_TEXT", "_NUMBER"):
         kinds = (str,) if shape.id == "_TEXT" else (int, float)
         return (
