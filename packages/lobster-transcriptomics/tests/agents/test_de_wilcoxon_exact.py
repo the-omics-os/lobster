@@ -211,6 +211,24 @@ def test_the_split_matrices_kept_between_calls_hold_at_most_32_mib(one_first):
     assert kept < 32 * 2**20, f"{kept / 2**20:.0f} MiB"
 
 
+@pytest.mark.parametrize("n_x, n_y", [(2, 6), (6, 2), (3, 5), (5, 3), (4, 4)])
+def test_the_exact_p_value_is_scipys_whichever_group_is_larger(n_x, n_y):
+    """The splits are listed by the smaller group; a split of the larger one is
+    the complement."""
+    from scipy import stats
+
+    x = np.random.default_rng(7).permutation(np.arange(8.0 * 40)).reshape(8, 40)
+    mann_whitney_module._splits.cache_clear()
+    mann_whitney_module._members.cache_clear()
+
+    _, p = mann_whitney(x[:n_x], x[n_x:])
+
+    expected = stats.mannwhitneyu(
+        x[:n_x], x[n_x:], alternative="two-sided", method="exact", axis=0
+    ).pvalue
+    np.testing.assert_allclose(p, expected, rtol=1e-12)
+
+
 @pytest.mark.parametrize("n, kept", [(1_024, 1), (1_025, 0)])
 def test_a_split_matrix_is_kept_while_it_holds_2_20_values(n, kept):
     """1 v 1,023: 1,024 splits x 1,024 samples is 2**20 values (8 MiB), still
