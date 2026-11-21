@@ -109,3 +109,34 @@ def test_the_export_record_naming_the_step_refuses_it(ws):
     nb.write_text(json.dumps(data))
     code, out = _refused(ws, nb)
     assert code == 4 and out["report"]["refusal"]["reason"] == LEAVES_OUT, out
+
+
+def test_the_mark_refuses_it_with_its_label_changed(ws):
+    nb = _with_cell(
+        _notebook(ws / "notebooks" / "nb.ipynb", COPY), label="Step 2 needs no code"
+    )
+    code, out = _refused(ws, nb)
+    assert code == 4 and out["report"]["refusal"]["reason"] == LEAVES_OUT, out
+
+
+def test_another_markdown_cell_is_not_the_label(ws):
+    for text in ("**Not shown: a plot step**\n", LABEL.format(tool="x") + "\n"):
+        nb = _notebook(ws / "notebooks" / "nb.ipynb", COPY)
+        cells = nbformat.read(nb, as_version=4)
+        cells.cells.insert(1, nbformat.v4.new_markdown_cell(text))
+        nbformat.write(cells, nb)
+        assert replay_commands._omits_outdated_step(nb) is False, text
+
+
+def test_the_exporters_notebook_is_refused_and_the_current_one_is_not(tmp_path):
+    from tests.unit.core.test_outdated_templates import (
+        _current_concat,
+        _export,
+        _pre_fix_export,
+    )
+
+    _, left_out, _ = _export(tmp_path / "old", _pre_fix_export())
+    _, current, _ = _export(tmp_path / "new", _current_concat())
+
+    assert replay_commands._omits_outdated_step(left_out) is True
+    assert replay_commands._omits_outdated_step(current) is False

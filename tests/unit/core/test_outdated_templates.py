@@ -181,3 +181,12 @@ def test_a_listed_step_whose_template_is_not_text_is_left_out(tmp_path, template
     exporter, _, _ = _export(tmp_path, ir)
 
     assert exporter.outdated_steps == [2]
+
+
+def test_a_left_out_step_brings_none_of_its_imports(tmp_path):
+    ir = _pre_fix_export()
+    ir.imports = ["import os; os.getpid()"]
+
+    _, path, _ = _export(tmp_path, ir)
+
+    assert "getpid" not in path.read_text()

@@ -198,6 +198,23 @@ def test_export_names_the_custom_code_it_left_out(tmp_path):
     )
 
 
+def test_export_names_the_steps_it_left_out_for_their_template(tmp_path):
+    shown = []
+    client = _client(tmp_path)
+    client.data_manager.notebook_exporter = SimpleNamespace(
+        dangling_links=[], omitted_custom_code=[], outdated_steps=[3]
+    )
+    with patch(
+        "lobster.cli_internal.commands.light.pipeline_commands._render_blocks",
+        lambda output, blocks: shown.extend(map(repr, blocks)),
+    ):
+        pipeline_export(client, Mock(), "nb", "")
+    assert (
+        "Steps recorded with code this Lobster no longer writes are left out "
+        "(steps: 3); replay cannot check this notebook." in "\n".join(shown)
+    )
+
+
 def test_export_says_nothing_of_links_when_there_are_none(tmp_path):
     shown = []
     client = _client(tmp_path)
