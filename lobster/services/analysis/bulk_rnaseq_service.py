@@ -14,6 +14,7 @@ Cross-package dependency:
     Install with: pip install lobster-transcriptomics
 """
 
+import math
 import os
 import subprocess  # nosec B404 - subprocess used with fixed argument lists
 from pathlib import Path
@@ -78,6 +79,55 @@ def _bh_over_finite(p_values) -> np.ndarray:
     if finite.any():
         p_adjusted[finite] = multipletests(p_values[finite], method="fdr_bh")[1]
     return p_adjusted
+
+
+# An exact test enumerates every split of the samples into the two groups:
+# 12,870 for 8 v 8, 48,620 for 9 v 9
+MANN_WHITNEY_EXACT_MAX_SPLITS = 20_000
+
+
+def _mann_whitney_u(x, y, axis):
+    """Mann-Whitney U of ``x`` against ``y`` along ``axis``, ties at midranks."""
+    from scipy import stats
+
+    ranks = stats.rankdata(np.concatenate([x, y], axis=axis), axis=axis)
+    n_x = x.shape[axis]
+    return np.take(ranks, np.arange(n_x), axis=axis).sum(axis=axis) - (
+        n_x * (n_x + 1) / 2
+    )
+
+
+def _mann_whitney(x, y) -> Tuple[np.ndarray, np.ndarray]:
+    """Per column (gene): the tie-corrected z of ``x`` against ``y``, and the
+    two-sided p-value. The p-value is exact, a permutation test over every split
+    (ties handled), while there are at most MANN_WHITNEY_EXACT_MAX_SPLITS of them;
+    above, the tie-corrected normal approximation. A normal approximation without
+    tie correction gave p = 0.0495 to a complete separation at 3 v 3, where an
+    exact test cannot go below 0.10."""
+    from scipy import stats
+
+    n_x, n_y = len(x), len(y)
+    n = n_x + n_y
+    pooled = np.vstack([x, y])
+    ranks = stats.rankdata(pooled, axis=0)
+    # the permutation variance of U, which accounts for ties
+    spread = ((ranks - (n + 1) / 2) ** 2).sum(axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z = (_mann_whitney_u(x, y, axis=0) - n_x * n_y / 2) / np.sqrt(
+            n_x * n_y * spread / (n * (n - 1))
+        )
+    if math.comb(n, n_x) <= MANN_WHITNEY_EXACT_MAX_SPLITS:
+        p = stats.permutation_test(
+            (x, y),
+            _mann_whitney_u,
+            permutation_type="independent",
+            n_resamples=np.inf,
+            vectorized=True,
+            axis=0,
+        ).pvalue
+    else:
+        p = stats.mannwhitneyu(x, y, method="asymptotic", axis=0).pvalue
+    return z, np.asarray(p, dtype=float)
 
 
 class BulkRNASeqService:
@@ -998,8 +1048,6 @@ Next suggested step: Import quantification data with tximport for differential e
 
         logger.info(f"Running Wilcoxon test: {group1_name} vs {group2_name}")
 
-        from scipy import stats
-
         # Extract expression matrices
         group1_expr = safe_toarray(group1_data.X)
         group2_expr = safe_toarray(group2_data.X)
@@ -1012,20 +1060,14 @@ Next suggested step: Import quantification data with tximport for differential e
         group2_mean = np.mean(group2_expr, axis=0)
         log2_fold_change = np.log2((group2_mean + 1) / (group1_mean + 1))
 
-        # Wilcoxon test for each gene
-        p_values = []
-        z_stats = []
-        for i in range(n_genes):
-            if group1_expr.shape[0] > 1 and group2_expr.shape[0] > 1:
-                z_stat, p_val = stats.ranksums(group2_expr[:, i], group1_expr[:, i])
-                z_stats.append(z_stat)
-                p_values.append(p_val)
-            else:
-                z_stats.append(0.0)
-                p_values.append(1.0)
-
-        p_values = np.array(p_values)
-        z_stats = np.array(z_stats)
+        # Wilcoxon rank-sum (Mann-Whitney) test, group2 against group1
+        if group1_expr.shape[0] > 1 and group2_expr.shape[0] > 1:
+            z_stats, p_values = _mann_whitney(
+                group2_expr.astype(np.float64), group1_expr.astype(np.float64)
+            )
+        else:
+            z_stats = np.zeros(n_genes)
+            p_values = np.ones(n_genes)
 
         # With one value in every sample all ranks tie: the rank sum has no
         # variance, so z is 0 / 0, not 0 with p = 1. No p-value, as the t-test.
