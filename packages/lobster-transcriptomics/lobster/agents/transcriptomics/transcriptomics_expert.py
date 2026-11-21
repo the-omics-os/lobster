@@ -56,6 +56,7 @@ from lobster.config.inference_context import (
 )
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core import session_inputs
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.bulk_preprocessing_service import (
@@ -1543,6 +1544,8 @@ Please check:
                 parameter_schema={},
             )
 
+            # An export never overwrites the file this read.
+            session_inputs.note_input(data_manager, path)
             data_manager.log_tool_usage(
                 tool_name="import_bulk_counts",
                 parameters={
@@ -1684,6 +1687,8 @@ Please check:
                 parameter_schema={},
             )
 
+            # An export never overwrites the file this read.
+            session_inputs.note_input(data_manager, meta_path)
             data_manager.log_tool_usage(
                 tool_name="merge_sample_metadata",
                 parameters={
