@@ -90,7 +90,11 @@ def _migrated(tmp_path, template, code):
             library="custom",
             code_template=template,
             imports=[],
-            parameters={"workspace_path": "/old/ws", "code": code},
+            parameters=(
+                {"workspace_path": "/old/ws", "code": code}
+                if code is not None
+                else {"workspace_path": "/old/ws"}
+            ),
             parameter_schema={},
             exportable=True,
             replayable=True,
@@ -130,3 +134,21 @@ def test_an_earlier_step_of_another_shape_is_not_shown(tmp_path, template):
         "a form Lobster did not write" in s
         for s in cells
     ), cells
+
+
+@pytest.mark.parametrize("code", CODES)
+def test_a_step_this_version_recorded_shows_its_code_when_read_later(tmp_path, code):
+    template = RECORDED_SETUPS[1] + "\n# User code\n{{ code }}"
+
+    cells = _migrated(tmp_path, template, code)
+
+    shown = next(s for s in cells if "Not executed: custom code" in s)
+    assert f"\n# User code\n{code}\n```" in shown, shown
+
+
+def test_a_step_with_the_code_as_a_value_but_no_code_is_not_shown(tmp_path):
+    template = RECORDED_SETUPS[1] + "\n# User code\n{{ code }}"
+
+    cells = _migrated(tmp_path, template, None)
+
+    assert any("Not shown: custom code" in s for s in cells), cells
