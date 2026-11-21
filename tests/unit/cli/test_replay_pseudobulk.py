@@ -121,16 +121,19 @@ def _with_de(tmp_path, monkeypatch):
     return dm, source
 
 
-def test_a_save_is_written_where_the_session_saved_it(tmp_path, monkeypatch):
-    """The pseudobulk matrix is saved right after its own cell, before the DE cell
-    changes it; the DE result is saved after the DE cell."""
-    dm, _ = _with_de(tmp_path, monkeypatch)
-    notebook = dm.export_notebook("pb", "pseudobulk", filter_strategy="successful")
-    code = [
+def _code_cells(notebook):
+    return [
         "".join(cell["source"])
         for cell in json.loads(notebook.read_text())["cells"]
         if cell["cell_type"] == "code"
     ]
+
+
+def _assert_saves_in_place(dm):
+    """The pseudobulk matrix is saved right after its own cell, before the DE cell
+    changes it; the DE result is saved after the DE cell."""
+    notebook = dm.export_notebook("pb", "pseudobulk", filter_strategy="successful")
+    code = _code_cells(notebook)
 
     def where(text):
         (found,) = [i for i, source in enumerate(code) if text in source]
@@ -141,6 +144,43 @@ def test_a_save_is_written_where_the_session_saved_it(tmp_path, monkeypatch):
     assert where("'sc_pseudobulk' }.h5ad") == pseudobulk_cell + 1
     assert de_cell > pseudobulk_cell + 1
     assert where("'sc_pseudobulk_de_ctrl_vs_treat' }.h5ad") > de_cell
+
+
+def test_a_save_is_written_where_the_session_saved_it(tmp_path, monkeypatch):
+    dm, _ = _with_de(tmp_path, monkeypatch)
+    _assert_saves_in_place(dm)
+
+
+def test_a_record_without_what_each_step_stored_places_saves_the_same(
+    tmp_path, monkeypatch
+):
+    """An older session's steps do not record what they stored: a save just
+    before a step is still taken as made inside it."""
+    dm, _ = _with_de(tmp_path, monkeypatch)
+    for activity in dm.provenance.activities:
+        activity.pop("stored_modalities", None)
+    _assert_saves_in_place(dm)
+
+
+def test_a_save_made_between_two_steps_is_written_after_the_first(
+    tmp_path, monkeypatch
+):
+    """Saved on its own after the pseudobulk step: the DE step after it stores
+    the same name (its results go into it), but did not make the save."""
+    dm, _, tools = _session(tmp_path, monkeypatch, save_result=False)
+    dm.save_modality("sc_pseudobulk", "sc_pseudobulk.h5ad")
+    reply = tools["run_differential_expression"].invoke(
+        {
+            "modality_name": "sc_pseudobulk",
+            "groupby": "condition",
+            "group1": "ctrl",
+            "group2": "treat",
+            "method": "deseq2",
+            "save_result": True,
+        }
+    )
+    assert "Complete" in reply, reply
+    _assert_saves_in_place(dm)
 
 
 @needs_kernel
