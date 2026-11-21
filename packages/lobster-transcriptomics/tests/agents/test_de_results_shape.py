@@ -113,3 +113,15 @@ def test_a_result_saved_before_1_3_1_says_to_run_the_de_again(
     reply = tools[tool].invoke({"modality_name": result, **TOOLS[tool]})
 
     assert LEGACY in reply, reply
+
+
+def test_another_invalid_result_keeps_its_message(tmp_path, monkeypatch):
+    dm, result, tools = _analysed(tmp_path, monkeypatch, "t_test")
+    adata = dm.get_modality(result)
+    key = adata.uns["de_current_results_key"]
+    adata.uns[key] = {"padj": {"GENE0000": 0.5}, "method": "t_test"}
+
+    reply = tools["filter_de_results"].invoke({"modality_name": result})
+
+    assert "Invalid DE results format at 'de_results_ctrl_vs_treat'" in reply, reply
+    assert "before 1.3.1" not in reply
