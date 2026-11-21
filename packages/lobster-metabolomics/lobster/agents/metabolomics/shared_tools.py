@@ -1037,7 +1037,7 @@ results = service.overrepresentation_analysis(
 
                 sig_pathways.sort(key=lambda x: x[1])
                 n_sig = len(sig_pathways)
-                response += f"\n**Significant Pathways: {n_sig}**\n"
+                response += f"\n**Significant Pathways (raw p < 0.05, not corrected): {n_sig}**\n"
                 for name, pval in sig_pathways[:5]:
                     response += f"- {name}: p={pval:.4f}\n"
                 if n_sig > 5:
