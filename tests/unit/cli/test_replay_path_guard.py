@@ -1094,11 +1094,6 @@ def test_a_changed_renaming_export_cell_is_refused(tmp_path, cell):
     assert _refusal(tmp_path, cell) == NOT_EXPORT
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="refused once the check that a writing cell may not name the replay's "
-    "input is combined with this shape",
-)
 def test_the_renaming_export_cell_aimed_at_the_replay_input_is_refused(tmp_path):
     source = tmp_path / "counts.csv"
     source.write_text("gene,a\nG1,1\n")
