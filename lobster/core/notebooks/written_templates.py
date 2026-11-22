@@ -14,15 +14,27 @@ template, change its hash in the same commit.
 import hashlib
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
-# operation -> (tool, sha256 of each code_template its builder writes)
+# operation -> (tool, sha256 of each code_template its builder writes).
+# A DE export also keeps the exact template 1.3.0 wrote, which keeps every value
+# text, so a session recorded with 1.3.0 still shows its export step.
 WRITTEN_TEMPLATES: Dict[str, Tuple[str, FrozenSet[str]]] = {
     "de_results.export": (
         "export_de_results",
-        frozenset({"8d0d5bbc235527be9180cdee30de4b6cf2e566c6184857eb8148cb501a49da52"}),
+        frozenset(
+            {
+                "8d0d5bbc235527be9180cdee30de4b6cf2e566c6184857eb8148cb501a49da52",
+                "aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd",  # 1.3.0
+            }
+        ),
     ),
     "de_results.extract_and_export": (
         "extract_and_export_de_results",
-        frozenset({"f7cb7a579bf58852a0d42c5505fdd33be60bde8b931785810443bb3dd6c0e1f8"}),
+        frozenset(
+            {
+                "f7cb7a579bf58852a0d42c5505fdd33be60bde8b931785810443bb3dd6c0e1f8",
+                "35440cc8c975149226867dad1bf76d30c615af8f555c781dc9510c745b10729a",  # 1.3.0
+            }
+        ),
     ),
     "proteomics.affinity.cross_platform_concordance": (
         "assess_cross_platform_concordance",
