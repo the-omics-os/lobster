@@ -22,7 +22,7 @@ WRITTEN_TEMPLATES: Dict[str, Tuple[str, FrozenSet[str]]] = {
         "export_de_results",
         frozenset(
             {
-                "8d0d5bbc235527be9180cdee30de4b6cf2e566c6184857eb8148cb501a49da52",
+                "3436b122e11534962de34275282f97f617662a84ff54463732e104c170363bdc",
                 "aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd",  # 1.3.0
             }
         ),
