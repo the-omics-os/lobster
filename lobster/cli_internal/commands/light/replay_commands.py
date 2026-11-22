@@ -1203,13 +1203,21 @@ _OUTDATED_LABEL = (
 )
 
 
+# The exporter's cell for custom code of an earlier session, shown and never run
+# (exporter._unrun_cell), with {source} any session name.
+_UNRUN_LABEL = (
+    "Not executed: custom code from a {source} "
+    "(it may use paths of the machine it ran on)"
+)
+
+
 @lru_cache(maxsize=1)
 def _omitted_labels() -> Tuple[Any, ...]:
     """The omitted cell's text in every language Lobster writes it in."""
     return _label_shapes(_OMITTED_LABEL, "{source}")
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def _label_shapes(label: str, slot: str) -> Tuple[Any, ...]:
     """The bold markdown of *label* in every language Lobster writes it in,
     with any text in *slot*."""
@@ -1288,6 +1296,27 @@ def _omits_outdated_step(notebook: Path) -> bool:
         ):
             return True
     return False
+
+
+def _unrun_custom_cells(notebook: Path) -> List[int]:
+    """The cells, numbered from 1, that show custom code of an earlier session
+    and are not run: markdown cells that start with the exporter's label."""
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []  # unreadable: the run refuses it
+    found = []
+    for number, cell in enumerate(cells if isinstance(cells, list) else [], 1):
+        if not isinstance(cell, dict) or cell.get("cell_type") != "markdown":
+            continue
+        source = cell.get("source", "")
+        source = "".join(source) if isinstance(source, list) else str(source)
+        if any(
+            shape.match(source.strip())
+            for shape in _label_shapes(_UNRUN_LABEL, "{source}")
+        ):
+            found.append(number)
+    return found
 
 
 def _manifest(notebook: Path) -> Dict[str, Any]:
@@ -1983,6 +2012,15 @@ def verify_notebook(
                 execution=Execution.NOT_RUN,
                 verdict=Verdict.REFUSED,
                 refusal=Refusal(outside, None, RefusalOrigin.PRODUCT),
+            )
+        )
+    for number in _unrun_custom_cells(notebook):
+        outcome.notes.append(
+            (
+                "Cell {n}: custom code from an earlier session is shown, not run. "
+                "Files it changed are compared without its changes, and files "
+                "only it wrote are not listed.",
+                {"n": number},
             )
         )
     outputs = replay_dir.resolve() / f"{OUTPUT_PREFIX}"

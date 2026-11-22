@@ -603,7 +603,7 @@ def test_every_note_has_a_chinese_line():
         and isinstance(node.elts[0].value, str)
         and isinstance(node.elts[1], ast.Dict)
     ]
-    assert len(notes) == 29, notes
+    assert len(notes) == 30, notes
     assert [n for n in notes if n not in phrases] == []
 
 
