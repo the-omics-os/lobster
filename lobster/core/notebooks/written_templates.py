@@ -18,11 +18,11 @@ from typing import Any, Dict, FrozenSet, Optional, Tuple
 WRITTEN_TEMPLATES: Dict[str, Tuple[str, FrozenSet[str]]] = {
     "de_results.export": (
         "export_de_results",
-        frozenset({"aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd"}),
+        frozenset({"8d0d5bbc235527be9180cdee30de4b6cf2e566c6184857eb8148cb501a49da52"}),
     ),
     "de_results.extract_and_export": (
         "extract_and_export_de_results",
-        frozenset({"35440cc8c975149226867dad1bf76d30c615af8f555c781dc9510c745b10729a"}),
+        frozenset({"f7cb7a579bf58852a0d42c5505fdd33be60bde8b931785810443bb3dd6c0e1f8"}),
     ),
     "proteomics.affinity.cross_platform_concordance": (
         "assess_cross_platform_concordance",
