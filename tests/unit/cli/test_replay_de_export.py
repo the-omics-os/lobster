@@ -80,12 +80,28 @@ def test_the_notebook_path_is_relative_to_the_workspace(tmp_path):
     assert path(workspace, elsewhere) == "exports/de.csv"
 
 
-# The exact templates 1.3.0 wrote: a session it recorded keeps one of these.
+# The exact templates 1.3.0 wrote, and their hashes: a session it recorded
+# keeps one of these.
+_WRITE_1_3_0 = (
+    "results_df.{% if output_format == 'xlsx' %}to_excel{% else %}to_csv{% endif %}"
+    "({{ output_path | string | repr }}, index=True)"
+)
 TEMPLATES_1_3_0 = {
-    "export_de_results": "aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd",
-    "extract_and_export_de_results": "35440cc8c975149226867dad1bf76d30c615af8f555c781dc9510c745b10729a",
+    "export_de_results": (
+        "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df']\n"
+        "results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
+        + _WRITE_1_3_0,
+        "aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd",
+    ),
+    "extract_and_export_de_results": (
+        "# Extract and export DE results\n"
+        "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df'].copy()\n"
+        "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] <= {{ padj_threshold }}]\n{% endif %}"
+        "{% if lfc_threshold > 0 %}results_df = results_df[abs(results_df['log2FoldChange']) >= {{ lfc_threshold }}]\n{% endif %}"
+        "results_df = results_df.sort_values('padj')\n" + _WRITE_1_3_0,
+        "35440cc8c975149226867dad1bf76d30c615af8f555c781dc9510c745b10729a",
+    ),
 }
-FOLDER_LINE = "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
 
 
 def _as_recorded_by_1_3_0(dm, tool):
@@ -95,9 +111,10 @@ def _as_recorded_by_1_3_0(dm, tool):
         a for a in dm.provenance.activities if (a["ir"] or {}).get("tool_name") == tool
     ]
     ir = activity["ir"]
-    ir["code_template"] = ir["code_template"].replace(FOLDER_LINE, "")
-    assert template_hash(ir["code_template"]) == TEMPLATES_1_3_0[tool]
-    ir["imports"] = [i for i in ir["imports"] if i != "from pathlib import Path"]
+    template, expected = TEMPLATES_1_3_0[tool]
+    assert template_hash(template) == expected
+    ir["code_template"] = template
+    ir["imports"] = ["import pandas as pd"]
     relative = ir["parameters"]["output_path"]
     ir["parameters"]["output_path"] = str(dm.workspace_path.resolve() / relative)
 
