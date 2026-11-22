@@ -17,6 +17,7 @@ from tests.unit.cli.test_replay_commands import needs_kernel
 
 de_module = pytest.importorskip("lobster.agents.transcriptomics.de_analysis_expert")
 
+from lobster.core.notebooks.written_templates import template_hash  # noqa: E402
 from lobster.core.runtime.data_manager import DataManagerV2  # noqa: E402
 from lobster.testing.provenance_replay import factory_tools  # noqa: E402
 
@@ -77,3 +78,58 @@ def test_the_notebook_path_is_relative_to_the_workspace(tmp_path):
     assert path(linked, table) == "exports/tables/de.csv"
     elsewhere = str((tmp_path / "root" / "de.csv").resolve())
     assert path(workspace, elsewhere) == "exports/de.csv"
+
+
+# The exact templates 1.3.0 wrote: a session it recorded keeps one of these.
+TEMPLATES_1_3_0 = {
+    "export_de_results": "aff7d99fdfe066a84667009ea59ee8744bc50425e85c6262e4a903b2a1425bfd",
+    "extract_and_export_de_results": "35440cc8c975149226867dad1bf76d30c615af8f555c781dc9510c745b10729a",
+}
+FOLDER_LINE = "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
+
+
+def _as_recorded_by_1_3_0(dm, tool):
+    """The session's export step as 1.3.0 stored it: no folder line, and the
+    session's file by its absolute path."""
+    (activity,) = [
+        a for a in dm.provenance.activities if (a["ir"] or {}).get("tool_name") == tool
+    ]
+    ir = activity["ir"]
+    ir["code_template"] = ir["code_template"].replace(FOLDER_LINE, "")
+    assert template_hash(ir["code_template"]) == TEMPLATES_1_3_0[tool]
+    ir["imports"] = [i for i in ir["imports"] if i != "from pathlib import Path"]
+    relative = ir["parameters"]["output_path"]
+    ir["parameters"]["output_path"] = str(dm.workspace_path.resolve() / relative)
+
+
+@needs_kernel
+@pytest.mark.parametrize("tool", list(TEMPLATES_1_3_0))
+def test_a_de_export_step_recorded_by_1_3_0_is_shown_and_its_replay_refused(
+    tmp_path, monkeypatch, tool
+):
+    """An upgrade keeps a 1.3.0 session's DE export step in its notebook. The
+    cell writes the session's own file by its absolute path, so a replay runs
+    nothing and the file is untouched."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "bulk.h5ad"
+    _bulk().write_h5ad(source)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    dm.load_modality("bulk", str(source), adapter="transcriptomics_bulk")
+    assert "Complete" in _run_de(dm, "run_differential_expression", "t_test")
+    extra, name = EXPORTS[tool]
+    tools = factory_tools(de_module.de_analysis_expert, de_module.__name__, dm)
+    reply = tools[tool].invoke({"modality_name": RESULT, **extra})
+    exported = dm.exports_dir / name
+    assert exported.is_file(), reply
+    _as_recorded_by_1_3_0(dm, tool)
+    before = _sha(exported)
+
+    notebook = dm.export_notebook("de", "bulk DE", filter_strategy="successful")
+    text = notebook.read_text()
+    assert "Not shown" not in text
+    assert repr(str(exported.resolve()))[1:-1] in text
+    result, out = _verify(notebook, source, dm.workspace_path)
+
+    assert result.exit_code == 4 and out["verdict"] == "REFUSED", out
+    assert f"exports/{name}" in out["report"]["refusal"]["reason"]
+    assert _sha(exported) == before
