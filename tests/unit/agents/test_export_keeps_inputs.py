@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2, RecordedInputError
 from lobster.testing.provenance_replay import factory_tools
 
 HAS_TX = find_spec("lobster.agents.transcriptomics") is not None
@@ -294,7 +294,7 @@ def test_import_bulk_counts_records_its_file_as_an_input(tmp_path, monkeypatch):
     original = _counts(source)
     tools = factory_tools(transcriptomics_expert, TX_MODULE, dm)
     imported = tools["import_bulk_counts"].invoke(
-        {"file_path": str(source), "modality_name": "bulk"}
+        {"file_path": str(source), "modality_name": "bulk", "genes_axis": "columns"}
     )
     assert "Successfully imported" in imported, imported
 
@@ -333,20 +333,19 @@ def test_merge_sample_metadata_records_its_file_as_an_input(tmp_path, monkeypatc
     assert meta.read_bytes() == original
 
 
-def test_a_modality_save_over_its_loaded_file_is_not_checked_here(
-    tmp_path, monkeypatch
-):
-    """A known limit of this release: a save writes data/<name>.h5ad where told."""
+def test_a_modality_save_over_its_loaded_file_is_refused(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     dm = _manager(tmp_path / "ws")
     source = dm.data_dir / "counts.h5ad"
     source.parent.mkdir(parents=True, exist_ok=True)
     ad.AnnData(np.ones((3, 2))).write_h5ad(source)
+    original = source.read_bytes()
     dm.load_modality("counts", source, adapter="transcriptomics_bulk")
 
-    dm.save_modality("counts", "counts.h5ad")
+    with pytest.raises(RecordedInputError):
+        dm.save_modality("counts", "counts.h5ad")
 
-    assert source.exists()
+    assert source.read_bytes() == original
 
 
 @needs_tx
