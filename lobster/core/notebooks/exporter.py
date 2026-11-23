@@ -13,9 +13,9 @@ import hashlib
 import json
 import logging
 import re
-import subprocess  # nosec B404 # Only fixed metadata argv is executed below; no shell commands.
 import sys
 from datetime import datetime
+from importlib import metadata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -52,6 +52,27 @@ MIGRATED_RECORD_LINE = (
     "`software_versions` are that version's; `system` is the version that exported this "
     "notebook. The input file the session read was not recorded.\n"
 )
+
+
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+
+
+def _installed_commit() -> str:
+    """Short commit of the installed lobster-ai, or "unavailable".
+
+    Only a git install records one (PEP 610 ``direct_url.json``,
+    ``vcs_info.commit_id``); a wheel, an editable or folder install, or an
+    unreadable file has none. Never the current directory's repository, which may
+    be the user's own project. Never raises: an export must not fail on this.
+    """
+    try:
+        direct_url = metadata.distribution("lobster-ai").read_text("direct_url.json")
+        commit = json.loads(direct_url)["vcs_info"]["commit_id"]
+    except Exception:
+        return "unavailable"
+    if isinstance(commit, str) and _COMMIT.fullmatch(commit):
+        return commit[:8]
+    return "unavailable"
 
 
 def _inside(path: Path, folder: Path) -> bool:
@@ -1445,21 +1466,8 @@ Recorded when this notebook was exported, for your own checks.
             "lobster_version": self._get_lobster_version(),
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "platform": sys.platform,
+            "git_commit": _installed_commit(),
         }
-
-        # Try to get Git commit hash
-        try:
-            git_commit = (
-                subprocess.check_output(  # nosec B603, B607 # Fixed git metadata argv, no shell or user command interpolation.
-                    ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
-                )
-                .decode("utf-8")
-                .strip()
-            )
-            system_info["git_commit"] = git_commit[:8]  # Short hash
-        except Exception:
-            system_info["git_commit"] = "unavailable"
-
         return system_info
 
     def _create_imports_cell(self, irs: List[AnalysisStep]) -> NotebookNode:
