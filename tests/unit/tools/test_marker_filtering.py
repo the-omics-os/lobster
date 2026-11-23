@@ -312,13 +312,14 @@ class TestDEGFiltering:
             assert "filtering_params" in stats
 
     def test_sparse_matrix_support(self, service):
-        """Test that filtering works with sparse matrices."""
+        """Reused detection fractions match native filtering on sparse raw data."""
         np.random.seed(42)
         n_cells = 100
         n_genes = 50
 
         # Create sparse data
         X_dense = np.random.rand(n_cells, n_genes) * 0.5
+        X_dense[X_dense < 0.3] = 0.0
         X_dense[0:33, 0:10] += 2.0
         X_dense[34:66, 10:20] += 2.0
         X_dense[67:99, 20:30] += 2.0
@@ -329,19 +330,23 @@ class TestDEGFiltering:
         adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
         adata.obs["leiden"] = pd.Categorical(["0"] * 33 + ["1"] * 33 + ["2"] * 34)
 
-        # Preprocess
-        # Store raw counts before normalization
-        adata.raw = adata.copy()
         sc.pp.normalize_total(adata, target_sum=1e4)
         sc.pp.log1p(adata)
+        adata.raw = adata.copy()
 
-        # Should work without errors
-        adata_result, stats, ir = service.find_marker_genes(
-            adata, groupby="leiden", min_fold_change=1.5, min_pct=0.25
+        groups = ["2", "0"]
+        expected = adata.copy()
+        sc.tl.rank_genes_groups(
+            expected, "leiden", groups=groups, method="wilcoxon", n_genes=25
         )
+        sc.tl.filter_rank_genes_groups(expected, min_fold_change=1.5)
 
-        assert "filtering_params" in stats
-        assert stats["total_genes_filtered"] >= 0
+        actual, _, _ = service.find_marker_genes(adata, groupby="leiden", groups=groups)
+        for key in ("rank_genes_groups", "rank_genes_groups_filtered"):
+            expected_names = pd.DataFrame(expected.uns[key]["names"]).fillna("")
+            actual_names = pd.DataFrame(actual.uns[key]["names"])
+            pd.testing.assert_frame_equal(actual_names, expected_names)
+            assert actual.uns[key].keys() == expected.uns[key].keys()
 
     def test_zero_fold_change_threshold(self, service, clustered_adata):
         """Test behavior with zero fold-change threshold (no FC filtering)."""
