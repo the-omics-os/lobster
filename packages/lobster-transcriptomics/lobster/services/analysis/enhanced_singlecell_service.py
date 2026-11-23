@@ -1497,6 +1497,8 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 "method": method,
                 "n_genes": n_genes,
                 "use_raw": use_raw,
+                # Reuse detection fractions instead of slicing .raw for each group.
+                "pts": True,
                 "key_added": result_keys["original"],
             }
 
@@ -1526,6 +1528,9 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 min_in_group_fraction=min_pct,
                 max_out_group_fraction=max_out_pct,
             )
+            for key in (result_keys["original"], result_keys["filtered"]):
+                adata_markers.uns[key].pop("pts", None)
+                adata_markers.uns[key].pop("pts_rest", None)
 
             filtered_report = self._marker_result_report(
                 adata_markers, result_keys["filtered"]
@@ -1645,6 +1650,7 @@ sc.tl.rank_genes_groups(
     groupby={{ groupby | string | repr }},
     method={{ method | string | repr }},
     n_genes={{ n_genes }},
+    pts=True,
     key_added={{ result_keys.original | repr }},
 {%- if groups is not none %}
     groups={{ groups | repr }},
@@ -1660,6 +1666,9 @@ sc.tl.filter_rank_genes_groups(
     min_in_group_fraction={{ min_pct }},       # Strict in-group fraction > threshold
     max_out_group_fraction={{ max_out_pct }},  # Strict out-group fraction < threshold
 )
+for key in ({{ result_keys.original | repr }}, {{ result_keys.filtered | repr }}):
+    adata.uns[key].pop("pts", None)
+    adata.uns[key].pop("pts_rest", None)
 
 # Step 3: Write-safe missing-name representation (numeric NaNs unchanged)
 repair_marker_names(adata)
