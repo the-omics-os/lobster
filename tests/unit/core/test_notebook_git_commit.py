@@ -157,22 +157,31 @@ def test_anything_but_a_git_commit_is_unavailable(monkeypatch, tmp_path, direct_
     assert _exporter()._get_system_info()["git_commit"] == "unavailable"
 
 
-def test_an_uninstalled_lobster_is_unavailable(monkeypatch):
+def _failing(monkeypatch, error):
+    """Make metadata.distribution("lobster-ai") raise ``error``; other names are real."""
+    real = metadata.distribution
+
     def distribution(name):
-        raise metadata.PackageNotFoundError(name)
+        if name == "lobster-ai":
+            raise error
+        return real(name)
 
     monkeypatch.setattr(metadata, "distribution", distribution)
 
-    assert _exporter()._get_system_info()["git_commit"] == "unavailable"
+
+def test_an_uninstalled_lobster_is_unavailable(monkeypatch):
+    exporter = _exporter()
+    _failing(monkeypatch, metadata.PackageNotFoundError("lobster-ai"))
+
+    assert exporter._get_system_info()["git_commit"] == "unavailable"
 
 
 def test_a_failing_metadata_read_does_not_fail_the_export(monkeypatch):
-    def distribution(name):
-        raise RuntimeError("unreadable site-packages")
+    # Recording the session reads the version too; only the export is under test.
+    exporter = _exporter()
+    _failing(monkeypatch, RuntimeError("unreadable site-packages"))
 
-    monkeypatch.setattr(metadata, "distribution", distribution)
-
-    path = _exporter().export("nb")
+    path = exporter.export("nb")
     with open(path) as handle:
         system = _record(nbformat.read(handle, as_version=4))["system"]
 
