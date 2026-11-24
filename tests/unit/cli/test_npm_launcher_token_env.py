@@ -48,6 +48,32 @@ def test_supports_token_env_requires_exit_0_and_true_flag(tmp_path, body, expect
     assert supports_token_env(_client(tmp_path, body)) is expected
 
 
+def _executable(folder, name):
+    path = folder / name
+    path.write_text(f"#!{sys.executable}\n")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return path
+
+
+def test_finds_the_cloud_client_by_its_lobster_cli_command(tmp_path, monkeypatch):
+    """omics-os and the older @omicsos/lobster both install lobster-cli."""
+    monkeypatch.delenv("LOBSTER_CLI_BINARY", raising=False)
+    client = _executable(tmp_path, "lobster-cli")
+    _executable(tmp_path, "omics-os")
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert _live_launcher().find_npm_binary() == str(client)
+
+
+def test_a_bare_lobster_command_is_not_the_cloud_client(tmp_path, monkeypatch):
+    """`lobster` can be the Python CLI; only lobster-cli names the npm client."""
+    monkeypatch.delenv("LOBSTER_CLI_BINARY", raising=False)
+    _executable(tmp_path, "lobster")
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert _live_launcher().find_npm_binary() is None
+
+
 def test_supports_token_env_false_on_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(npm_launcher, "CAPABILITIES_TIMEOUT_S", 0.2)
     slow = _client(tmp_path, "time.sleep(5); print('{\"token-env\": true}')")

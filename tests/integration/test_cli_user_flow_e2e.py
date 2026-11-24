@@ -163,7 +163,7 @@ def test_cloud_chat_without_npm_binary_fails_cleanly(tmp_path: Path) -> None:
     _assert_no_python_traceback(result)
     output = _combined_output(result)
     assert "Cloud TUI not installed" in output
-    assert "npm install -g @omicsos/lobster" in output
+    assert "npm install -g omics-os" in output
 
 
 def test_cloud_chat_with_stub_npm_binary_reaches_tty_guard(tmp_path: Path) -> None:

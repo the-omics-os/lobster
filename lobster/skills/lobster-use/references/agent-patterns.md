@@ -222,19 +222,19 @@ provider refusals are not a guarantee that every log is safe to share.
 
 ## npm Managed Cloud Session Orchestration
 
-Use npm CLI 0.4.2 `@omicsos/lobster` only for managed Cloud sessions, not as a
-replacement for local Python using a Cloud account. `lobster-cli` is the npm alias;
-its sign-in/status results do not establish a configured Python engine:
+Use the npm CLI `omics-os` only for managed Cloud sessions, not as a
+replacement for local Python using a Cloud account. Its sign-in/status results
+do not establish a configured Python engine:
 
 ```bash
-lobster-cli cloud login --device  # human approves the displayed URL/code
-lobster-cli cloud status
-lobster-cli cloud query --json "Describe the available session data"
-lobster-cli cloud query --json --session-id latest "Continue the approved workflow"
-lobster-cli cloud chat
+omics-os login --device  # human approves the displayed URL/code
+omics-os status
+omics-os lobster query --json "Describe the available session data"
+omics-os lobster query --json --session-id latest "Continue the approved workflow"
+omics-os lobster chat
 ```
 
-For headless API-key access, supply `OMICSOS_API_KEY` from an approved secret
+For headless API-key access, supply `OMICS_OS_API_KEY` from an approved secret
 source. Browser/device login requires the user's participation. Preserve returned
 session UUIDs; prefer an explicit UUID over `latest` when coordinating multiple
 sessions. Check JSON `success` and error/finish information as well as process

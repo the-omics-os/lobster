@@ -13,10 +13,9 @@ OMICS_OS_AUTH_GUIDANCE = (
     "lobster cloud login --api-key <key>.\n"
     "Non-interactive local setup: lobster init --non-interactive --use-omics-os "
     "--skip-extras --skip-ssl-test.\n"
-    "Alternative managed Cloud client (npm): npm i -g @omicsos/lobster && "
-    "lobster cloud login --device.\n"
-    "With both clients installed, lobster-cli cloud login --device selects the "
-    "npm client. Device login needs human browser approval; configure the Python "
+    "Alternative managed Cloud client (npm): npm install -g omics-os && "
+    "omics-os login --device.\n"
+    "Device login needs human browser approval; configure the Python "
     "provider separately rather than assuming credential sharing."
 )
 

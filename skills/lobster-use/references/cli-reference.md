@@ -479,15 +479,15 @@ all logs or every exception are free of sensitive content.
 
 Use this section only for a managed Cloud session. It does not install Python
 `lobster-ai` or configure its local `omics-os` provider.
-These examples use npm CLI 0.4.2 and its `lobster-cli` alias:
+These examples use the npm CLI `omics-os`:
 
 ```bash
-npm install -g @omicsos/lobster@0.4.2  # permission required
-lobster-cli cloud login --device     # human browser authorization, not a Python login
-lobster-cli cloud status
-lobster-cli cloud chat
-lobster-cli cloud query --json --session-id latest "Continue the session"
-lobster-cli cloud logout
+npm install -g omics-os  # permission required
+omics-os login --device  # human browser authorization, not a Python login
+omics-os status
+omics-os lobster chat
+omics-os lobster query --json --session-id latest "Continue the session"
+omics-os logout
 ```
 
 Device login requires human browser approval and can write credentials under
@@ -496,7 +496,7 @@ credential files to inspect configuration. Do not treat successful npm sign-in
 as proof of a Python installation, local provider selection or working local
 inference; use the local Python setup route for that task.
 
-API-key auth accepts `OMICSOS_API_KEY` from
+API-key auth accepts `OMICS_OS_API_KEY` (or the older `OMICSOS_API_KEY`) from
 the environment; `--api-key <key>` also exists but can expose the key in process
 arguments. Cloud query supports `--session-id/-s`, `--project-id/-p`, `--json/-j`
 and `--stream`. Store returned session UUIDs for continuity. Do not infer Cloud
@@ -504,4 +504,4 @@ figure capabilities from this local-engine reference.
 
 **Source:** Python `lobster/cli.py`, `lobster/cli_internal/commands/`,
 `lobster/tools/custom_code_tool.py`, `lobster/core/figures/child_api.py`;
-Cloud CLI: `@omicsos/lobster` command help and source.
+Cloud CLI: `omics-os` command help and source.

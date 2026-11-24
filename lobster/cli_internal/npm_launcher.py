@@ -1,4 +1,4 @@
-"""Launch the @omicsos/lobster npm CLI for cloud interactive sessions."""
+"""Launch the npm Cloud client (omics-os) for cloud interactive sessions."""
 
 import json
 import os
@@ -7,7 +7,7 @@ import subprocess  # nosec B404 # used only to launch the installed chat client 
 import sys
 from typing import Optional
 
-NPM_PACKAGE = "@omicsos/lobster"
+NPM_PACKAGE = "omics-os"
 
 # Environment variable the npm client reads its auth token from (argv wins if both are set).
 TOKEN_ENV_VAR = "LOBSTER_CLOUD_TOKEN"  # nosec B105 # variable name, not a secret
@@ -20,7 +20,10 @@ def install_hint() -> str:
 
 
 def find_npm_binary() -> Optional[str]:
-    """Find the @omicsos/lobster npm binary via the lobster-cli discovery name.
+    """Find the npm Cloud client by its lobster-cli command.
+
+    omics-os installs lobster-cli next to omics-os, and the older @omicsos/lobster
+    installed it too, so either package is found.
 
     Returns the path to the binary, or None if not installed.
     """

@@ -27,7 +27,7 @@ _MINOR = "{}.{}.0".format(*lobster_release()[:2])
 pytestmark = pytest.mark.no_auto_config
 KEY = "omk_local_setup_test"
 API_KEYS_URL = "https://app.omics-os.com/account"
-NPM_PACKAGE = "@omicsos/lobster"
+NPM_INSTALL = "npm install -g omics-os"
 
 
 @pytest.fixture(autouse=True)
@@ -81,9 +81,11 @@ def invoke_init(*options):
 
 
 def assert_supported_guidance(output):
+    output = " ".join(output.split())  # Rich wraps lines at the console width
     assert "app.omics-os.com" in output
-    assert NPM_PACKAGE in output
-    assert "cloud login --device" in output
+    assert NPM_INSTALL in output
+    assert "omics-os login --device" in output
+    assert "@omicsos/lobster" not in output
 
 
 def assert_cloud_config(tmp_path, expected_key):

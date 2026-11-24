@@ -180,7 +180,7 @@ def test_npm_install_hint_is_built_from_package_constant():
     from lobster.cli_internal import npm_launcher
 
     assert npm_launcher.install_hint() == f"npm install -g {npm_launcher.NPM_PACKAGE}"
-    assert npm_launcher.NPM_PACKAGE == "@omicsos/lobster"
+    assert npm_launcher.NPM_PACKAGE == "omics-os"
 
 
 def _init_with(flag, key, *extra):

@@ -7,7 +7,7 @@ description: |
   Use for omics analysis, GEO downloads, quality control, clustering,
   differential expression, annotation, visualization, and notebook export.
   Covers installing and configuring the local Python engine, including using
-  an Omics-OS Cloud account for local inference. The npm @omicsos/lobster client
+  an Omics-OS Cloud account for local inference. The npm omics-os client
   is a separate route only for managed Cloud sessions, not a Python replacement.
 source:
   github: https://github.com/the-omics-os/lobster
@@ -37,7 +37,7 @@ with npm alone does not install or configure the local Python engine.
 |---|---|---|
 | Local Lobster AI using an Omics-OS Cloud account | Python `lobster-ai`; local `omics-os` gateway provider | Local Python workspace; inference through Omics-OS Cloud |
 | Local analysis using another provider | Python `lobster-ai`; chosen provider | Local Python workspace |
-| A managed Omics-OS Cloud session | npm `@omicsos/lobster`; `lobster-cli cloud chat/query` | Managed Cloud session |
+| A managed Omics-OS Cloud session | npm `omics-os`; `omics-os lobster chat/query` | Managed Cloud session |
 
 For a local setup request, follow the Python setup below. Use the npm route only
 when the user actually requests managed Cloud sessions; ask if the execution
@@ -59,8 +59,8 @@ or that its local provider is configured.
   running local model rather than an API key.
 - Local Python with an Omics-OS Cloud account: use an authorized gateway key;
   Python's credential environment name is `OMICS_OS_API_KEY`.
-- Managed Cloud sessions: use npm `@omicsos/lobster` and its login flow.
-  npm's headless API-key environment name is `OMICSOS_API_KEY` (different spelling).
+- Managed Cloud sessions: use npm `omics-os` and its login flow.
+  Its headless API key is also `OMICS_OS_API_KEY` (it still accepts the older `OMICSOS_API_KEY`).
 - Optional: `NCBI_API_KEY` for NCBI access.
 - Obtain permission before installation, credential writes, downloads, paid
   inference, or operations outside the user's chosen workspace. Never print keys.

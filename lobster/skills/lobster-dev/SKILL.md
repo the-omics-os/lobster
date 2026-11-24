@@ -13,7 +13,7 @@ description: |
 
 Lobster AI is the Python bioinformatics engine powering Omics-OS. Plugins are
 namespace packages discovered through entry points. This skill covers engine
-implementation; the supported Cloud client is npm `@omicsos/lobster`, a separate
+implementation; the supported Cloud client is npm `omics-os`, a separate
 client contract, not Python/Go Cloud compatibility.
 
 ## Start with the Installed Environment and Source

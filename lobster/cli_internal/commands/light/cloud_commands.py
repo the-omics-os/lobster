@@ -301,9 +301,8 @@ def login(
     this Python command prints setup guidance and exits nonzero; it does not
     launch a browser or prompt for a key.
 
-    Alternative managed Cloud client (npm): npm i -g @omicsos/lobster &&
-    lobster cloud login --device. Use lobster-cli cloud login --device to select
-    the npm client when both are installed. Configure Python separately using
+    Alternative managed Cloud client (npm): npm install -g omics-os &&
+    omics-os login --device. Configure Python separately using
     OMICS_OS_API_KEY; do not assume npm credential sharing.
     """
     if api_key:

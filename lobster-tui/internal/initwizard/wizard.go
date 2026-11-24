@@ -1359,8 +1359,7 @@ func (m WizardModel) viewAPIKey() string {
 
 	if m.result.Provider == providerOmicsOS {
 		sb.WriteString(descStyle.Render(i18n.P("Create an API key at https://app.omics-os.com/account")) + "\n")
-		sb.WriteString(descStyle.Render(i18n.P("Alternative npm Cloud client: npm i -g @omicsos/lobster && lobster cloud login --device")) + "\n")
-		sb.WriteString(descStyle.Render(i18n.P("With both CLIs installed: lobster-cli cloud login --device (npm client)")) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("Alternative npm Cloud client: npm install -g omics-os && omics-os login --device")) + "\n")
 		sb.WriteString(descStyle.Render(i18n.P("Python uses OMICS_OS_API_KEY; configure it separately. The key is saved, not checked.")) + "\n")
 		if m.oauthLastError != "" {
 			warnStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Warning)

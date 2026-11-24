@@ -1,7 +1,7 @@
 """E2E cross-tool contract — the real npm CLI ↔ Python round-trip.
 
 GATED (``@pytest.mark.real_api`` → skipped unless ``--runreal``). Requires the
-real npm ``@omicsos/lobster`` on PATH and a logged-in throwaway test tenant. This
+real npm Cloud client (``omics-os``, or the older ``@omicsos/lobster``) on PATH and a logged-in throwaway test tenant. This
 is the whole point of CRED_COMPAT_V2: the two tools share one credential file and
 must both read what the other writes.
 
@@ -28,7 +28,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _npm_lobster() -> str | None:
-    return shutil.which("lobster")
+    # Both npm packages install lobster-cli; a bare "lobster" can be the Python CLI.
+    return shutil.which("lobster-cli")
 
 
 @pytest.fixture
@@ -76,7 +77,7 @@ def test_npm_reads_file_after_python_refresh(real_home):
     """After a Python refresh rotates tokens, the npm CLI still authenticates."""
     npm = _npm_lobster()
     if not npm:
-        pytest.skip("npm @omicsos/lobster not on PATH")
+        pytest.skip("npm Cloud client (lobster-cli) not on PATH")
 
     # Force a Python-side refresh (reads → rotates → writes the shared file).
     from lobster.config import credentials

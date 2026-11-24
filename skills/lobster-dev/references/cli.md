@@ -1,8 +1,7 @@
 # Developer CLI Reference — Lobster AI 1.3
 
-This is the **local Python engine** surface. npm `@omicsos/lobster` owns
-`lobster cloud *` and npm onboarding. When both are installed, use
-`uv run python -m lobster` to target local engine commands explicitly.
+This is the **local Python engine** surface. The npm client `omics-os` owns
+managed Cloud sessions and npm onboarding; its commands start with `omics-os`.
 
 ## Source Map
 
@@ -72,7 +71,7 @@ selected provider flags. Global settings/credential writes need permission.
 There is no generic `lobster config set KEY VALUE` command.
 Local Bedrock uses `AWS_BEDROCK_ACCESS_KEY` + `AWS_BEDROCK_SECRET_ACCESS_KEY`;
 Azure uses `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL`. Do not conflate those
-with npm Cloud `OMICSOS_API_KEY`.
+with the Omics-OS Cloud key `OMICS_OS_API_KEY`.
 
 ## Code-Tool Availability
 

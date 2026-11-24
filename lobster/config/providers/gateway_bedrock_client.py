@@ -262,7 +262,7 @@ class GatewayBedrockClient:
                 msg = (
                     "Omics-OS Cloud API key rejected or expired: create a new one "
                     "at app.omics-os.com. Alternatively, use the npm "
-                    "@omicsos/lobster client: lobster-cli cloud login --device."
+                    "omics-os client: omics-os login --device."
                 )
             else:
                 # Preserve the gateway's tier/policy refusal and its detail;

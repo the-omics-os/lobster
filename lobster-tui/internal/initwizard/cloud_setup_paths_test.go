@@ -20,7 +20,7 @@ func TestCloudSetupViewNamesSupportedAPIKeyAndNPMDevicePaths(t *testing.T) {
 		t.Fatal("Cloud choice did not enter its credential step")
 	}
 	view := m.viewAPIKey()
-	for _, expected := range []string{"app.omics-os.com", "@omicsos/lobster", "cloud login --device"} {
+	for _, expected := range []string{"app.omics-os.com", "npm install -g omics-os", "omics-os login --device"} {
 		if !strings.Contains(view, expected) {
 			t.Errorf("Cloud credential view missing supported guidance %q: %s", expected, view)
 		}
