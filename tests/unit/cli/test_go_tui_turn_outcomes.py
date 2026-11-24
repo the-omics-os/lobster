@@ -16,10 +16,13 @@ import json
 import os
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from lobster.cli_internal import go_tui_launcher
+from lobster.config.settings import MODEL_PRICING
+from lobster.utils.callbacks import TokenTrackingCallback
 
 GOLDEN = (
     Path(__file__).resolve().parents[3]
@@ -53,7 +56,7 @@ class _Bridge:
 
 
 class _Client:
-    token_tracker = type("Tracker", (), {"total_tokens": 0, "total_cost": 0.0})()
+    token_tracker = TokenTrackingCallback(session_id="turn-outcomes")
 
     def __init__(self, first, resumed=None):
         self._first = first
@@ -247,6 +250,34 @@ def test_golden_wire_fixture_matches_the_emitter():
     assert GOLDEN.exists(), "run once with LOBSTER_UPDATE_TURN_FIXTURE=1"
     recorded = {k: _normalise(v) for k, v in json.loads(GOLDEN.read_text()).items()}
     assert produced == recorded
+
+
+def test_turn_status_shows_the_real_trackers_tokens_and_cost():
+    """The status after a turn carries the session's tokens and cost.
+
+    A fake tracker with a made-up ``total_cost`` once hid that the real tracker
+    has only ``total_cost_usd``: the status fell back to "Ready" and the TUI
+    prompt showed $0.0000 for every session.
+    """
+    tracker = TokenTrackingCallback(session_id="t", pricing_config=MODEL_PRICING)
+    tracker.on_llm_end(
+        SimpleNamespace(
+            llm_output={
+                "usage": {
+                    "input_tokens": 70_000,
+                    "output_tokens": 5_000,
+                    "total_tokens": 75_000,
+                },
+                "model_name": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            },
+            generations=[[]],
+        )
+    )
+    assert tracker.total_cost_usd > 0
+
+    status = go_tui_launcher._format_usage(SimpleNamespace(token_tracker=tracker))
+
+    assert status == f"Tokens: 75,000 | Cost: ${tracker.total_cost_usd:.4f}"
 
 
 # ---------------------------------------------------------------------------
