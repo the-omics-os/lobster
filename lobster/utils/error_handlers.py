@@ -1149,16 +1149,28 @@ class AuthenticationErrorHandler(ErrorHandler):
         from lobster.config.constants import PROVIDER_DISPLAY_NAMES
         from lobster.ui.bridge.init_adapter import _PROVIDER_ENV_KEYS
 
-        # shortcut: the provider comes from LOBSTER_LLM_PROVIDER (loaded from .env
-        # and credentials.env, as in the rate-limit fallback above); a provider
-        # set only in providers.json gets the general advice.
+        # Project setup puts LOBSTER_LLM_PROVIDER in .env; global setup (the
+        # installer route) keeps the provider in providers.json.
+        # shortcut: a provider set only in a workspace's provider_config.json
+        # gets the general advice; resolve it if that shows up.
         provider = os.environ.get("LOBSTER_LLM_PROVIDER", "").strip().lower()
-        name = PROVIDER_DISPLAY_NAMES.get(provider, "your provider")
+        if not provider:
+            try:
+                from lobster.config.global_config import GlobalProviderConfig
+
+                provider = (GlobalProviderConfig.load().default_provider or "").lower()
+            except Exception:  # advice only; never mask the original error
+                provider = ""
+        name = PROVIDER_DISPLAY_NAMES.get(provider)
         keys = " and ".join(_PROVIDER_ENV_KEYS.get(provider) or [])
         return ErrorGuidance(
             error_type="authentication",
             title="🔑 Authentication Failed",
-            description=f"The {name} API key was refused or is not set.",
+            description=(
+                f"The {name} API key was refused or is not set."
+                if name
+                else "The API key was refused or is not set."
+            ),
             solutions=[
                 (
                     f"Check {keys} in your project's .env file or in "
