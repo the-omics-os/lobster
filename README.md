@@ -318,13 +318,15 @@ Configure via `lobster init` or environment variables. All providers use the sam
 
 | Provider | Type | Setup | Notes |
 |----------|------|-------|-------|
-| **Anthropic** | Cloud | API key | Claude models — recommended default |
+| **Omics-OS Cloud** | Cloud | API key from [app.omics-os.com/account](https://app.omics-os.com/account) | Default provider, included in the plain install; LLM calls go through the Omics-OS Cloud gateway with usage tracking |
+| **Anthropic** | Cloud | API key | Claude models |
 | **Ollama** | Local | `ollama pull <model>` | Local model: no messages go to an LLM provider (online database searches still use the internet) |
+| **Ollama Cloud** | Cloud | `OLLAMA_API_KEY` | Hosted Ollama models (`--provider ollama-cloud`) |
 | **OpenAI** | Cloud | API key | GPT and o-series models |
 | **OpenRouter** | Cloud | API key | Many models behind a single endpoint |
 | **Nebius AI Studio** | Cloud | API key | Open-weight models (Qwen, DeepSeek, GLM, Kimi) |
 | **Google Gemini** | Cloud | Google API key | Long context window |
-| **AWS Bedrock** | Cloud | AWS credentials | Enterprise compliance, IAM-based auth |
+| **AWS Bedrock** | Cloud | AWS credentials | IAM-based auth, billed to your AWS account |
 | **Azure AI** | Cloud | Endpoint + credential | Azure-hosted deployments |
 </details>
 
