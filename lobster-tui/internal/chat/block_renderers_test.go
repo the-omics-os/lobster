@@ -324,6 +324,26 @@ func TestRenderBlockHandoff(t *testing.T) {
 	}
 }
 
+func TestRenderBlockHandoff_WrapsALongReasonToTheWidth(t *testing.T) {
+	s := testStyles()
+	reason := strings.Repeat("Load the PBMC dataset and describe its structure. ", 6)
+	b := BlockHandoff{From: "supervisor", To: "data_expert", Reason: reason}
+	out := renderBlockHandoff(b, s, 60)
+
+	if w := renderedMaxLineWidth(out); w > 60 {
+		t.Fatalf("expected every line within 60 columns, widest is %d:\n%s", w, out)
+	}
+	lines := strings.Split(ansiRegexp.ReplaceAllString(out, ""), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected the reason to wrap onto several lines:\n%s", out)
+	}
+	for _, line := range lines[1:] {
+		if !strings.HasPrefix(line, "    ") {
+			t.Errorf("expected every reason line to keep the 4-space indent, got %q", line)
+		}
+	}
+}
+
 func TestRenderBlockHandoff_EmptyReason(t *testing.T) {
 	s := testStyles()
 	b := BlockHandoff{From: "supervisor", To: "data_expert", Reason: ""}

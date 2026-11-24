@@ -5715,7 +5715,7 @@ Open HTML files in any web browser for interactive exploration.
 
 ## Citation
 Generated with Lobster AI - Multi-Agent Bioinformatics Analysis Platform
-https://github.com/OmicsOS/lobster
+https://github.com/the-omics-os/lobster
 """
 
             with open(temp_path / "README.md", "w") as f:

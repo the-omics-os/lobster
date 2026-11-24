@@ -796,6 +796,18 @@ class TestNotebookExporter:
         ir_stats = metadata["ir_statistics"]
         assert ir_stats["n_irs_extracted"] == n_irs
 
+    def test_metadata_does_not_record_the_local_user_name(
+        self, provenance_tracker, data_manager, monkeypatch
+    ):
+        """A shared notebook must not carry the author's machine login."""
+        monkeypatch.setenv("USER", "local-login-name")
+        exporter = NotebookExporter(provenance_tracker, data_manager)
+
+        metadata = exporter._create_metadata(0, 0)
+
+        assert metadata["created_by"] == "lobster"
+        assert "local-login-name" not in str(metadata)
+
     def test_snapshot_dependencies(self, provenance_tracker, data_manager):
         """Test dependency snapshot."""
         exporter = NotebookExporter(provenance_tracker, data_manager)

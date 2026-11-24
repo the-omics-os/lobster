@@ -2155,7 +2155,7 @@ IR coverage alone does not show that running it gives the same results.
 
 ---
 
-*Generated with [Lobster AI](https://github.com/OmicsOS/lobster) - Multi-Agent Bioinformatics Platform*
+*Generated with [Lobster AI](https://github.com/the-omics-os/lobster) - Multi-Agent Bioinformatics Platform*
 *Using Service-Emitted IR Architecture for automatic code generation*
 """
         return new_markdown_cell(footer_content)
@@ -2237,14 +2237,12 @@ IR coverage alone does not show that running it gives the same results.
         Returns:
             Metadata dictionary for notebook
         """
-        import os
-
         if session_identity is _OBSERVE:
             session_identity = self._client_session_identity()
         return {
             "source_session_id": session_identity,
             "provenance_namespace": self.provenance.namespace,
-            "created_by": os.getenv("USER", "unknown"),
+            "created_by": "lobster",
             "created_at": datetime.now().isoformat(),
             "lobster_version": self._get_lobster_version(),
             "dependencies": self._snapshot_dependencies(),

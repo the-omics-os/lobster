@@ -351,9 +351,9 @@ func renderBlockHandoff(b BlockHandoff, styles theme.Styles, width int) string {
 	firstLine.WriteString(styles.AgentName.Render(b.To))
 	parts = append(parts, firstLine.String())
 
-	// Second line: reason (indented)
-	if b.Reason != "" {
-		parts = append(parts, "    "+styles.Muted.Render(b.Reason))
+	// Then the reason, indented and wrapped to the width
+	for _, line := range wrapAlertText(b.Reason, width-4, "") {
+		parts = append(parts, "    "+styles.Muted.Render(line))
 	}
 
 	return strings.Join(parts, "\n")
