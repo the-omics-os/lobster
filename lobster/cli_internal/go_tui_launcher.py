@@ -471,9 +471,10 @@ def _format_usage(client: Any) -> str:
     try:
         tracker = client.token_tracker
         return h("Tokens: {tokens} | Cost: ${cost}").format(
-            tokens=f"{tracker.total_tokens:,}", cost=f"{tracker.total_cost:.4f}"
+            tokens=f"{tracker.total_tokens:,}", cost=f"{tracker.total_cost_usd:.4f}"
         )
-    except Exception:
+    except Exception as exc:
+        _note_suppressed("usage status", exc)
         return h("Ready")
 
 
