@@ -350,7 +350,8 @@ class GlobalProviderConfig(ProviderConfigBase):
             config_path.write_text(self.model_dump_json(indent=2))
             logger.info(f"Saved global config to {config_path}")
         except Exception as e:
-            logger.error(f"Failed to save global config: {e}")
+            # Callers (lobster init) tell the user; this is for the debug log.
+            logger.debug(f"Failed to save global config: {e}")
             raise
 
     @classmethod

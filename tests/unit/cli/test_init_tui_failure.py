@@ -111,15 +111,20 @@ def test_declining_the_retry_stops_without_a_second_wizard(
 
 
 def test_a_global_config_save_error_is_not_logged_as_a_developer_error(
-    monkeypatch, caplog
+    monkeypatch, tmp_path, caplog
 ):
-    from lobster.config.global_config import GlobalProviderConfig
+    """The file itself refuses the write, as on the b1 walk (chmod a-w)."""
+    from lobster.config import global_config
 
-    def broken_save(self):
-        raise PermissionError("Permission denied")
+    real_write_text = global_config.Path.write_text
 
-    monkeypatch.setattr(GlobalProviderConfig, "save", broken_save)
-    with caplog.at_level(logging.DEBUG, logger=init_commands.logger.name):
+    def refuse(self, *args, **kwargs):
+        if self.name == "providers.json":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(global_config.Path, "write_text", refuse)
+    with caplog.at_level(logging.DEBUG):
         with pytest.raises(PermissionError):
             init_commands._create_global_config({"provider": "openai"})
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]

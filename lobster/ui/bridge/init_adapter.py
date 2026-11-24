@@ -307,7 +307,8 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
                 from lobster.config.cloud_setup import fail_cloud_setup_write
 
                 fail_cloud_setup_write(exc)
-            logger.error("Failed to write global credentials: %s", exc)
+            # lobster init tells the user; this is for the debug log.
+            logger.debug("Failed to write global credentials: %s", exc)
             raise
 
 
