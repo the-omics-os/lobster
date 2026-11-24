@@ -1074,7 +1074,8 @@ def _create_global_config(config_dict: Dict[str, Any]) -> Path:
         return config_path
 
     except Exception as e:
-        logger.error(f"Failed to create global config: {e}")
+        # The caller tells the user in plain words; this is for the debug log.
+        logger.debug(f"Failed to create global config: {e}")
         raise
 
 
@@ -2846,6 +2847,13 @@ def init_impl(
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
             raise typer.Exit(1)
         cloud_api_key = cloud_api_key.strip()
+        if isinstance(model, str) and model.strip():
+            # Before the backup below, so "Nothing was changed" holds.
+            console.print(
+                "✗ bad_argument: omics-os has no model setting; drop --model. Nothing was changed.",
+                markup=False,
+            )
+            raise typer.Exit(2)
 
     # Check if configuration already exists
     workspace_provider_path = (
@@ -3625,13 +3633,36 @@ def init_impl(
 
                         _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
                         _ev_path = init_root / ".env"
-                        _tui_result = _postprocess_tui_init_result(
-                            _tui_result,
-                            workspace_path=_ws_path,
-                            env_path=_ev_path,
-                            global_config=global_config,
-                            skip_extras=skip_extras,
-                        )
+                        # The wizard worked; a failure from here on is a save
+                        # error, not "Go TUI unavailable". Keep the answers for a
+                        # retry and never start a second wizard.
+                        _answers = _tui_result
+                        while True:
+                            try:
+                                _tui_result = _postprocess_tui_init_result(
+                                    dict(_answers),
+                                    workspace_path=_ws_path,
+                                    env_path=_ev_path,
+                                    global_config=global_config,
+                                    skip_extras=skip_extras,
+                                )
+                                break
+                            except typer.Exit:
+                                raise
+                            except Exception as _save_exc:
+                                logger.debug(
+                                    "Saving the wizard's answers failed", exc_info=True
+                                )
+                                console.print(
+                                    h(
+                                        "[red]Setup could not save your answers: {e}[/red]"
+                                    ).format(e=_markup_escape(str(_save_exc)))
+                                )
+                                if not Confirm.ask(
+                                    h("Try saving again?"), default=True
+                                ):
+                                    console.print(h("Run lobster init to start again."))
+                                    raise typer.Exit(1)
 
                         _print_init_summary(
                             _tui_result,
