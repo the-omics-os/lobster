@@ -297,10 +297,6 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507')",
     )
 
-    omics_os_default_model: Optional[str] = Field(
-        None, description="Default Omics-OS Cloud model"
-    )
-
     ollama_default_host: str = Field(
         "http://localhost:11434", description="Default Ollama server URL"
     )

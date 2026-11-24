@@ -122,8 +122,6 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         description="Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507', 'deepseek-ai/DeepSeek-V4-Pro')",
     )
 
-    omics_os_model: Optional[str] = Field(None, description="Omics-OS Cloud model")
-
     ollama_host: str = Field("http://localhost:11434", description="Ollama server URL")
 
     model_context_windows: Dict[str, int] = Field(
