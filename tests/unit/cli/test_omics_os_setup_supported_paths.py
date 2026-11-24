@@ -1190,3 +1190,14 @@ def test_every_cloud_setup_route_checks_the_saved_key(
     assert probed == [KEY]
     assert "API key works with https://app.omics-os.com" in output
     assert "not checked" not in output
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_one_line_setup_reports_the_key_check_before_saying_it_is_done(
+    scope, tmp_path, forbid_interactive_and_install
+):
+    options = ["--omics-os-key", KEY] + (["--global"] if scope == "global" else [])
+    result = invoke_init(*options)
+    assert result.exit_code == 0, result.output
+    done = "Setup complete" if scope == "project" else "Global configuration saved"
+    assert result.output.index("could not check it with") < result.output.index(done)

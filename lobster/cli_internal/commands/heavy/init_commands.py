@@ -3465,6 +3465,10 @@ def init_impl(
                 if credentials:
                     credentials_path = save_global_credentials(credentials)
 
+                if cloud_selected:
+                    from lobster.config.cloud_setup import check_omics_os_key
+
+                    console.print(check_omics_os_key(cloud_api_key), markup=False)
                 console.print(h("[green]✅ Global configuration saved:[/green]"))
                 console.print(
                     h("  • Config: {global_config_path}").format(
@@ -3516,6 +3520,10 @@ def init_impl(
             workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
             _create_workspace_config(config_dict, workspace_path)
             _save_lamin_choice(lamin, workspace_path, previous=lamin_previous)
+            if cloud_selected:
+                from lobster.config.cloud_setup import check_omics_os_key
+
+                console.print(check_omics_os_key(cloud_api_key), markup=False)
 
             # Success message for non-interactive
             from lobster.i18n import t
@@ -3531,10 +3539,6 @@ def init_impl(
             )
 
         _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
-        if cloud_selected:
-            from lobster.config.cloud_setup import check_omics_os_key
-
-            console.print(check_omics_os_key(cloud_api_key), markup=False)
 
         # In a uv tool env, run the install now. It ends the process when it
         # runs: the tool's environment is replaced on disk.
