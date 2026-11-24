@@ -38,7 +38,7 @@
 ```bash
 curl -fsSL https://install.lobsterbio.com -o install.sh && bash install.sh
 ```
-*(Download first, then run: the installer asks interactive questions that a piped `curl | bash` cannot read. Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
+*(Download first, then run: the installer asks interactive questions that a piped `curl | bash` cannot read. Windows users: `powershell -ExecutionPolicy ByPass -c "irm https://install.lobsterbio.com/windows | iex"` (Command Prompt or PowerShell))*
 
 Prefer to install it yourself? With `uv` (or `pip`):
 ```bash
@@ -355,7 +355,7 @@ papermill analysis.ipynb output.ipynb -p input_data "new_dataset.h5ad"
 
 **Windows** (PowerShell):
 ```powershell
-irm https://install.lobsterbio.com/windows | iex
+powershell -ExecutionPolicy ByPass -c "irm https://install.lobsterbio.com/windows | iex"
 ```
 
 **uv** (recommended manual install):

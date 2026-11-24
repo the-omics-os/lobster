@@ -22,7 +22,7 @@ uv tool install 'lobster-ai[full]'
 Windows（PowerShell）：
 
 ```powershell
-irm https://install.lobsterbio.com/windows | iex
+powershell -ExecutionPolicy ByPass -c "irm https://install.lobsterbio.com/windows | iex"
 ```
 
 ## 选择语言模型
