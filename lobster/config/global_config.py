@@ -279,6 +279,10 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default Azure AI model (e.g., 'gpt-4o', 'deepseek-r1', 'phi-4')",
     )
 
+    openai_default_model: Optional[str] = Field(
+        None, description="Default OpenAI model (e.g., 'gpt-6.1-sol')"
+    )
+
     openrouter_default_model: Optional[str] = Field(
         None,
         description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
@@ -291,6 +295,10 @@ class GlobalProviderConfig(ProviderConfigBase):
     nebius_default_model: Optional[str] = Field(
         None,
         description="Default Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507')",
+    )
+
+    omics_os_default_model: Optional[str] = Field(
+        None, description="Default Omics-OS Cloud model"
     )
 
     ollama_default_host: str = Field(
