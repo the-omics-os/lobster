@@ -2,7 +2,7 @@
 
 import os
 import sys
-from typing import Callable
+from typing import Callable, Optional
 
 # Where someone without an Omics-OS account asks for one (no query parameters).
 ACCESS_REQUEST_URL = "https://www.omics-os.com/early-access"
@@ -37,10 +37,48 @@ OMICS_OS_AUTH_GUIDANCE = (
     "provider separately rather than assuming credential sharing."
 )
 
-OMICS_OS_KEY_NOT_VERIFIED = (
-    "Omics-OS Cloud API key saved, not checked. "
-    "Configuration is not proof of account access."
-)
+
+def _probe_key(server: str, api_key: str) -> Optional[int]:
+    """HTTP status of a read-only usage request with *api_key*; None if unreachable."""
+    import httpx
+
+    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
+
+    try:
+        validate_endpoint(server)  # never send a key to a disallowed host
+        response = httpx.get(
+            f"{server}/api/v1/gateway/usage",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+        )
+    except (EndpointPolicyError, httpx.HTTPError):
+        return None
+    return response.status_code
+
+
+def check_omics_os_key(api_key: str) -> str:
+    """Check a key that `lobster init` saved; return one line for the user.
+
+    Never fails setup. The key is saved as OMICS_OS_API_KEY, so it is checked
+    with the server credentials.get_endpoint() sends such a key to.
+    """
+    from lobster.config.credentials import DEFAULT_ENDPOINT
+
+    server = (os.environ.get("OMICS_OS_ENDPOINT") or "").strip().rstrip(
+        "/"
+    ) or DEFAULT_ENDPOINT
+    status = _probe_key(server, api_key.strip())
+    if status == 200:
+        return f"✓ Omics-OS Cloud API key works with {server}."
+    if status == 401:
+        return (
+            rejected_key_message(server)
+            + " The key is saved; run lobster init again to change it."
+        )
+    return (
+        f"Omics-OS Cloud API key saved; could not check it with {server}. "
+        "It is checked at your first question."
+    )
 
 
 def _open_in_browser(url: str) -> bool:

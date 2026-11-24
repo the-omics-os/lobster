@@ -528,9 +528,11 @@ def test_global_cloud_setup_saves_secure_credentials_without_cwd_env(
 def test_init_cloud_key_save_does_not_claim_account_access_was_checked(
     tmp_path, forbid_interactive_and_install
 ):
+    # Unit tests cannot reach a server (tests/unit/conftest.py).
     result = invoke_init("--omics-os-key", "x")
     assert result.exit_code == 0, result.output
-    assert "not checked" in result.output.lower()
+    assert "could not check it with" in result.output
+    assert "key works" not in result.output
     assert_cloud_config(tmp_path, "x")
 
 
@@ -1143,3 +1145,48 @@ def test_questionary_cancel_on_the_question_returns_to_the_providers(
     assert opened == [] and waits == []
     assert ACCESS_SENT not in capsys.readouterr().out
     assert result["provider"] == "openai"
+
+
+@pytest.mark.parametrize("route", ["one-line", "go-wizard", "classic-wizard"])
+def test_every_cloud_setup_route_checks_the_saved_key(
+    route, monkeypatch, tmp_path, capsys
+):
+    from lobster.config import cloud_setup
+
+    probed = []
+    monkeypatch.setattr(
+        cloud_setup, "_probe_key", lambda server, key: probed.append(key) or 200
+    )
+    if route == "one-line":
+        result = invoke_init("--omics-os-key", KEY)
+        assert result.exit_code == 0, result.output
+        output = result.output
+    elif route == "go-wizard":
+        init_commands._postprocess_tui_init_result(
+            {"provider": "omics-os", "api_key": KEY, "agents": []},
+            workspace_path=tmp_path / ".lobster_workspace",
+            env_path=tmp_path / ".env",
+            global_config=False,
+            skip_extras=True,
+        )
+        output = capsys.readouterr().out
+    else:
+        monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
+        answers = iter(["1", "1", "1", KEY])
+        monkeypatch.setattr(init_commands.Prompt, "ask", lambda *a, **k: next(answers))
+        monkeypatch.setattr(init_commands.Confirm, "ask", lambda *a, **k: False)
+        monkeypatch.setattr(
+            init_commands,
+            "_perform_agent_selection_interactive",
+            lambda *a, **k: ([], None),
+        )
+        options = init_kwargs()
+        options.update(ui_mode="classic", skip_extras=True, skip_ssl_test=True)
+        try:
+            init_commands.init_impl(**options)
+        except typer.Exit as error:
+            assert error.exit_code == 0
+        output = capsys.readouterr().out
+    assert probed == [KEY]
+    assert "API key works with https://app.omics-os.com" in output
+    assert "not checked" not in output

@@ -1325,7 +1325,7 @@ def _postprocess_tui_init_result(
     if provider_name == "omics-os":
         from lobster.config.cloud_setup import (
             OMICS_OS_AUTH_GUIDANCE,
-            OMICS_OS_KEY_NOT_VERIFIED,
+            check_omics_os_key,
         )
 
         if not api_key:
@@ -1362,7 +1362,7 @@ def _postprocess_tui_init_result(
             fail_cloud_setup_write(error)
         raise
     if provider_name == "omics-os":
-        console.print(OMICS_OS_KEY_NOT_VERIFIED)
+        console.print(check_omics_os_key(api_key), markup=False)
     _print_lamin_notes(
         normalized_result.get("lamin_enabled"),
         global_config=global_config,
@@ -3532,9 +3532,9 @@ def init_impl(
 
         _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
         if cloud_selected:
-            from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
+            from lobster.config.cloud_setup import check_omics_os_key
 
-            console.print(OMICS_OS_KEY_NOT_VERIFIED)
+            console.print(check_omics_os_key(cloud_api_key), markup=False)
 
         # In a uv tool env, run the install now. It ends the process when it
         # runs: the tool's environment is replaced on disk.
@@ -3863,7 +3863,7 @@ def init_impl(
         if provider_name == "omics-os":
             from lobster.config.cloud_setup import (
                 OMICS_OS_AUTH_GUIDANCE,
-                OMICS_OS_KEY_NOT_VERIFIED,
+                check_omics_os_key,
             )
 
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
@@ -4357,7 +4357,7 @@ def init_impl(
                 success_message += "\n"
 
         if config_dict.get("provider") == "omics-os":
-            console.print(OMICS_OS_KEY_NOT_VERIFIED)
+            console.print(check_omics_os_key(api_key), markup=False)
         # A failed package install replaces the "run lobster chat" next step.
         failed_installs = _failed_install_lines()
         if failed_installs:
