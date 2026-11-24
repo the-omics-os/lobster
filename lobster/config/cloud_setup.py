@@ -7,6 +7,23 @@ from typing import Callable
 # Where someone without an Omics-OS account asks for one (no query parameters).
 ACCESS_REQUEST_URL = "https://www.omics-os.com/early-access"
 
+
+def rejected_key_message(server: str) -> str:
+    """Text for an HTTP 401 from an Omics-OS server.
+
+    Names the server that refused the key: a key can be valid on another
+    Omics-OS server (app.omics-os.com or an organisation's), and then a new
+    key would not help.
+    """
+    server = server.rstrip("/")
+    return (
+        f"Omics-OS Cloud API key rejected or expired by {server}. "
+        "If the key belongs to another Omics-OS server (such as your "
+        "organisation's), set OMICS_OS_ENDPOINT to that server's address. "
+        f"Otherwise create a new key at {server}."
+    )
+
+
 OMICS_OS_AUTH_GUIDANCE = (
     "Create an API key at https://app.omics-os.com/account.\n"
     "Python local gateway: set OMICS_OS_API_KEY or use "
