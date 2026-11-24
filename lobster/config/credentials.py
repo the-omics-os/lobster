@@ -401,10 +401,16 @@ def get_endpoint() -> str:
     """Get the gateway endpoint URL.
 
     Priority: OMICS_OS_ENDPOINT env > credentials file > default.
+    A key from OMICS_OS_API_KEY (Lobster's credentials.env is loaded into it) is
+    not the active profile's token, so it never goes to that profile's endpoint:
+    key and endpoint resolve from the same source as in :func:`get_api_key`.
     """
     env_endpoint = os.environ.get("OMICS_OS_ENDPOINT")
     if env_endpoint and env_endpoint.strip():
         return env_endpoint.strip().rstrip("/")
+
+    if os.environ.get("OMICS_OS_API_KEY", "").strip():
+        return DEFAULT_ENDPOINT
 
     creds = load_active_profile()
     if creds:
