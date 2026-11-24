@@ -435,3 +435,27 @@ class TestIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestAuthenticationGuidanceNamesTheProvider:
+    """A refused key gets advice for the provider in use, not Anthropic's."""
+
+    def _text(self, monkeypatch, provider):
+        if provider:
+            monkeypatch.setenv("LOBSTER_LLM_PROVIDER", provider)
+        else:
+            monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+        error = Exception("401 Unauthorized")
+        guidance = AuthenticationErrorHandler().handle(error, str(error))
+        return guidance.description + "\n" + "\n".join(guidance.solutions)
+
+    def test_omics_os_gets_omics_os_advice(self, monkeypatch):
+        text = self._text(monkeypatch, "omics-os")
+        assert "Omics-OS Cloud" in text and "OMICS_OS_API_KEY" in text
+        for wrong in ("ANTHROPIC_API_KEY", "anthropic.com", "Bedrock"):
+            assert wrong not in text
+
+    def test_unknown_provider_gets_no_one_companys_advice(self, monkeypatch):
+        text = self._text(monkeypatch, None)
+        for wrong in ("ANTHROPIC_API_KEY", "anthropic.com", "Bedrock"):
+            assert wrong not in text
