@@ -8,7 +8,7 @@
   <table border="0" cellspacing="6" cellpadding="0" style="border: none; background: transparent;">
     <tr>
       <td style="border: none; background: transparent;"><a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a></td>
-      <td style="border: none; background: transparent;"><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
+      <td style="border: none; background: transparent;"><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-black?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
       <td style="border: none; background: transparent;"><a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a></td>
     </tr>
   </table>
@@ -92,7 +92,7 @@ Then describe your analysis in plain language:
 
 <br/>
 
-# Use Lobster from Claude Code, Claude Desktop and Codex (MCP)
+# Use Lobster from Claude Code, Claude Desktop, Codex and OpenCode (MCP)
 
 `lobster mcp --stdio` runs Lobster as an [MCP](https://modelcontextprotocol.io) server on stdin and stdout, so a coding agent or desktop app can hand it an experimental question and get back a result, a notebook and files. It needs Lobster installed locally (the `lobster` command on your PATH) and a project with a provider set up (`lobster init my-project`, above).
 
@@ -136,7 +136,20 @@ tool_timeout_sec = 120
 env_vars = ["ANTHROPIC_API_KEY"]   # Codex passes only listed variables to the server
 ```
 
-Desktop apps do not start from your shell: replace `"lobster"` with the absolute path from `which lobster`, and add `"--workspace", "/path/to/my-project"` to `args` so the server finds your project (Codex: set `cwd` instead). Configurations for Cursor and Open Science are in [`lobster/integrations`](https://github.com/the-omics-os/lobster/tree/main/lobster/integrations).
+**OpenCode** — add to `opencode.json` in your project, then start OpenCode in that folder:
+```json
+{
+  "mcp": {
+    "lobster": {
+      "type": "local",
+      "command": ["lobster", "mcp", "--stdio"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Desktop apps do not start from your shell: replace `"lobster"` with the absolute path from `which lobster`, and add `"--workspace", "/path/to/my-project"` to `args` so the server finds your project, in Claude Desktop and Codex alike. Configurations for Cursor and Open Science are in [`lobster/integrations`](https://github.com/the-omics-os/lobster/tree/main/lobster/integrations).
 
 Before anything else runs, a run that is given a file loads and describes it, writes a short plan and puts the plan to the host as a question; the host shows it to you and answers with `lobster_answer`. Over MCP the host reports whether you or the host agent answered; Lobster records that as reported and cannot verify it. The server reads your provider key from its own environment (the `env` block of the host's MCP configuration), the global credentials file or the project's `.env`; it never puts a key in the project.
 
@@ -264,9 +277,17 @@ Lobster AI is a multi-agent system: specialist agents for each omics domain, orc
 * **Provenance:** Analysis steps are recorded and can be exported as a Jupyter notebook. Decisions Lobster asks you to make are recorded with the answer and who gave it (`human` or `model`).
 
 <div align="center">
-  <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology-light.svg">
+    <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
+  </picture>
   <br/><br/>
-  <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="88%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core-light.svg">
+    <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="88%">
+  </picture>
 </div>
 
 <br/>
@@ -488,6 +509,6 @@ curl -fsSL https://skills.lobsterbio.com | bash
 <br/>
 
 <div align="center">
-  <b>Multi-omics data infrastructure for foundation models &amp; biotech.</b><br/><br/>
+  <b>Lobster AI is built by Omics-OS, The Operating System for Biology.</b><br/><br/>
   <a href="https://omics-os.com">Omics-OS</a> &nbsp;·&nbsp; <a href="https://lobsterbio.com">Lobster AI</a> &nbsp;·&nbsp; <a href="https://docs.omics-os.com">Docs</a>
 </div>
