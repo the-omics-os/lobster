@@ -8,10 +8,12 @@ an object's internals stops the render instead.
 """
 
 import os
+import time
 
 import pytest
+from jinja2.sandbox import SecurityError
 
-from lobster.core.provenance.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import _JINJA_ENV, AnalysisStep
 
 
 def _step(template, **parameters):
@@ -56,3 +58,51 @@ def test_values_filters_and_branches_render_as_before():
     )
 
     assert step.render() == "x = \"a'b\"\nn=1.5\ny = 'exports/x.csv'"
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "10**(10**10)",
+        "10**10**10**10",  # Jinja reads ** left to right: (10**10)**10 is 10**100
+        "2**10000",
+        "2**big",
+        "'a' * 10**9",
+        "'a' * 10**6",
+        "[1] * 10**9",
+        "10**9 * [1]",
+        "(10**60) * (10**60)",
+    ],
+)
+def test_an_oversized_power_or_product_stops_before_it_is_computed(expression):
+    started = time.monotonic()
+
+    with pytest.raises(SecurityError):
+        _JINJA_ENV.from_string("{{ " + expression + " }}").render(big=10**400)
+
+    assert time.monotonic() - started < 1.0
+
+
+def test_an_oversized_power_stops_the_cell_render():
+    step = _step("x = {{ base ** exponent }}", base=10, exponent=10**10)
+
+    with pytest.raises(ValueError, match="Template rendering failed"):
+        step.render()
+
+
+@pytest.mark.parametrize(
+    "expression, rendered",
+    [
+        ("2**8", "256"),
+        ("2**-1", "0.5"),
+        ("1.5**2", "2.25"),
+        ("10**100 == 10**100", "True"),
+        ("3 * 4", "12"),
+        ("'ab' * 3", "ababab"),
+        ("2 * [0]", "[0, 0]"),
+        ("'=' * 60", "=" * 60),
+        ("0.5 * 3", "1.5"),
+    ],
+)
+def test_small_powers_and_products_render_as_before(expression, rendered):
+    assert _JINJA_ENV.from_string("{{ " + expression + " }}").render() == rendered

@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from jinja2.sandbox import SandboxedEnvironment
+from jinja2.sandbox import SandboxedEnvironment, SecurityError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,52 @@ logger = logging.getLogger(__name__)
 # Generates Python source, not HTML; HTML escaping would corrupt Python literals.
 # Sandboxed: text that reaches a template through an f-string must not be able to
 # reach this process's objects (its environment holds the provider keys).
-_JINJA_ENV = SandboxedEnvironment(autoescape=False)  # nosec B701
+_MAX_TEMPLATE_INT_BITS = 333  # about 10**100
+_MAX_TEMPLATE_SEQUENCE = 100_000
+
+
+class _BoundedTemplateEnvironment(SandboxedEnvironment):
+    """Template environment that refuses ``**`` and ``*`` results too large to build.
+
+    Python computes ``10**10**10`` or ``'a' * 10**12`` without a limit, so a
+    template holding one hangs or exhausts the memory of the exporting process.
+    Intercepted operators are also never folded at compile time.
+    """
+
+    intercepted_binops = frozenset({"*", "**"})
+
+    def call_binop(self, context, operator, left, right):
+        if operator == "**":
+            if (
+                isinstance(left, int)
+                and isinstance(right, int)
+                and right > 0
+                and abs(left) > 1
+                # right is checked alone first: a huge int cannot become a float
+                and (
+                    right > _MAX_TEMPLATE_INT_BITS
+                    or right * math.log2(abs(left)) > _MAX_TEMPLATE_INT_BITS
+                )
+            ):
+                raise SecurityError("the power in this template is too large")
+        elif isinstance(left, int) and isinstance(right, int):
+            if (
+                abs(left).bit_length() + abs(right).bit_length() - 1
+                > _MAX_TEMPLATE_INT_BITS
+            ):
+                raise SecurityError("the product in this template is too large")
+        else:
+            sequence, count = (left, right) if isinstance(right, int) else (right, left)
+            if (
+                isinstance(count, int)
+                and isinstance(sequence, (str, bytes, list, tuple))
+                and len(sequence) * count > _MAX_TEMPLATE_SEQUENCE
+            ):
+                raise SecurityError("the repeated value in this template is too long")
+        return super().call_binop(context, operator, left, right)
+
+
+_JINJA_ENV = _BoundedTemplateEnvironment(autoescape=False)  # nosec B701
 
 
 def _python_literal(value: Any) -> str:
