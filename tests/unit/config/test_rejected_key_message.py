@@ -20,6 +20,10 @@ def _assert_names_server(message: str) -> None:
     assert TENANT in message
     assert "OMICS_OS_ENDPOINT" in message
     assert "lobster-cli cloud login --device" not in message
+    # how to enter the new key; the variable wins over the saved key
+    assert "lobster cloud login --api-key <key>" in message
+    assert "OMICS_OS_API_KEY" in message
+    assert "npm" not in message
 
 
 def test_gateway_401_names_the_server(monkeypatch):

@@ -20,7 +20,9 @@ def rejected_key_message(server: str) -> str:
         f"Omics-OS Cloud API key rejected or expired by {server}. "
         "If the key belongs to another Omics-OS server (such as your "
         "organisation's), set OMICS_OS_ENDPOINT to that server's address. "
-        f"Otherwise create a new key at {server}."
+        f"Otherwise create a new key at {server}, then run "
+        "'lobster cloud login --api-key <key>' (or update OMICS_OS_API_KEY "
+        "if it is set; it takes priority)."
     )
 
 
