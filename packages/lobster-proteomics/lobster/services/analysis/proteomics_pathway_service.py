@@ -268,7 +268,7 @@ class ProteomicsPathwayService:
             code_template="""import gseapy as gp
 import pandas as pd
 
-# Gene symbols of the significant proteins: beyond {{ max_genes }}, the ones with
+# Gene symbols of the significant proteins: above the gene limit, the ones with
 # the smallest adjusted p-value, ties by larger |log2FC|, then by name
 rows = []
 for r in adata.uns['differential_expression']['significant_results']:
