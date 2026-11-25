@@ -101,6 +101,35 @@ def test_unknown_protein_names_are_not_counted_as_untested():
     assert stats["proteins_not_found"] == ["NOPE", "ALSO_NOPE"]
 
 
+@pytest.mark.parametrize("n_max, tested", [(10, True), (11, False)])
+def test_a_protein_is_untested_only_when_more_than_half_share_the_highest_value(
+    n_max, tested
+):
+    """20 samples: with 10 at the highest value the median falls below it and
+    the high group holds those 10; with 11 the median is the highest value and
+    the high group is empty."""
+    rng = np.random.default_rng(1)
+    x = np.empty((20, 1))
+    x[:, 0] = np.arange(20, dtype=float)
+    x[20 - n_max :, 0] = 100.0
+    obs = pd.DataFrame(
+        {"T": rng.uniform(10, 100, 20), "E": np.tile([1.0, 0.0], 10)},
+        index=[f"s{i}" for i in range(20)],
+    )
+    adata = ad.AnnData(x, obs=obs, var=pd.DataFrame(index=["P0"]))
+    out, stats, _ = ProteomicsSurvivalService().batch_kaplan_meier(
+        adata, duration_col="T", event_col="E"
+    )
+
+    assert stats["n_proteins_tested"] == int(tested)
+    results = out.uns["batch_kaplan_meier"]["results"]
+    if tested:
+        assert results[0]["n_high"] == 10
+        assert results[0]["p_value"] == pytest.approx(_logrank_p(adata, 0))
+    else:
+        assert results == []
+
+
 def _reply(tmp_path, adata, **kw):
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     dm.store_modality("prot", adata)
@@ -114,7 +143,7 @@ def test_the_reply_counts_the_proteins_tested_and_those_left_untested(tmp_path):
 
     assert (
         "- Proteins tested: 2 of 4; not tested: 2 (fewer than 20 samples with a "
-        "value, or no p-value: at least half the samples share the highest "
+        "value, or no p-value: more than half the samples share the highest "
         "value)\n" in reply
     ), reply
     assert "no events" not in reply

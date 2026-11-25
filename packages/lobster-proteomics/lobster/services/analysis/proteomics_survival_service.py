@@ -989,7 +989,7 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
                         event[prot_valid][~high_mask],
                         event[prot_valid][high_mask],
                     )
-                    # At least half the samples share the highest value, so the
+                    # More than half the samples share the highest value, so the
                     # high group is empty: no p-value, so not tested and kept
                     # out of the FDR correction
                     if np.isnan(lr_result.p_value):

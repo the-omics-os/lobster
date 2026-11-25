@@ -554,7 +554,7 @@ def biomarker_discovery_expert(
                 response += (
                     f"- Proteins tested: {tested} of {total}; not tested: "
                     f"{total - tested} (fewer than {DEFAULT_MIN_SAMPLES} samples with a value, or no "
-                    "p-value: at least half the samples share the highest value)\n"
+                    "p-value: more than half the samples share the highest value)\n"
                 )
             if stats["proteins_not_found"]:
                 response += f"- Not found in the data: {', '.join(stats['proteins_not_found'])}\n"
