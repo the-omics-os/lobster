@@ -12,14 +12,21 @@ import json
 
 import pytest
 
-from tests.unit.cli.test_replay_bulk_de import RESULT, _bulk, _run_de, _sha, _verify
-from tests.unit.cli.test_replay_commands import needs_kernel
-
+# Skip before importing the bulk DE test module: it skips itself without these.
+pytest.importorskip("pydeseq2")
 de_module = pytest.importorskip("lobster.agents.transcriptomics.de_analysis_expert")
 
 from lobster.core.notebooks.written_templates import template_hash  # noqa: E402
 from lobster.core.runtime.data_manager import DataManagerV2  # noqa: E402
 from lobster.testing.provenance_replay import factory_tools  # noqa: E402
+from tests.unit.cli.test_replay_bulk_de import (  # noqa: E402
+    RESULT,
+    _bulk,
+    _run_de,
+    _sha,
+    _verify,
+)
+from tests.unit.cli.test_replay_commands import needs_kernel  # noqa: E402
 
 EXPORTS = {
     "export_de_results": ({}, "de_results_ctrl_vs_treat.csv"),

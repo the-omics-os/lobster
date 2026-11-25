@@ -15,14 +15,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.agents.proteomics.shared_tools import create_shared_tools
-from lobster.core.notebooks.exporter import NotebookExporter
-from lobster.core.provenance.analysis_ir import AnalysisStep
-from lobster.core.runtime.data_manager import DataManagerV2
-from lobster.services.data_management.concatenation_service import (
+create_shared_tools = pytest.importorskip(
+    "lobster.agents.proteomics.shared_tools"
+).create_shared_tools
+
+from lobster.core.notebooks.exporter import NotebookExporter  # noqa: E402
+from lobster.core.provenance.analysis_ir import AnalysisStep  # noqa: E402
+from lobster.core.runtime.data_manager import DataManagerV2  # noqa: E402
+from lobster.services.data_management.concatenation_service import (  # noqa: E402
     ConcatenationService,
 )
-from lobster.testing.provenance_replay import RecordingDataManager
+from lobster.testing.provenance_replay import RecordingDataManager  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

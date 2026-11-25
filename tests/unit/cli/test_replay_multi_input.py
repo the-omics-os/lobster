@@ -15,15 +15,18 @@ import nbformat
 import numpy as np
 import pytest
 
-from lobster.core.notebooks.exporter import NotebookExporter
-from tests.unit.cli.test_replay_commands import (
+# The concordance helper needs the proteomics package.
+pytest.importorskip("lobster.agents.proteomics.shared_tools")
+
+from lobster.core.notebooks.exporter import NotebookExporter  # noqa: E402
+from tests.unit.cli.test_replay_commands import (  # noqa: E402
     _adata,
     _clean_env,
     _save,
     _verify_real,
     needs_kernel,
 )
-from tests.unit.core.test_multi_input_not_replayed import _concordance
+from tests.unit.core.test_multi_input_not_replayed import _concordance  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
