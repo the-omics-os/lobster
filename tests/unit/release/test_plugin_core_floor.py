@@ -22,11 +22,11 @@ ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = sorted(p.parent for p in (ROOT / "packages").glob("*/pyproject.toml"))
 # Plugins that import a core module newer than the core they allow; strict, so
 # each row fails as soon as its pin moves and must leave this set
-PINNED_TOO_LOW = {"lobster-proteomics"}
+PINNED_TOO_LOW: Set[str] = set()
 # Floors with no v-tag in this repository: the commit whose core modules stand
-# for that version. 1.3.0 has no tag; its release candidate is built on this
-# commit. Replace an entry with nothing once the tag exists.
-UNTAGGED = {"1.3.0": "85fd3837"}
+# for that version. 1.3.1 is the release being built, so this tree stands for
+# it. Replace an entry with nothing once the tag exists.
+UNTAGGED = {"1.3.1": "HEAD"}
 # Import failures the plugin handles itself
 _OPTIONAL = {"ImportError", "ModuleNotFoundError", "Exception"}
 
