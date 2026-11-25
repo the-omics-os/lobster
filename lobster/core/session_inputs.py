@@ -4,8 +4,9 @@ Each data manager is tracked here (weakly) from the moment it is made. A file it
 loads or imports is noted by its file identity (device and inode), for this process,
 so another spelling of it (``..``, a link, a hard link, another case) is the same
 file. A load also keeps the file's size and SHA-256 on the session record
-(``loaded_file``), which a restored session reads back: so a later process still
-knows the file, without its path.
+(``loaded_file``), and an import tool keeps them on its logged step
+(``read_files``, see :func:`note_import`), which a restored session reads back: so a
+later process still knows the file, without its path.
 
 :func:`is_input` answers for an existing target, for every tracked session whose
 workspace lies in the folder the writer works in. A folder that was imported counts
@@ -17,7 +18,7 @@ import os
 import threading
 import weakref
 from pathlib import Path
-from typing import Any, Iterator, Set, Tuple, Union
+from typing import Any, Dict, Iterator, Set, Tuple, Union
 
 _lock = threading.Lock()
 #: data manager -> (device, inode) of the files and folders it read (this process only).
@@ -53,6 +54,27 @@ def note_input(data_manager: Any, source: Any) -> None:
         _noted.setdefault(data_manager, set()).add(identity)
 
 
+def note_import(data_manager: Any, *sources: Any) -> Dict[str, Dict[str, Any]]:
+    """Note every file or folder an import tool read; return the record for its step.
+
+    The tool logs the returned mapping (SHA-256 -> name and size of each file; a
+    folder is noted for this process only) on its step as ``read_files``, so a
+    restored session still refuses an export onto the file. A mapping, not a list:
+    the step's parameters keep a nested dict, and turn a list of dicts into text.
+    """
+    read: Dict[str, Dict[str, Any]] = {}
+    for source in sources:
+        note_input(data_manager, source)
+        if not isinstance(source, (str, Path)) or not os.path.isfile(source):
+            continue
+        try:
+            size = os.path.getsize(source)
+            read[_sha256(source)] = {"name": Path(source).name, "size": size}
+        except OSError:
+            continue
+    return read
+
+
 def _sessions_in(root: str) -> Iterator[Tuple[Any, Set[Tuple[int, int]]]]:
     prefix = root.rstrip(os.sep) + os.sep
     with _lock:
@@ -67,10 +89,21 @@ def _sessions_in(root: str) -> Iterator[Tuple[Any, Set[Tuple[int, int]]]]:
 
 
 def _recorded_loads(data_manager: Any) -> Iterator[Tuple[int, str]]:
-    """(size, sha256) of every file the session record says a load read."""
+    """(size, sha256) of every file the session record says a load or import read."""
     provenance = getattr(data_manager, "provenance", None)
-    for entity in list(getattr(provenance, "entities", {}).values()):
-        loaded = ((entity or {}).get("metadata") or {}).get("loaded_file")
+    files = [
+        ((entity or {}).get("metadata") or {}).get("loaded_file")
+        for entity in list(getattr(provenance, "entities", {}).values())
+    ]
+    for activity in list(getattr(provenance, "activities", None) or []):
+        read = ((activity or {}).get("parameters") or {}).get("read_files")
+        if isinstance(read, dict):
+            files.extend(
+                {**file, "sha256": sha}
+                for sha, file in read.items()
+                if isinstance(file, dict)
+            )
+    for loaded in files:
         if isinstance(loaded, dict) and isinstance(loaded.get("sha256"), str):
             try:
                 yield int(loaded.get("size")), loaded["sha256"]

@@ -1605,7 +1605,7 @@ Please check:
             )
 
             # An export never overwrites the file this read.
-            session_inputs.note_input(data_manager, path)
+            read_files = session_inputs.note_import(data_manager, path)
             data_manager.log_tool_usage(
                 tool_name="import_bulk_counts",
                 parameters={
@@ -1615,6 +1615,7 @@ Please check:
                     "detected_source": detected_source,
                     "genes_axis": genes_axis,
                     "genes_axis_used": axis_used,
+                    "read_files": read_files,
                 },
                 description=f"Imported bulk counts ({detected_source}): {adata.shape[0]} samples x {adata.shape[1]} genes",
                 ir=ir,
@@ -1754,13 +1755,14 @@ Please check:
             )
 
             # An export never overwrites the file this read.
-            session_inputs.note_input(data_manager, meta_path)
+            read_files = session_inputs.note_import(data_manager, meta_path)
             data_manager.log_tool_usage(
                 tool_name="merge_sample_metadata",
                 parameters={
                     "modality_name": modality_name,
                     "metadata_file": metadata_file,
                     "sample_id_column": sample_id_column,
+                    "read_files": read_files,
                 },
                 description=f"Merged {len(cols_added)} metadata columns into {modality_name}",
                 ir=ir,

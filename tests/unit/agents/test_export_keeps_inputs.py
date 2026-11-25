@@ -445,3 +445,227 @@ def test_a_source_that_is_not_a_file_on_this_disk_is_not_noted(noted):
 
     session_inputs.note_input(dm, "GSE12345")
     session_inputs.note_input(dm, ws / "missing.csv")
+
+
+HAS_GENOMICS = find_spec("lobster.agents.genomics") is not None
+HAS_PROTEOMICS = find_spec("lobster.agents.proteomics") is not None
+needs_genomics = pytest.mark.skipif(not HAS_GENOMICS, reason="genomics package absent")
+needs_proteomics = pytest.mark.skipif(
+    not HAS_PROTEOMICS, reason="proteomics package absent"
+)
+
+VCF = (
+    "##fileformat=VCFv4.2\n"
+    "##contig=<ID=1,length=1000>\n"
+    '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1\ts2\n"
+    "1\t100\trs1\tA\tG\t50\tPASS\t.\tGT\t0/1\t1/1\n"
+    "1\t200\trs2\tC\tT\t50\tPASS\t.\tGT\t0/0\t0/1\n"
+)
+
+
+def _write_onto(dm, source):
+    """data_expert's write_file aimed at ``source``: an export writer."""
+    from lobster.tools.filesystem_tools import create_filesystem_tools
+
+    tools = {
+        t.name: t for t in create_filesystem_tools(workspace_path=dm.workspace_path)
+    }
+    return tools["write_file"].invoke(
+        {"path": str(source.relative_to(dm.workspace_path)), "content": "x\n"}
+    )
+
+
+def _import_vcf(dm, source):
+    from lobster.agents.genomics.genomics_expert import genomics_expert
+
+    source.write_text(VCF)
+    tools = factory_tools(
+        genomics_expert, "lobster.agents.genomics.genomics_expert", dm
+    )
+    return tools["load_vcf"].invoke(
+        {"file_path": str(source), "modality_name": "variants"}
+    )
+
+
+def _import_proteomics(dm, source):
+    from lobster.agents.proteomics.proteomics_expert import proteomics_expert
+
+    rng = np.random.default_rng(0)
+    pd.DataFrame(
+        rng.uniform(10, 20, size=(20, 4)),
+        index=[f"P{i:05d}" for i in range(20)],
+        columns=["sample_1", "sample_2", "sample_3", "sample_4"],
+    ).to_csv(source)
+    tools = factory_tools(
+        proteomics_expert, "lobster.agents.proteomics.proteomics_expert", dm
+    )
+    return tools["import_proteomics_data"].invoke(
+        {"file_path": str(source), "modality_name": "prot", "save_result": False}
+    )
+
+
+def _import_mapping(dm, source):
+    import json
+
+    from lobster.agents.transcriptomics.annotation_expert import annotation_expert
+
+    adata = _results_modality()
+    adata.obs["leiden"] = ["0", "0", "0", "1", "1", "1"]
+    dm.store_modality("clustered", adata)
+    source.write_text(
+        json.dumps(
+            {"cluster_column": "leiden", "cluster_to_celltype": {"0": "T", "1": "B"}}
+        )
+    )
+    tools = factory_tools(annotation_expert, ANNOTATION_MODULE, dm)
+    return tools["import_annotation_mapping"].invoke(
+        {
+            "modality_name": "clustered",
+            "mapping_file": str(source),
+            "save_result": False,
+        }
+    )
+
+
+def _import_peptides(dm, source):
+    from lobster.agents.proteomics.peptide_tools import create_peptide_tools
+
+    source.write_text(">pep1\nACDEFGHIK\n>pep2\nLMNPQRSTV\n")
+    tools = {t.name: t for t in create_peptide_tools(dm)}
+    return tools["import_peptide_sequences"].invoke({"file_path": str(source)})
+
+
+IMPORTS = [
+    pytest.param(_import_vcf, "calls.vcf", "Successfully loaded", marks=needs_genomics),
+    pytest.param(
+        _import_proteomics,
+        "matrix.csv",
+        "Successfully imported",
+        marks=needs_proteomics,
+    ),
+    pytest.param(
+        _import_mapping, "mapping.json", "Successfully imported", marks=needs_tx
+    ),
+    pytest.param(
+        _import_peptides, "peptides.fasta", "STATUS: complete", marks=needs_proteomics
+    ),
+]
+
+
+@pytest.mark.parametrize("do_import, file_name, done", IMPORTS)
+def test_an_export_onto_an_imported_file_is_refused(
+    tmp_path, monkeypatch, do_import, file_name, done
+):
+    monkeypatch.chdir(tmp_path)
+    dm = _manager(tmp_path / "ws")
+    source = dm.workspace_path / "inputs" / file_name
+    source.parent.mkdir()
+    reply = do_import(dm, source)
+    assert done in reply, reply
+    original = source.read_bytes()
+
+    reply = _write_onto(dm, source)
+
+    assert reply == REFUSAL, reply
+    assert source.read_bytes() == original
+
+
+@pytest.mark.parametrize("do_import, file_name, done", IMPORTS)
+def test_a_restored_session_still_refuses_an_imported_file(
+    tmp_path, monkeypatch, do_import, file_name, done
+):
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "ws"
+    first = _manager(ws)
+    source = ws / file_name
+    assert done in do_import(first, source)
+    original = source.read_bytes()
+    gone = weakref.ref(first)
+    del first
+    gc.collect()
+    assert gone() is None
+
+    restored = _manager(ws)  # a new process restores the session record
+    reply = _write_onto(restored, source)
+
+    assert reply == REFUSAL, reply
+    assert source.read_bytes() == original
+
+
+@needs_tx
+@pytest.mark.parametrize("tool_name", ["import_bulk_counts", "merge_sample_metadata"])
+def test_a_restored_session_refuses_a_bulk_import_file(
+    tmp_path, monkeypatch, tool_name
+):
+    from lobster.agents.transcriptomics.transcriptomics_expert import (
+        transcriptomics_expert,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "ws"
+    first = _manager(ws)
+    tools = factory_tools(transcriptomics_expert, TX_MODULE, first)
+    if tool_name == "import_bulk_counts":
+        source = ws / "bulk.csv"
+        original = _counts(source)
+        reply = tools[tool_name].invoke(
+            {"file_path": str(source), "modality_name": "bulk", "genes_axis": "columns"}
+        )
+    else:
+        source = ws / "samples.csv"
+        pd.DataFrame(
+            {"sample": [f"sample_{i}" for i in range(6)], "batch": list("aabbcc")}
+        ).to_csv(source, index=False)
+        original = source.read_bytes()
+        reply = tools[tool_name].invoke(
+            {
+                "modality_name": "de_results",
+                "metadata_file": str(source),
+                "sample_id_column": "sample",
+            }
+        )
+    assert "Error" not in reply, reply
+    del tools
+    gone = weakref.ref(first)
+    del first
+    gc.collect()
+    assert gone() is None
+
+    restored = _manager(ws)
+    reply = _write_onto(restored, source)
+
+    assert reply == REFUSAL, reply
+    assert source.read_bytes() == original
+
+
+@needs_genomics
+def test_every_file_of_a_plink_import_is_refused(tmp_path, monkeypatch):
+    from lobster.agents.genomics.genomics_expert import genomics_expert
+    from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
+
+    monkeypatch.chdir(tmp_path)
+    dm = _manager(tmp_path / "ws")
+    prefix = dm.workspace_path / "study"
+    originals = {}
+    for suffix in (".bed", ".bim", ".fam"):
+        prefix.with_suffix(suffix).write_text(f"{suffix} bytes\n")
+        originals[suffix] = prefix.with_suffix(suffix).read_bytes()
+    # the reader library is optional: the files it would read are what matters here
+    monkeypatch.setattr(
+        PLINKAdapter,
+        "from_source",
+        lambda self, source, **kw: ad.AnnData(np.ones((2, 3))),
+    )
+    tools = factory_tools(
+        genomics_expert, "lobster.agents.genomics.genomics_expert", dm
+    )
+    reply = tools["load_plink"].invoke(
+        {"file_path": str(prefix), "modality_name": "snps"}
+    )
+    assert "Successfully loaded" in reply, reply
+
+    for suffix, original in originals.items():
+        target = prefix.with_suffix(suffix)
+        assert _write_onto(dm, target) == REFUSAL, suffix
+        assert target.read_bytes() == original

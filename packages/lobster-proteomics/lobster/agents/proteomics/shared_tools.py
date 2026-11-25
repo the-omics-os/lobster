@@ -18,6 +18,7 @@ from lobster.agents.proteomics.config import (
     detect_platform_type,
     get_platform_config,
 )
+from lobster.core import session_inputs
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.utils.dtype_guards import boolean_flag_mask
@@ -111,6 +112,10 @@ def create_shared_tools(
                 orientation=classification.orientation,
                 sample_metadata_path=sample_metadata_path,
             )
+            # An export never overwrites the files this read.
+            read_files = session_inputs.note_import(
+                data_manager, file_path, sample_metadata_path
+            )
 
             # Generate modality name
             name = modality_name or data_manager.unloaded_name(
@@ -189,6 +194,7 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                     "file_path": file_path,
                     "format": "generic_matrix",
                     "orientation": classification.orientation,
+                    "read_files": read_files,
                 },
                 description=f"Imported generic expression matrix from {Path(file_path).name}",
                 ir=ir,
@@ -1369,6 +1375,8 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             except TypeError:
                 # Parser may not accept all kwargs; fall back to minimal call
                 result = parser.parse(file_path)
+            # An export never overwrites the file (or files of the folder) this read.
+            read_files = session_inputs.note_import(data_manager, file_path)
 
             # Handle both 2-tuple and 3-tuple returns
             if isinstance(result, tuple) and len(result) == 3:
@@ -1436,6 +1444,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                     "intensity_type": intensity_type,
                     "filter_contaminants": filter_contaminants,
                     "filter_reverse": filter_reverse,
+                    "read_files": read_files,
                 },
                 description=f"Imported proteomics data from {Path(file_path).name}",
                 ir=ir,
@@ -1509,6 +1518,8 @@ adata = parser.parse({{ file_path | tojson }})""",
                 localization_threshold=localization_threshold,
                 filter_contaminants=filter_contaminants,
             )
+            # An export never overwrites the file this read.
+            read_files = session_inputs.note_import(data_manager, file_path)
 
             name = modality_name or data_manager.unloaded_name(
                 f"ptm_{ptm_type}_{Path(file_path).stem}"
@@ -1533,6 +1544,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                     "ptm_type": ptm_type,
                     "localization_threshold": localization_threshold,
                     "filter_contaminants": filter_contaminants,
+                    "read_files": read_files,
                 },
                 description=f"Imported {ptm_type} PTM site data",
                 ir=ir,
@@ -2018,6 +2030,10 @@ adata = parser.parse({{ file_path | tojson }})""",
                             )
                     except Exception as e:
                         logger.warning(f"Failed to merge sample metadata: {e}")
+            # An export never overwrites the files this read.
+            read_files = session_inputs.note_import(
+                data_manager, file_path, sample_metadata_path
+            )
 
             # Generate modality name
             name = modality_name
@@ -2068,6 +2084,7 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
                     "file_path": file_path,
                     "platform": detected_platform,
                     "sample_metadata_path": sample_metadata_path,
+                    "read_files": read_files,
                 },
                 description=f"Imported {detected_platform} affinity data from {file_p.name}",
                 ir=ir,

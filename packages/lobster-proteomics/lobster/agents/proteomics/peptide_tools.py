@@ -11,6 +11,7 @@ from typing import Callable, List, Optional
 
 from langchain_core.tools import tool
 
+from lobster.core import session_inputs
 from lobster.core.figures.export_guard import MANAGED_EXPORT_MESSAGE, export_refused
 from lobster.core.runtime.data_manager import DataManagerV2
 
@@ -27,10 +28,18 @@ def create_peptide_tools(
     Returns list of 8 domain tools. DELEGATE and CODE_EXEC are added
     by the agent factory (not here).
     """
-    from lobster.services.peptidomics.peptide_activity_service import PeptideActivityService
-    from lobster.services.peptidomics.peptide_digestion_service import PeptideDigestionService
-    from lobster.services.peptidomics.peptide_library_service import PeptideLibraryService
-    from lobster.services.peptidomics.peptide_property_service import PeptidePropertyService
+    from lobster.services.peptidomics.peptide_activity_service import (
+        PeptideActivityService,
+    )
+    from lobster.services.peptidomics.peptide_digestion_service import (
+        PeptideDigestionService,
+    )
+    from lobster.services.peptidomics.peptide_library_service import (
+        PeptideLibraryService,
+    )
+    from lobster.services.peptidomics.peptide_property_service import (
+        PeptidePropertyService,
+    )
 
     property_service = PeptidePropertyService()
     activity_service = PeptideActivityService()
@@ -67,9 +76,13 @@ def create_peptide_tools(
             return f"File not found: {resolved}"
 
         try:
-            adata, stats, ir = library_service.import_sequences(str(resolved), format=format)
+            adata, stats, ir = library_service.import_sequences(
+                str(resolved), format=format
+            )
         except ValueError as e:
             return str(e)
+        # An export never overwrites the file this read.
+        read_files = session_inputs.note_import(data_manager, resolved)
 
         data_manager.store_modality(
             name=modality_name,
@@ -79,7 +92,11 @@ def create_peptide_tools(
 
         data_manager.log_tool_usage(
             tool_name="import_peptide_sequences",
-            parameters={"file_path": str(resolved), "format": stats["format"]},
+            parameters={
+                "file_path": str(resolved),
+                "format": stats["format"],
+                "read_files": read_files,
+            },
             description=f"Import {stats['n_sequences']} peptides from {resolved.name}",
             ir=ir,
             agent=agent_name,
@@ -114,7 +131,9 @@ def create_peptide_tools(
 
         adata = data_manager.get_modality(modality_name)
 
-        prop_list = None if properties == "all" else [p.strip() for p in properties.split(",")]
+        prop_list = (
+            None if properties == "all" else [p.strip() for p in properties.split(",")]
+        )
 
         adata_out, stats, ir = property_service.calculate_properties(
             adata, properties=prop_list
@@ -143,7 +162,10 @@ def create_peptide_tools(
             f"method={stats['method']}"
         )
 
-    calculate_peptide_properties.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    calculate_peptide_properties.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     calculate_peptide_properties.tags = ["ANALYZE"]
 
     # =========================================================================
@@ -260,7 +282,10 @@ def create_peptide_tools(
             f"modality='{result_name}'"
         )
 
-    simulate_enzymatic_digestion.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    simulate_enzymatic_digestion.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     simulate_enzymatic_digestion.tags = ["PREPROCESS"]
 
     # =========================================================================
@@ -409,7 +434,10 @@ def create_peptide_tools(
             f"modality='{result_name}'"
         )
 
-    annotate_peptide_activity.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    annotate_peptide_activity.metadata = {
+        "categories": ["ANNOTATE"],
+        "provenance": True,
+    }
     annotate_peptide_activity.tags = ["ANNOTATE"]
 
     # =========================================================================
@@ -477,7 +505,10 @@ def create_peptide_tools(
             f"modality='{result_name}'"
         )
 
-    generate_peptide_variants.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    generate_peptide_variants.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     generate_peptide_variants.tags = ["PREPROCESS"]
 
     # =========================================================================
@@ -502,7 +533,8 @@ def create_peptide_tools(
 
         if output_format == "csv":
             import re as _re
-            safe_name = _re.sub(r'[^\w\-]', '_', modality_name)
+
+            safe_name = _re.sub(r"[^\w\-]", "_", modality_name)
             csv_path = data_manager.exports_dir / f"{safe_name}_report.csv"
             if export_refused(data_manager.workspace_path, csv_path):
                 return MANAGED_EXPORT_MESSAGE  # e.g. the file is a link into a figure
@@ -557,7 +589,11 @@ def create_peptide_tools(
         # Top peptides table
         if "sequence" in adata.obs.columns:
             lines.append("## Top Peptides (first 20)\n")
-            show_cols = ["sequence", "length"] + [c for c in prop_cols[:3]] + [c for c in act_cols[:2]]
+            show_cols = (
+                ["sequence", "length"]
+                + [c for c in prop_cols[:3]]
+                + [c for c in act_cols[:2]]
+            )
             show_cols = [c for c in show_cols if c in adata.obs.columns]
             if show_cols:
                 lines.append("| " + " | ".join(show_cols) + " |")

@@ -39,6 +39,7 @@ from lobster.config.inference_context import (
 )
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core import session_inputs
 from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
 from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
@@ -176,6 +177,8 @@ def genomics_expert(
                 filter_pass=filter_pass,
                 max_variants=max_variants,
             )
+            # An export never overwrites the file this read.
+            read_files = session_inputs.note_import(data_manager, file_path)
 
             # Store in data manager
             n_samples = adata.n_obs
@@ -247,6 +250,7 @@ adata = adapter.from_source(
                     "samples": sample_list,
                     "filter_pass": filter_pass,
                     "max_variants": max_variants,
+                    "read_files": read_files,
                 },
                 description=f"Loaded VCF file: {n_samples} samples x {n_variants} variants",
                 ir=ir,
@@ -319,6 +323,11 @@ adata = adapter.from_source(
                 source=file_path,
                 maf_min=maf_min,
             )
+            # An export never overwrites the files this read.
+            bed = adapter._resolve_plink_path(file_path)
+            read_files = session_inputs.note_import(
+                data_manager, bed, bed.with_suffix(".bim"), bed.with_suffix(".fam")
+            )
 
             # Store in data manager
             n_individuals = adata.n_obs
@@ -385,6 +394,7 @@ adata = adapter.from_source(
                     "file_path": file_path,
                     "modality_name": modality_name,
                     "maf_min": maf_min,
+                    "read_files": read_files,
                 },
                 description=f"Loaded PLINK file: {n_individuals} individuals x {n_snps} SNPs",
                 ir=ir,

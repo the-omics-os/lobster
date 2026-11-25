@@ -53,6 +53,7 @@ from lobster.config.inference_context import (
 )
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core import session_inputs
 from lobster.core.component_registry import component_registry
 from lobster.core.export_scope import WORKSPACE_EXPORT_MESSAGE, outside_workspace
 from lobster.core.figures.export_guard import MANAGED_EXPORT_MESSAGE, export_refused
@@ -1187,6 +1188,8 @@ Use this mapping to apply consistent annotations to similar datasets."""
             # Load mapping file
             with open(mapping_file, "r") as f:
                 mapping_data = json.load(f)
+            # An export never overwrites the file this read.
+            read_files = session_inputs.note_import(data_manager, mapping_file)
 
             if preview_only:
                 response = f"""Preview of annotation mapping from '{mapping_file}':
@@ -1263,6 +1266,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     "modality_name": modality_name,
                     "mapping_file": mapping_file,
                     "preview_only": preview_only,
+                    "read_files": read_files,
                 },
                 description=f"Imported annotation mapping from {mapping_file}",
                 ir=ir,
