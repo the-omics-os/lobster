@@ -135,7 +135,7 @@ adata_imputed, stats, _ = service.impute_missing_values(
     method={{ method | tojson }},
     knn_neighbors={{ knn_neighbors }}
 )
-print(f"Imputed {stats['n_values_imputed']} values ({stats['pct_imputed']:.1f}%) using {method}")""",
+print(f"Imputed {stats['n_values_imputed']} values ({stats['pct_imputed']:.1f}%) using { {{ method | repr }} }")""",
             imports=[
                 "from lobster.services.quality.metabolomics_preprocessing_service import MetabolomicsPreprocessingService"
             ],
@@ -184,7 +184,7 @@ adata_norm, stats, _ = service.normalize(
     log_transform={{ log_transform | tojson }},
     reference_sample={{ reference_sample | tojson }}
 )
-print(f"Normalized using {method}, log_transform={log_transform}")""",
+print(f"Normalized using { {{ method | repr }} }, log_transform={ {{ log_transform | repr }} }")""",
             imports=[
                 "from lobster.services.quality.metabolomics_preprocessing_service import MetabolomicsPreprocessingService"
             ],
@@ -243,7 +243,7 @@ adata_corrected, stats, _ = service.correct_batch_effects(
     method={{ method | tojson }},
     qc_label={{ qc_label | tojson }}
 )
-print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
+print(f"Batch correction: { {{ method | repr }} }, {stats['n_batches']} batches")""",
             imports=[
                 "from lobster.services.quality.metabolomics_preprocessing_service import MetabolomicsPreprocessingService"
             ],
