@@ -175,6 +175,25 @@ def test_a_change_that_changes_nothing_keeps_the_preset(ws, monkeypatch):
     assert "explicit agents" not in _out()
 
 
+@pytest.mark.parametrize("tool", [False, True])
+def test_installing_where_no_choice_is_saved_keeps_every_agent_running(
+    ws, monkeypatch, tool
+):
+    (ws / "config.toml").unlink()
+    if tool:
+        _tool_install(monkeypatch, ok=True)
+        with pytest.raises(SystemExit):
+            agent_commands._install_into_uv_tool("lobster-genomics", ws)
+    else:
+        monkeypatch.setattr(agent_commands, "_uv_pip_install", lambda pkg: (True, ""))
+        agent_commands.agents_install("lobster-genomics", workspace=ws)
+
+    # saving only the new agents would turn off the ones already running
+    assert WorkspaceAgentConfig.load(ws).effective_agents() == []
+    agent_commands.agents_list(workspace=ws)
+    assert _ticked() == set(PACKAGES)
+
+
 def _tool_install(monkeypatch, ok):
     from lobster.core import uv_tool_env
 

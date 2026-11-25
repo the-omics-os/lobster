@@ -366,6 +366,10 @@ def _changed_config(workspace_path: Path, *, add=(), remove=()):
 
     config = WorkspaceAgentConfig.load(workspace_path)
     current = set(config.effective_agents())
+    if not current:
+        # Nothing saved: every installed agent runs, new ones included. A list
+        # of only the added agents would turn off the ones already running.
+        return None, None
     present = _with_children(current)
     if set(add) <= present and not set(remove) & present:
         return None, None  # nothing to change: a preset stays a preset

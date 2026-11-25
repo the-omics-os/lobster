@@ -150,8 +150,8 @@ def test_agents_install_under_uv_tool_adds_to_the_tool(tool_env, tmp_path):
             PYTHON,
         ]
     ]
-    enabled = WorkspaceAgentConfig.load(workspace).enabled_agents
-    assert {"research_agent", "data_expert_agent"} <= set(enabled)
+    # nothing was saved before, so every installed agent, the new ones too, runs
+    assert WorkspaceAgentConfig.load(workspace).effective_agents() == []
 
 
 def test_every_uv_tool_install_keeps_the_running_python(tool_env):
