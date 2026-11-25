@@ -43,6 +43,7 @@ from lobster.config.inference_context import (
 )
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core import session_inputs
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.proteomics_differential_service import (
     MIN_CORRELATION_SAMPLES,
@@ -1329,7 +1330,8 @@ def de_analysis_expert(
                 ),
             )
 
-            # Log tool usage
+            # An export never overwrites the mapping file this read.
+            read_files = session_inputs.note_import(data_manager, custom_mapping_path)
             data_manager.log_tool_usage(
                 tool_name="run_kinase_enrichment",
                 parameters={
@@ -1337,6 +1339,7 @@ def de_analysis_expert(
                     "custom_mapping_path": custom_mapping_path,
                     "min_substrates": min_substrates,
                     "fdr_threshold": fdr_threshold,
+                    "read_files": read_files,
                 },
                 description=(
                     f"KSEA: {ksea_stats.get('n_significant', 0)} significant kinases "
