@@ -7,14 +7,21 @@ import hashlib
 import json
 import logging
 import os
+import uuid
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, Generator, List, Optional
 
 import pandas as pd
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    RemoveMessage,
+)
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.store.memory import InMemoryStore
 
 from lobster.agents.graph import create_bioinformatics_graph
@@ -477,17 +484,17 @@ class AgentClient(BaseClient):
             "recursion_limit": 1000,  # High limit to support complex multi-agent analyses
         }
 
-        # A thread with checkpointed messages already holds the earlier turns,
-        # including the model's own answers; self.messages keeps id-less copies
-        # of those answers, so resending it would give the model each answer
-        # twice. Send the whole history only to an empty thread (a restored
-        # session), so the conversation continues.
-        turn_messages = self.messages
-        try:
-            if self.graph.get_state(config).values.get("messages"):
-                turn_messages = [self.messages[-1]]
-        except Exception:
-            logger.debug("Could not read the thread state", exc_info=True)
+        # The thread holds the earlier turns, including the model's own answers
+        # and tool results (load_session and reset keep it in step with
+        # self.messages); self.messages keeps id-less copies of those answers,
+        # so resending it would give the model each answer twice. Only an empty
+        # or unreadable thread gets the whole history.
+        thread_count = self._thread_message_count(config)
+        if thread_count is None:
+            logger.warning(
+                "Could not read the conversation thread; sending the whole history"
+            )
+        turn_messages = [self.messages[-1]] if thread_count else self.messages
         graph_input = {"messages": turn_messages}
 
         # Reset per-turn delegation capture so one turn's manifests cannot be
@@ -504,6 +511,7 @@ class AgentClient(BaseClient):
                 config,
                 cancel_event=cancel_event,
                 pre_query_msg_count=pre_query_msg_count,
+                pre_query_thread_count=thread_count,
             )
 
         result = self._run_query(graph_input, config)
@@ -706,6 +714,7 @@ class AgentClient(BaseClient):
         config: Dict,
         cancel_event=None,
         pre_query_msg_count: int | None = None,
+        pre_query_thread_count: int | None = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Stream query execution with token-by-token text streaming.
@@ -974,7 +983,9 @@ class AgentClient(BaseClient):
             # On cancellation: rollback to pre-query state for a clean next turn.
             if was_cancelled:
                 if pre_query_msg_count is not None:
-                    self._rollback_cancelled_query(config, pre_query_msg_count)
+                    self._rollback_cancelled_query(
+                        config, pre_query_msg_count, pre_query_thread_count
+                    )
                 return
 
             if pending_interrupts:
@@ -1085,36 +1096,54 @@ class AgentClient(BaseClient):
                 config,
                 cancel_event=cancel_event,
                 pre_query_msg_count=len(self.messages),
+                pre_query_thread_count=self._thread_message_count(config),
             )
         else:
             yield self._run_query(stream_input, config)
 
-    def _rollback_cancelled_query(self, config: Dict, pre_query_msg_count: int) -> None:
+    def _thread_message_count(self, config: Dict) -> Optional[int]:
+        """How many messages the graph thread holds; None when it cannot be read."""
+        try:
+            return len(self.graph.get_state(config).values.get("messages") or [])
+        except Exception:
+            logger.debug("Could not read the thread state", exc_info=True)
+            return None
+
+    def _replace_thread_messages(self, messages: List[BaseMessage]) -> None:
+        """Make the graph thread of this session hold exactly *messages*."""
+        self.graph.update_state(
+            {"configurable": {"thread_id": self.session_id}},
+            {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]},
+        )
+
+    def _rollback_cancelled_query(
+        self,
+        config: Dict,
+        pre_query_msg_count: int,
+        pre_query_thread_count: int | None = None,
+    ) -> None:
         """Roll back to pre-query state after user cancellation.
 
         Args:
             config: LangGraph config with thread_id.
             pre_query_msg_count: len(self.messages) BEFORE the query's
                 HumanMessage was appended (captured at query() entry).
+            pre_query_thread_count: messages in the graph thread before the
+                query; the thread also holds tool calls and results, so it is
+                cut at its own count. None leaves the thread as it is.
         """
         try:
             # 1. Roll back in-memory messages to pre-query state.
             self.messages = self.messages[:pre_query_msg_count]
 
-            # 2. Roll back graph state: remove all messages added during this query.
-            state = self.graph.get_state(config)
-            if state and state.values.get("messages"):
-                graph_msgs = state.values["messages"]
-                if len(graph_msgs) > pre_query_msg_count:
-                    from langchain_core.messages import RemoveMessage
-
-                    removals = [
-                        RemoveMessage(id=m.id)
-                        for m in graph_msgs[pre_query_msg_count:]
-                        if hasattr(m, "id") and m.id
-                    ]
-                    if removals:
-                        self.graph.update_state(config, {"messages": removals})
+            # 2. Roll back graph state. The cancelled turn's writes can still be
+            # pending rather than checkpointed, and removing one of those by id
+            # fails, so put the earlier messages back whole.
+            if pre_query_thread_count is not None:
+                state = self.graph.get_state(config)
+                graph_msgs = state.values.get("messages") or []
+                if len(graph_msgs) > pre_query_thread_count:
+                    self._replace_thread_messages(graph_msgs[:pre_query_thread_count])
 
             self._save_session_json()
         except Exception:
@@ -3202,8 +3231,12 @@ class AgentClient(BaseClient):
             logger.debug("Catalog: session run not started", exc_info=True)
 
     def reset(self):
-        """Reset the conversation state."""
+        """Reset the conversation state; the model no longer sees earlier turns."""
         self.messages = []
+        try:
+            self._replace_thread_messages([])
+        except Exception as exc:
+            logger.warning(f"Could not clear the conversation thread: {exc}")
         self.metadata["reset_at"] = datetime.now().isoformat()
 
     def load_publication_list(
@@ -3396,9 +3429,10 @@ class AgentClient(BaseClient):
         Restores the conversation messages to enable multi-turn conversations
         across separate process invocations (e.g., for `lobster query` continuity).
 
-        Note: This only restores conversation messages, not LangGraph checkpointer
-        state. The LLM will have full conversational context but won't have
-        automatic access to prior tool execution state.
+        Note: This restores the conversation messages into the session's graph
+        thread, not the earlier tool calls and results. The LLM will have full
+        conversational context but won't have automatic access to prior tool
+        execution state.
 
         Args:
             session_path: Path to session JSON file
@@ -3440,10 +3474,13 @@ class AgentClient(BaseClient):
             role = msg.get("role", "")
             content = msg.get("content", "")
 
+            # The thread gets the same ids, so sending these again merges them.
             if role == "user":
-                self.messages.append(HumanMessage(content=content))
+                self.messages.append(
+                    HumanMessage(content=content, id=str(uuid.uuid4()))
+                )
             elif role == "assistant":
-                self.messages.append(AIMessage(content=content))
+                self.messages.append(AIMessage(content=content, id=str(uuid.uuid4())))
             # Skip system messages or unknown roles
 
         # Update session_id to match loaded session for continuity
@@ -3454,6 +3491,13 @@ class AgentClient(BaseClient):
             # Restoring is the one sanctioned identity change for exports.
             bind_client_session(self.data_manager, self.session_id, replace=True)
             self._begin_catalog_run()
+
+        # The model reads the conversation from the thread, and a command logged
+        # there before the next question would otherwise hide this history.
+        try:
+            self._replace_thread_messages(self.messages)
+        except Exception as exc:
+            logger.warning(f"Could not restore the conversation thread: {exc}")
 
         # Update metadata with load info
         loaded_metadata = session_data.get("metadata", {})

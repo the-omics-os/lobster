@@ -448,3 +448,149 @@ def test_restored_session_sends_its_history_once(session, tmp_path):
         "answer one",
         "second question",
     ]
+
+
+def _contents(rendered):
+    return [json.loads(m)["content"] for m in rendered]
+
+
+def _restore(client, tmp_path):
+    saved = tmp_path / "saved_session.json"
+    saved.write_text(
+        json.dumps(
+            {
+                "session_id": "restored",
+                "conversation": [
+                    {"role": "user", "content": "old question"},
+                    {"role": "assistant", "content": "old answer"},
+                ],
+            }
+        )
+    )
+    client.load_session(saved)
+
+
+def test_command_after_a_restore_keeps_the_restored_history(session, tmp_path):
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _add_command_to_history,
+    )
+
+    client, requests, script = session
+    _restore(client, tmp_path)
+    assert _add_command_to_history(client, "/status", "status ok")
+    script["supervisor"].extend([AIMessage("answer one"), AIMessage("answer two")])
+
+    for text in ["first question", "second question"]:
+        assert client.query(text).get("success") is True
+
+    first, second = _supervisor_requests(requests)
+    assert _contents(first) == [
+        "old question",
+        "old answer",
+        "Command: /status",
+        "Command Result: status ok",
+        "first question",
+    ]
+    assert second == first + second[len(first) :]
+    assert _contents(second[len(first) :]) == ["answer one", "second question"]
+
+
+def test_unreadable_thread_sends_the_whole_history_once(session, tmp_path, caplog):
+    import logging
+
+    client, requests, script = session
+    _restore(client, tmp_path)
+
+    def unreadable(*args, **kwargs):
+        raise RuntimeError("state store unavailable")
+
+    client.graph.get_state = unreadable
+    script["supervisor"].append(AIMessage("answer one"))
+    with caplog.at_level(logging.WARNING, logger="lobster.core.client"):
+        assert client.query("first question").get("success") is True
+
+    (first,) = _supervisor_requests(requests)
+    assert _contents(first) == ["old question", "old answer", "first question"]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("thread" in r.getMessage() for r in warnings), caplog.text
+
+
+def _two_turns_with_handoff(client, script):
+    """Turn 1 hands off to the expert, so the thread holds a tool call and its
+    result that the client's own list does not."""
+    script["supervisor"].extend(
+        [_handoff("call-1"), AIMessage("answer one"), _handoff("call-2")]
+    )
+    script[EXPERT].extend(
+        [AIMessage("expert result one"), AIMessage("expert result two")]
+    )
+    assert client.query("first question").get("success") is True
+
+
+def _assert_turn_three_follows_turn_one(requests, script, client):
+    script["supervisor"].append(AIMessage("answer three"))
+    assert client.query("third question").get("success") is True
+    supervisor = _supervisor_requests(requests)
+    turn_one_last, turn_three = supervisor[1], supervisor[-1]
+    assert turn_three[: len(turn_one_last)] == turn_one_last
+    assert _contents(turn_three[len(turn_one_last) :]) == [
+        "answer one",
+        "third question",
+    ]
+    assert len(set(turn_three)) == len(turn_three), turn_three
+
+
+def test_cancelled_streamed_turn_is_rolled_back_whole(session):
+    import threading
+
+    client, requests, script = session
+    _two_turns_with_handoff(client, script)
+
+    # The client checks the event at the first streamed event, after the
+    # supervisor's work in this turn has run but before it is checkpointed.
+    cancel = threading.Event()
+    cancel.set()
+    events = list(client.query("second question", stream=True, cancel_event=cancel))
+    assert sum(agent == EXPERT for agent, _, _ in requests) == 2
+    assert not any(e["type"] == "complete" for e in events), events
+    assert [m.content for m in client.messages] == ["first question", "answer one"]
+
+    _assert_turn_three_follows_turn_one(requests, script, client)
+
+
+def test_turn_forgotten_after_a_cancel_is_not_sent_again(session):
+    from lobster.cli_internal.mcp_stdio import (
+        _forget_cancelled_turn,
+        _Stop,
+        _thread_messages,
+    )
+
+    client, requests, script = session
+    _two_turns_with_handoff(client, script)
+    stop = _Stop(len(client.messages), _thread_messages(client))
+    script["supervisor"].append(AIMessage("answer two"))
+    assert client.query("second question").get("success") is True
+    _forget_cancelled_turn(client, stop)
+
+    _assert_turn_three_follows_turn_one(requests, script, client)
+    last = _contents(_supervisor_requests(requests)[-1])
+    assert "second question" not in last and "answer two" not in last
+
+
+def test_reset_forgets_the_conversation_for_the_model(session):
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _add_command_to_history,
+    )
+
+    client, requests, script = session
+    script["supervisor"].extend([AIMessage("answer one"), AIMessage("answer two")])
+    assert client.query("first question").get("success") is True
+    client.reset()
+    assert _add_command_to_history(client, "/reset", "Conversation reset")
+    assert client.query("second question").get("success") is True
+
+    assert _contents(_supervisor_requests(requests)[-1]) == [
+        "Command: /reset",
+        "Command Result: Conversation reset",
+        "second question",
+    ]

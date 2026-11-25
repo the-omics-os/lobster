@@ -176,15 +176,16 @@ def test_cancel_rolls_back_to_pre_query_state(tmp_path):
 
     client = _make_client_with_stream_events(tmp_path, events)
 
-    # Simulate graph state with messages added during the query.
-    mock_state = Mock()
-    mock_state.values = {
+    # Simulate an empty thread before the query and messages added during it.
+    before, during = Mock(), Mock()
+    before.values = {"messages": []}
+    during.values = {
         "messages": [
             HumanMessage(content="test", id="human-1"),
             AIMessage(content="partial response", id="ai-1"),
         ]
     }
-    client.graph.get_state = Mock(return_value=mock_state)
+    client.graph.get_state = Mock(side_effect=[before, during, during])
     client.graph.update_state = Mock()
 
     pre_query_count = len(client.messages)
@@ -202,9 +203,9 @@ def test_cancel_rolls_back_to_pre_query_state(tmp_path):
     human_msgs = [m for m in client.messages if isinstance(m, HumanMessage)]
     assert not any(m.content == "test" for m in human_msgs)
 
-    # Graph state should have RemoveMessage calls for messages added during query.
-    assert client.graph.get_state.called
-    assert client.graph.update_state.called
+    # The thread is put back to its pre-query messages: none.
+    (_, update), _ = client.graph.update_state.call_args
+    assert [m.id for m in update["messages"]] == ["__remove_all__"]
 
 
 def test_cancel_rollback_removes_query_human_message(tmp_path):
