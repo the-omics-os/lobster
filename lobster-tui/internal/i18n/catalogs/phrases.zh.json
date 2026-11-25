@@ -225,7 +225,7 @@
   "If it does not open, copy the address into your browser.": "如果页面没有打开，请将地址复制到浏览器中。",
   "Open this link to request access:": "打开此链接申请访问：",
   "Press Enter when you have sent the request.": "提交申请后请按 Enter。",
-  "Your access request is on its way. We'll email you when it's approved. Until then, choose a different provider to continue.": "您的访问申请已发出。获批后我们会通过电子邮件通知您。在此之前，请选择其他模型服务继续。",
+  "When your request is approved, we'll email you. Until then, choose a different provider to continue.": "申请获批后，我们会通过电子邮件通知您。在此之前，请选择其他模型服务继续。",
   "Claude API (Anthropic)  — direct access to Claude models": "Claude API (Anthropic)  — 直接使用 Claude 模型",
   "AWS Bedrock             — production, enterprise": "AWS Bedrock             — 正式环境、企业使用",
   "Ollama (local)          — privacy, zero cost, offline": "Ollama（本地）           — 保护隐私，无推理费用，可离线使用",

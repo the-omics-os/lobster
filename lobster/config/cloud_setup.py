@@ -126,7 +126,7 @@ def request_access(say: Callable[[str], None], wait: Callable[[str], object]) ->
     wait(h("Press Enter when you have sent the request."))
     say(
         h(
-            "Your access request is on its way. We'll email you when it's approved. "
+            "When your request is approved, we'll email you. "
             "Until then, choose a different provider to continue."
         )
     )

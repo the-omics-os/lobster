@@ -760,7 +760,7 @@ ACCESS_LINES = (
     "Press Enter when you have sent the request.",
 )
 ACCESS_SENT = (
-    "Your access request is on its way. We'll email you when it's approved. "
+    "When your request is approved, we'll email you. "
     "Until then, choose a different provider to continue."
 )
 
@@ -915,7 +915,9 @@ def test_classic_access_sentences_wrap_whole_words(
     )
 
     lines = out.splitlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("Your access"))
+    start = next(
+        i for i, line in enumerate(lines) if line.startswith("When your request")
+    )
     sent = lines[start : start + 3]
     # A terminal cuts a longer line wherever column 80 falls, even mid-word.
     assert all(len(line) <= 80 for line in sent)

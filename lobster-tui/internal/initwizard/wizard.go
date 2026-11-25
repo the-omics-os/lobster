@@ -923,7 +923,7 @@ func (m WizardModel) updateAccessRequest(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch km.String() {
 	case "enter":
-		m.accessNotice = "Your access request is on its way. We'll email you when it's approved. " +
+		m.accessNotice = "When your request is approved, we'll email you. " +
 			"Until then, choose a different provider to continue."
 		m.step = stepProvider
 	case "esc":

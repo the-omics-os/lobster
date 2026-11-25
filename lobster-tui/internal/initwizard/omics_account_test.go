@@ -23,7 +23,7 @@ const (
 	accessCopy      = "If it does not open, copy the address into your browser."
 	accessLink      = "Open this link to request access:"
 	accessPress     = "Press Enter when you have sent the request."
-	accessSent      = "Your access request is on its way. We'll email you when it's approved. " +
+	accessSent      = "When your request is approved, we'll email you. " +
 		"Until then, choose a different provider to continue."
 )
 
@@ -163,7 +163,7 @@ func TestAccountNoEnterReturnsToTheProviderListWithTheMessage(t *testing.T) {
 	if !strings.Contains(flat(view), accessSent) {
 		t.Fatalf("message missing: %s", view)
 	}
-	msgAt, listAt := strings.Index(view, "Your access request is on its way."), strings.Index(view, "Select the provider")
+	msgAt, listAt := strings.Index(view, "When your request is approved"), strings.Index(view, "Select the provider")
 	if listAt < 0 || msgAt > listAt {
 		t.Fatalf("the message is not above the provider list: %s", view)
 	}
