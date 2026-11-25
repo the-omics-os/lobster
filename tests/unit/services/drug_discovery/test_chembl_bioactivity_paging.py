@@ -161,3 +161,14 @@ def test_the_exported_cell_reads_every_page(monkeypatch):
     scope = replay_ir(ir)
 
     assert [a["activity_id"] for a in scope["activities"]] == list(range(TOTAL))
+
+
+@pytest.mark.parametrize("max_records", [0, -5])
+def test_a_limit_below_one_is_refused_before_any_request(monkeypatch, max_records):
+    requests = []
+    service = ChEMBLService()
+    monkeypatch.setattr(service, "_get_json", _fake_chembl(requests))
+
+    with pytest.raises(ValueError, match="max_records must be at least 1"):
+        service.get_bioactivity("CHEMBL25", max_records=max_records)
+    assert requests == []

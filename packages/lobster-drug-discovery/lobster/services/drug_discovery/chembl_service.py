@@ -338,7 +338,13 @@ print(f"Found {len(activities)} { {{ activity_type | repr }} } records for targe
             stats_dict[``activities``] contains a list of activity records;
             ``total_count``, ``truncated`` and ``coverage`` say how much of
             ChEMBL's total was read.
+
+        Raises:
+            ValueError: If *max_records* is below 1.
         """
+        if max_records < 1:
+            raise ValueError(f"max_records must be at least 1, got {max_records}")
+
         logger.info(
             f"Getting bioactivity for {chembl_id}"
             + (f" vs target {target_chembl_id}" if target_chembl_id else "")
