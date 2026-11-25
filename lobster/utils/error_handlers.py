@@ -1686,12 +1686,16 @@ def get_retry_delay(
     if rate_limit_info and rate_limit_info.retry_delay > 0:
         # Use parsed delay with small jitter
         parsed_delay = float(rate_limit_info.retry_delay)
-        jitter = random.uniform(-config.jitter, config.jitter) * parsed_delay
+        # Retry jitter spreads out retries; it guards nothing, so B311 does not apply.
+        jitter = (
+            random.uniform(-config.jitter, config.jitter) * parsed_delay  # nosec B311
+        )
         return min(parsed_delay + jitter, config.max_delay)
 
     # Fallback to exponential backoff
     delay = config.base_delay * (config.backoff_multiplier**attempt)
-    jitter = random.uniform(-config.jitter, config.jitter) * delay
+    # Retry jitter spreads out retries; it guards nothing, so B311 does not apply.
+    jitter = random.uniform(-config.jitter, config.jitter) * delay  # nosec B311
     return min(delay + jitter, config.max_delay)
 
 

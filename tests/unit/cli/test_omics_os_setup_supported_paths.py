@@ -1022,7 +1022,7 @@ def test_classic_prompts_pass_only_what_the_prompt_takes():
 
 @pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])
 def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display):
-    import subprocess
+    import subprocess  # nosec B404 # imported only to be faked
     import webbrowser
 
     from lobster.config.cloud_setup import request_access

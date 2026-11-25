@@ -28,10 +28,10 @@ def creds(tmp_path, monkeypatch):
             "profiles": {
                 "tenant": {
                     "credential_type": "omics_cli",
-                    "cli_token": "omc_PLACEHOLDER_TENANT",
+                    "cli_token": "omc_PLACEHOLDER_TENANT",  # nosec B105 # fake test token
                     "endpoint": TENANT,
                     "auth_mode": "oauth",
-                    "token_expiry": "2099-01-01T00:00:00+00:00",
+                    "token_expiry": "2099-01-01T00:00:00+00:00",  # nosec B105 # a date, not a secret
                 }
             },
         }
