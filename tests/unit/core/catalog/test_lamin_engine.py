@@ -422,7 +422,9 @@ BACK_AFTER_PRUNE = ADATA + """
     from lobster.core.catalog import factory
     from lobster.core.runtime.data_manager import DataManagerV2
     ws = Path(os.environ["WS"]).resolve()
-    dm = DataManagerV2(workspace_path=ws)
+    # This session does not load data/x.h5ad: a session never saves over a file it
+    # loaded, and the save below must replace that file.
+    dm = DataManagerV2(workspace_path=ws, auto_scan=False)
     catalog = factory.begin_session_run(dm, ws, "session_b")
     dm.modalities["x"] = adata(1)  # the bytes of the first version, whose copy was pruned
     dm.save_modality("x", "x.h5ad")
