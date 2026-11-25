@@ -2,11 +2,13 @@
 
 A plugin names the core it runs on as ``lobster-ai~=X.Y``, so pip may install
 it next to core X.Y.0. A plugin that imports a core module added after that
-installs without complaint and fails on import. The core's modules at the
-floor are read from git at that release, never from an installed wheel.
+installs without complaint and fails on import. The core's files at the
+floor come from a list taken from git at that release and checked in, never from
+an installed wheel or the clone's history, so a shallow clone runs every row.
 """
 
 import ast
+import hashlib
 import subprocess  # nosec B404
 import tomllib
 from functools import lru_cache
@@ -19,14 +21,26 @@ from packaging.requirements import Requirement
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[3]
-PLUGINS = sorted(p.parent for p in (ROOT / "packages").glob("*/pyproject.toml"))
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+# Packages with no Python code under lobster/: nothing they import can be missing
+NO_LOBSTER_CODE = {"lobster-ai-tui"}  # ships the Go binary
+PLUGINS = sorted(
+    p.parent
+    for p in (ROOT / "packages").glob("*/pyproject.toml")
+    if p.parent.name not in NO_LOBSTER_CODE
+)
 # Plugins that import a core module newer than the core they allow; strict, so
 # each row fails as soon as its pin moves and must leave this set
 PINNED_TOO_LOW: Set[str] = set()
-# Floors with no v-tag in this repository: the commit whose core modules stand
-# for that version. 1.3.1 is the release being built, so this tree stands for
-# it. Replace an entry with nothing once the tag exists.
-UNTAGGED = {"1.3.1": "HEAD"}
+# The core's files at each floor a plugin names: a checked-in list taken from
+# git at that release (its header has the commit and the command), or None for
+# the release being built, which this tree stands for. Replace None with a list
+# once that release exists.
+CORE_FILES = {"1.3.0": "core_1_3_0_files.txt", "1.3.1": None}
+# sha256 of each list's file lines, so a list is not edited by hand unnoticed
+CORE_FILES_SHA256 = {
+    "core_1_3_0_files.txt": "e10595b6781b0a60bac160492c36ad4e99091fdb7b3b4d02b2a199c0b1d45ea9"
+}
 # Import failures the plugin handles itself
 _OPTIONAL = {"ImportError", "ModuleNotFoundError", "Exception"}
 
@@ -58,27 +72,18 @@ def _modules(paths) -> Set[str]:
     return found
 
 
-def _ref(floor: str) -> str:
-    return UNTAGGED.get(floor, f"v{floor}")
+def _listed(name: str) -> List[str]:
+    """The file lines of a checked-in list, without its # header."""
+    text = (FIXTURES / name).read_text(encoding="utf-8")
+    return [line for line in text.splitlines() if line and not line.startswith("#")]
 
 
-@lru_cache(maxsize=None)
-def _core_at(ref: str) -> Optional[Set[str]]:
-    """The core's modules at *ref*; None when this clone does not have it."""
-    found = subprocess.run(  # nosec B603 B607
-        ["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", ref, "--", "lobster"],
-        capture_output=True,
-        text=True,
-    )
-    return _modules(found.stdout.split()) if found.returncode == 0 else None
-
-
-@lru_cache(maxsize=1)
-def _tagged() -> bool:
-    tags = subprocess.run(  # nosec B603 B607
-        ["git", "-C", str(ROOT), "tag", "-l", "v*"], capture_output=True, text=True
-    )
-    return bool(tags.stdout.strip())
+def _core_at(floor: str) -> Set[str]:
+    """The core's modules at release *floor*."""
+    if floor not in CORE_FILES:
+        pytest.fail(f"no file list for core {floor}: add one to CORE_FILES")
+    name = CORE_FILES[floor]
+    return _core_now() if name is None else _modules(_listed(name))
 
 
 @lru_cache(maxsize=1)
@@ -151,15 +156,9 @@ def _missing(plugin: Path, floor_modules: Set[str]) -> List[str]:
 )
 def test_a_plugin_imports_only_modules_its_floor_core_has(plugin):
     floor = _floor(plugin)
-    if floor is None:
-        pytest.skip(f"{plugin.name} names no lowest lobster-ai version")
-    modules = _core_at(_ref(floor))
-    if modules is None:
-        if floor not in UNTAGGED and _tagged():  # a clone with tags lacks this one
-            pytest.fail(f"no tag v{floor}: record its release commit in UNTAGGED")
-        pytest.skip(f"this clone has no history for core {floor} ({_ref(floor)})")
+    assert floor, f"{plugin.name} names no lowest lobster-ai version"
 
-    missing = _missing(plugin, modules)
+    missing = _missing(plugin, _core_at(floor))
 
     assert (
         not missing
@@ -206,3 +205,44 @@ def test_a_module_taken_by_name_counts_and_the_plugins_own_do_not(tmp_path):
     assert [m.rsplit(" ", 1)[1] for m in missing] == [
         "lobster.services.analysis.mann_whitney"
     ], missing
+
+
+def test_each_core_file_list_is_unchanged_and_matches_its_release():
+    for name, digest in CORE_FILES_SHA256.items():
+        lines = _listed(name)
+        joined = "".join(line + "\n" for line in lines)
+        assert hashlib.sha256(joined.encode()).hexdigest() == digest, name
+        assert all(
+            line.startswith("lobster/") and line.endswith(".py") for line in lines
+        )
+        # where this clone has the release commit, the list is exactly its files
+        header = (FIXTURES / name).read_text(encoding="utf-8").splitlines()[0]
+        commit = header.split("commit ")[1].split()[0]
+        found = subprocess.run(  # nosec B603 B607
+            ["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", commit, "--"]
+            + ["lobster"],
+            capture_output=True,
+            text=True,
+        )
+        if found.returncode == 0:
+            assert [f for f in found.stdout.split() if f.endswith(".py")] == lines
+    assert set(CORE_FILES_SHA256) == {n for n in CORE_FILES.values() if n}
+
+
+def test_a_package_left_out_has_no_lobster_code_and_no_core_floor():
+    for name in NO_LOBSTER_CODE:
+        package = ROOT / "packages" / name
+        assert not (package / "lobster").exists(), name
+        assert _floor(package) is None, name
+        for path in package.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                    names = [node.module or ""]
+                else:
+                    continue
+                assert not [
+                    n for n in names if n == "lobster" or n.startswith("lobster.")
+                ], path
