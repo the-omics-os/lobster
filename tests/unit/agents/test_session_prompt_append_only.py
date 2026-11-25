@@ -21,6 +21,7 @@ import sys
 from collections import defaultdict, deque
 from types import ModuleType
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -89,11 +90,10 @@ def _split(messages):
     return [_render(m) for m in system], [_render(m) for m in rest]
 
 
-@pytest.fixture
-def session(tmp_path, monkeypatch):
+def _route_create_llm(monkeypatch, create_llm):
+    """Point every module's own `create_llm` name at one function."""
     from lobster.agents import graph as graph_module
     from lobster.config import llm_factory
-    from lobster.core.client import AgentClient
     from lobster.core.component_registry import component_registry
 
     agents = component_registry.list_agents()
@@ -104,27 +104,43 @@ def session(tmp_path, monkeypatch):
         module_name = config.factory_function.rsplit(".", 1)[0]
         importlib.import_module(module_name)
 
+    def is_create_llm(value):
+        # A module imported while an earlier test mocked the factory can still
+        # hold that test's mock, so any mock under this name is replaced too.
+        return isinstance(value, Mock) or (
+            getattr(value, "__module__", None) == llm_factory.__name__
+        )
+
+    for name, module in tuple(sys.modules.items()):
+        if name.startswith("lobster.") and isinstance(module, ModuleType):
+            if is_create_llm(getattr(module, "create_llm", None)):
+                monkeypatch.setattr(module, "create_llm", create_llm)
+    monkeypatch.setattr(graph_module, "create_llm", create_llm)
+
+
+@pytest.fixture
+def session(tmp_path):
+    from lobster.core.client import AgentClient
+
     requests: list = []
     script: dict = defaultdict(deque)
 
     def create_llm(agent_name, *args, **kwargs):
         return RecordingModel(agent=agent_name, requests=requests, script=script)
 
-    create_llm_names = {llm_factory.create_llm, graph_module.create_llm}
-    for name, module in tuple(sys.modules.items()):
-        if name.startswith("lobster.") and isinstance(module, ModuleType):
-            if getattr(module, "create_llm", None) in create_llm_names:
-                monkeypatch.setattr(module, "create_llm", create_llm)
-    monkeypatch.setattr(graph_module, "create_llm", create_llm)
-
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    client = AgentClient(
-        workspace_path=workspace, session_id="append-only", interactive=False
-    )
-    client._save_session_json = lambda: None
-    assert EXPERT in client.graph_metadata.supervisor_accessible_agents
-    return client, requests, script
+    # Undo these patches before the provider mock is undone, so its own cleanup
+    # finds and restores every alias instead of a later undo bringing back a
+    # mock that outlives its test.
+    with pytest.MonkeyPatch.context() as patches:
+        _route_create_llm(patches, create_llm)
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        client = AgentClient(
+            workspace_path=workspace, session_id="append-only", interactive=False
+        )
+        client._save_session_json = lambda: None
+        assert EXPERT in client.graph_metadata.supervisor_accessible_agents
+        yield client, requests, script
 
 
 def test_three_turns_send_an_append_only_prompt_to_every_agent(session):
@@ -188,6 +204,9 @@ def test_three_turns_send_an_append_only_prompt_to_every_agent(session):
     last = supervisor[-1]
     repeated = {m: last.count(m) for m in last if last.count(m) > 1}
     assert not repeated, f"messages sent more than once: {repeated}"
+    # (e) the third turn still carries the first question and its answer
+    contents = [json.loads(m)["content"] for m in last]
+    assert "first question" in contents and "answer one" in contents, contents
 
     # Each hand-off starts a fresh expert conversation; within it the same rules hold.
     for messages, _ in by_agent[EXPERT]:
@@ -199,6 +218,185 @@ def _supervisor_requests(requests):
     return [
         _split(messages)[1] for agent, messages, _ in requests if agent == "supervisor"
     ]
+
+
+def _system_prompts(requests):
+    by_agent: dict = defaultdict(list)
+    for agent, messages, _ in requests:
+        by_agent[agent].append(_split(messages)[0])
+    return by_agent
+
+
+def _assert_supervisor_append_only(requests):
+    """Each supervisor request (system prompt included) extends the previous one."""
+    calls = [
+        [_render(m) for m in messages]
+        for agent, messages, _ in requests
+        if agent == "supervisor"
+    ]
+    for index in range(1, len(calls)):
+        before, after = calls[index - 1], calls[index]
+        assert after[: len(before)] == before, (
+            f"supervisor request {index} edits or drops earlier messages:\n"
+            + "\n".join(
+                f"  [{i}] {b!s:.200} -> {a!s:.200}"
+                for i, (b, a) in enumerate(zip(before, after))
+                if a != b
+            )
+        )
+    last = calls[-1]
+    repeated = {m: last.count(m) for m in last if last.count(m) > 1}
+    assert not repeated, f"messages sent more than once: {repeated}"
+    return [json.loads(m)["content"] for m in last if json.loads(m)["type"] != "system"]
+
+
+@pytest.mark.no_auto_config
+def test_graph_rebuilt_for_each_run_keeps_an_append_only_prompt(tmp_path, monkeypatch):
+    """A host that binds a fresh inference run before each turn rebuilds the graph.
+
+    Every model comes from the host's factory, through the real model factory.
+    """
+    from lobster.config import llm_factory
+    from lobster.config.inference_context import (
+        INFERENCE_BINDING_VERSION,
+        InferenceContext,
+    )
+    from lobster.core.client import AgentClient
+
+    _route_create_llm(monkeypatch, llm_factory.create_llm)
+    requests: list = []
+    script: dict = defaultdict(deque)
+    components: list = []
+
+    class Factory:
+        capability_version = INFERENCE_BINDING_VERSION
+
+        def create(self, *, component, context):
+            components.append(component)
+            return RecordingModel(
+                agent=component, requests=requests, script=script, cache=False
+            )
+
+    context = InferenceContext(
+        "bedrock",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "synthetic-binding",
+        "version-a",
+        200_000,
+        4096,
+    )
+    workspace = tmp_path / "bound-workspace"
+    workspace.mkdir()
+    client = AgentClient(
+        workspace_path=workspace,
+        session_id="append-only-bound",
+        interactive=False,
+        inference_context=context,
+        model_factory=Factory(),
+    )
+    client._save_session_json = lambda: None
+    checkpointer = client.checkpointer
+
+    script["supervisor"].extend(
+        [
+            _handoff("call-1"),
+            AIMessage("answer one"),
+            AIMessage("answer two"),
+            _handoff("call-3"),
+            AIMessage("answer three"),
+        ]
+    )
+    script[EXPERT].extend(
+        [AIMessage("expert result one"), AIMessage("expert result two")]
+    )
+    graphs = []
+    for text in ["first question", "second question", "third question"]:
+        client.bind_inference_run(inference_context=context, model_factory=Factory())
+        graphs.append(client.graph)
+        assert client.query(text).get("success") is True, text
+    assert len({id(graph) for graph in graphs}) == 3
+    assert client.checkpointer is checkpointer
+    assert {"supervisor", EXPERT} <= set(components)
+
+    assert sum(agent == "supervisor" for agent, _, _ in requests) == 5
+    for agent, prompts in _system_prompts(requests).items():
+        assert all(p == prompts[0] for p in prompts), f"{agent} system prompt changed"
+    contents = _assert_supervisor_append_only(requests)
+    assert contents[0] == "first question" and "answer one" in contents, contents
+    for agent, messages, _ in requests:
+        if agent == EXPERT:
+            _, rest = _split(messages)
+            assert len(rest) == 1 and "summarise the data" in rest[0]
+
+
+def test_duplicate_left_by_an_earlier_version_does_not_grow(session):
+    """A thread that already holds a duplicated answer gains no new duplicates."""
+    from langchain_core.messages import HumanMessage
+
+    client, requests, script = session
+    script["supervisor"].extend(
+        [
+            AIMessage("answer one"),
+            AIMessage("answer two"),
+            AIMessage("answer three"),
+            AIMessage("answer four"),
+        ]
+    )
+    assert client.query("first question").get("success") is True
+    # The earlier version sent the whole local history on the same thread: the
+    # id-less local copy of "answer one" was appended to the checkpoint again.
+    client.messages.append(HumanMessage(content="second question"))
+    config = {"configurable": {"thread_id": client.session_id}}
+    assert client._run_query({"messages": client.messages}, config)["success"]
+    seeded = [m.content for m in client.graph.get_state(config).values["messages"]]
+    assert seeded.count("answer one") == 2, seeded
+
+    for text in ["third question", "fourth question"]:
+        assert client.query(text).get("success") is True
+
+    supervisor = _supervisor_requests(requests)
+    for index in range(2, len(supervisor)):
+        assert supervisor[index][: len(supervisor[index - 1])] == supervisor[index - 1]
+    last = [json.loads(m)["content"] for m in supervisor[-1]]
+    assert last.count("answer one") == 2, last
+    assert {c: last.count(c) for c in last if c != "answer one"} == {
+        c: 1 for c in last if c != "answer one"
+    }, last
+    assert last[-1] == "fourth question"
+
+
+def test_data_loaded_between_turns_keeps_every_system_prompt(session):
+    import anndata
+    import numpy as np
+
+    client, requests, script = session
+    script["supervisor"].extend(
+        [
+            _handoff("call-1"),
+            AIMessage("answer one"),
+            _handoff("call-2"),
+            AIMessage("answer two"),
+        ]
+    )
+    script[EXPERT].extend(
+        [AIMessage("expert result one"), AIMessage("expert result two")]
+    )
+
+    assert client.query("first question").get("success") is True
+    client.data_manager.store_modality(
+        "tiny_counts", anndata.AnnData(np.ones((3, 2), dtype=np.float32))
+    )
+    assert "tiny_counts" in client.data_manager.list_modalities()
+    assert client.query("second question").get("success") is True
+
+    prompts = _system_prompts(requests)
+    assert len(prompts["supervisor"]) == 4 and len(prompts[EXPERT]) == 2
+    for agent, rendered in prompts.items():
+        for index, prompt in enumerate(rendered[1:], start=1):
+            assert (
+                prompt == rendered[0]
+            ), f"{agent} request {index}: system prompt changed after a data load"
+    _assert_supervisor_append_only(requests)
 
 
 def test_streamed_turns_send_each_earlier_message_once(session):
