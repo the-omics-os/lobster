@@ -507,6 +507,34 @@ def _skipped_line(target: PurgeTarget, unmarked: str) -> str:
     return unmarked.format(path=escape(str(target.path)))
 
 
+def _print_uninstall_hint(output: "OutputAdapter") -> None:
+    """Print the uninstall command for the way lobster-ai was installed."""
+    from lobster.core import self_upgrade
+
+    ways = {
+        "uv-tool": (
+            h("\n  [bold]Using uv tool (official installer):[/bold]"),
+            "uv tool uninstall lobster-ai",
+        ),
+        "uv-pip": (
+            h("\n  [bold]Using uv pip (virtual environment):[/bold]"),
+            "uv pip uninstall lobster-ai",
+        ),
+        "pip": (h("\n  [bold]Using pip:[/bold]"), "pip uninstall lobster-ai"),
+        "pipx": (
+            h("\n  [bold]Using pipx (if installed via pipx):[/bold]"),
+            "pipx uninstall lobster-ai",
+        ),
+    }
+    try:
+        method = self_upgrade.detect_upgrade_plan().method
+    except Exception:
+        method = "manual"
+    for heading, command in [ways[method]] if method in ways else ways.values():
+        output.print(heading)
+        output.print(f"    [white]{command}[/white]")
+
+
 def purge(
     output: "OutputAdapter",
     scope: str = "all",
@@ -657,11 +685,6 @@ def purge(
     # Show uninstall instructions
     output.print("\n[dim]" + "─" * 60 + "[/dim]")
     output.print(h("\n[bold cyan]📦 To completely uninstall Lobster AI:[/bold cyan]"))
-    output.print(h("\n  [bold]Using uv (recommended):[/bold]"))
-    output.print("    [white]uv pip uninstall lobster-ai[/white]")
-    output.print(h("\n  [bold]Using pip:[/bold]"))
-    output.print("    [white]pip uninstall lobster-ai[/white]")
-    output.print(h("\n  [bold]Using pipx (if installed via pipx):[/bold]"))
-    output.print("    [white]pipx uninstall lobster-ai[/white]")
+    _print_uninstall_hint(output)
 
     return f"Purged {_format_size(result.total_size_freed)} from {len(result.targets_removed)} locations"
