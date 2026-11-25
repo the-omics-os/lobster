@@ -48,7 +48,7 @@ WRITTEN_TEMPLATES: Dict[str, Tuple[str, FrozenSet[str]]] = {
         "merge_sample_metadata",
         frozenset(
             {
-                "b1184ff19f003f5e310f1e465092eb3527ddc992e71de018a6f223a574d023ec",
+                "350de92db3fbb925bc3faced0c761986bb8068cd36ff652f85b7cefead069259",
                 "abc2379075ee84497c8b002374b0ade813b2cf340918d124cbaa12da1d5ca42f",  # 1.3.0
             }
         ),

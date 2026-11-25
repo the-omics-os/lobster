@@ -1,4 +1,5 @@
-"""The bulk import and metadata merge cells write no path of the session.
+"""The bulk import cell writes no path of the session; the merge cell writes
+the sample sheet's path as one string literal, never the sheet's content.
 
 Both templates once put the path inside double quotes in an f-string: a ``"`` in the
 path broke the cell, and a ``{{`` was read as a template expression, which
@@ -42,9 +43,9 @@ def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch
         columns=samples,
     )
     counts.to_csv(folder / "counts.csv")
-    pd.DataFrame({"sample": samples, "group": ["a", "b"] * 3}).to_csv(
-        folder / "meta.csv", index=False
-    )
+    pd.DataFrame(
+        {"sample": samples, "group": ["a", "b"] * 3, "note": ["kept-out"] * 6}
+    ).to_csv(folder / "meta.csv", index=False)
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     irs = {}
     log = dm.log_tool_usage
@@ -68,13 +69,14 @@ def test_a_quote_or_braces_in_the_path_stay_in_the_literal(tmp_path, monkeypatch
     )
 
     assert "merge_sample_metadata" in irs, reply
-    # neither cell names a path of this session: the import reads the notebook's
-    # input file, the merge keeps the sheet itself
-    for tool in ("import_bulk_counts", "merge_sample_metadata"):
-        assert name not in irs[tool].render()
-    merge = _literals(irs["merge_sample_metadata"].render())
-    assert "meta.csv" in merge
+    # the import reads the notebook's input file; the merge reads the sheet
+    # from its path, whole in one literal, and writes none of its cells
+    assert name not in irs["import_bulk_counts"].render()
+    merge_code = irs["merge_sample_metadata"].render()
+    merge = _literals(merge_code)
+    assert str((folder / "meta.csv").resolve()) in merge
     assert "sample" in merge
+    assert "kept-out" not in merge_code
     # the templates are the ones the exporter knows, whatever the path
     for tool in ("import_bulk_counts", "merge_sample_metadata"):
         assert outdated_tool(irs[tool]) is None, (

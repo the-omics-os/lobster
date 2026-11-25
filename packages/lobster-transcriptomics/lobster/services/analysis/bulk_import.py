@@ -5,8 +5,6 @@ notebook cells their steps record: a replay reads the same file into the same
 object the session started from.
 """
 
-import base64
-import io
 import re
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -127,29 +125,14 @@ def read_bulk_count_table(
     )
 
 
-def sample_sheet_content(path: Union[str, Path]) -> str:
-    """The text of a sample sheet, base64 for an Excel file: what its step keeps,
-    so a replay reads the sheet from the notebook, not from a path of the session.
-
-    shortcut: the whole sheet goes into the step; a sheet of many megabytes
-    makes a large notebook. Upgrade to a second replay input if that matters.
-    """
+def read_sample_sheet(path: Union[str, Path]) -> pd.DataFrame:
+    """A sample sheet: Excel by its extension, .tsv tab-separated, else CSV."""
     path = Path(path)
-    data = path.read_bytes()
     if path.suffix in (".xlsx", ".xls"):
-        return base64.b64encode(data).decode("ascii")
-    return data.decode("utf-8")
-
-
-def read_sample_sheet(name: Union[str, Path], content: str) -> pd.DataFrame:
-    """A sample sheet from ``sample_sheet_content``: Excel by the extension of
-    ``name``, .tsv tab-separated, else CSV."""
-    suffix = Path(name).suffix
-    if suffix in (".xlsx", ".xls"):
-        return pd.read_excel(io.BytesIO(base64.b64decode(content)))
-    if suffix == ".tsv":
-        return pd.read_csv(io.StringIO(content), sep="\t")
-    return pd.read_csv(io.StringIO(content))
+        return pd.read_excel(path)
+    if path.suffix == ".tsv":
+        return pd.read_csv(path, sep="\t")
+    return pd.read_csv(path)
 
 
 def add_sample_columns(

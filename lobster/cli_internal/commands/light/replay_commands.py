@@ -1174,8 +1174,30 @@ def _path_refusal(
                 ).format(n=number, name=bound.name)
             if real == bound:
                 continue  # the file the replay is told to read, only read
+            if _reads_sample_sheet(tree, text):
+                return h(
+                    "Code cell {n} (merge_sample_metadata) reads the sample sheet "
+                    "{name}, outside this replay's folder; a replay reads only its "
+                    "own folder and the file given with --input, so a session that "
+                    "merged a sample sheet cannot be replayed. The notebook was not run."
+                ).format(n=number, name=real.name)
             return _outside_reason(number, real, shown, workspace)
     return None
+
+
+def _reads_sample_sheet(tree, text: str) -> bool:
+    """Whether *text* is the path a ``read_sample_sheet(...)`` call reads (the
+    merge_sample_metadata cell)."""
+    import ast
+
+    return any(
+        isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "read_sample_sheet"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == text
+        for node in ast.walk(tree)
+    )
 
 
 def _outside_reason(number: int, real: Path, shown: str, workspace: Path) -> str:

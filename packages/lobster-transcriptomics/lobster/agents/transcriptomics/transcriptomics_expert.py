@@ -63,7 +63,6 @@ from lobster.services.analysis.bulk_import import (
     add_sample_columns,
     read_bulk_count_table,
     read_sample_sheet,
-    sample_sheet_content,
 )
 from lobster.services.analysis.bulk_preprocessing_service import (
     BulkPreprocessingService,
@@ -1661,8 +1660,7 @@ Please check:
                 return f"Error: Metadata file '{metadata_file}' does not exist."
 
             # Read metadata (detect format from extension)
-            sheet = sample_sheet_content(meta_path)
-            meta_df = read_sample_sheet(meta_path.name, sheet)
+            meta_df = read_sample_sheet(meta_path)
 
             # Auto-detect sample ID column
             if sample_id_column == "auto":
@@ -1709,7 +1707,7 @@ Please check:
                 code_template=(
                     "add_sample_columns(\n"
                     "    adata,\n"
-                    "    read_sample_sheet({{ metadata_file | repr }}, {{ sheet | repr }}),\n"
+                    "    read_sample_sheet({{ metadata_file | string | repr }}),\n"
                     "    {{ sample_id_column | repr }},\n"
                     ")"
                 ),
@@ -1718,9 +1716,8 @@ Please check:
                     "add_sample_columns, read_sample_sheet"
                 ],
                 parameters={
-                    # the name only: the sheet itself is kept, never a path
-                    "metadata_file": meta_path.name,
-                    "sheet": sheet,
+                    # the path, never the sheet's content: it may hold clinical data
+                    "metadata_file": str(meta_path.resolve()),
                     "sample_id_column": sample_id_column,
                 },
                 parameter_schema={},
