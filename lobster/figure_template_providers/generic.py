@@ -22,19 +22,23 @@ def _xy(kind, data, x, y, color, id_col, entity_kind, title, **kwargs):
     import plotly.express as px
 
     table = pd.DataFrame(data).copy(deep=True)
+    from lobster.core.figures.point_identity import (
+        bind_point_ids,
+        identity_table,
+        resolve_identity_column,
+    )
+
+    if kind == "scatter" or id_col is not None:
+        id_col = resolve_identity_column(table, id_col)
     if id_col is not None:
-        if table[id_col].isna().any() or table[id_col].astype(str).duplicated().any():
-            raise ValueError(
-                "Entity IDs must be present and unique; row positions are not IDs"
-            )
-        table[id_col] = table[id_col].astype(str)
+        table, identity_field = identity_table(table, id_col)
     figure = getattr(px, kind)(
         table,
         x=x,
         y=y,
         color=color,
         title=title,
-        custom_data=[id_col] if id_col is not None else None,
+        custom_data=[identity_field] if id_col is not None else None,
         color_discrete_sequence=HOUSE_COLORS,
         **kwargs,
     )
@@ -48,6 +52,8 @@ def _xy(kind, data, x, y, color, id_col, entity_kind, title, **kwargs):
                     "customdata_index": 0,
                 }
             }
+    if kind == "scatter" and id_col is not None:
+        bind_point_ids(figure, id_col, entity_kind=entity_kind)
     return figure
 
 

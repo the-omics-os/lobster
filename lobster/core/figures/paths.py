@@ -26,7 +26,15 @@ CONFIG_FILE = "config.json"
 
 #: Directory names that never hold figures (skipped by listings).
 RESERVED_DIRS = frozenset(
-    {SOURCES_DIR, CODE_DIR, EXECUTIONS_DIR, ATTEMPTS_DIR, STAGING_DIR}
+    {
+        SOURCES_DIR,
+        CODE_DIR,
+        EXECUTIONS_DIR,
+        ATTEMPTS_DIR,
+        STAGING_DIR,
+        "_history",
+        "_attachments",
+    }
 )
 _RESERVED_BY_FOLD = {name.casefold(): name for name in RESERVED_DIRS}
 

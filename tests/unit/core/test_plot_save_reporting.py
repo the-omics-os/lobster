@@ -54,8 +54,16 @@ def _bar() -> go.Figure:
 
 
 def _tool(workspace, plot_manager):
-    dm = SimpleNamespace(plot_manager=plot_manager)
-    (tool,) = create_plot_tools(dm, workspace)
+    from lobster.core.figures.store import LocalFigureStore
+
+    dm = SimpleNamespace(
+        plot_manager=plot_manager, figure_store=LocalFigureStore(workspace)
+    )
+    tool = next(
+        t
+        for t in create_plot_tools(dm, workspace)
+        if t.name == "create_interactive_plot"
+    )
     return tool
 
 

@@ -154,7 +154,8 @@ Brief description of changes.
 ## Checklist
 - [ ] Code follows project style (PEP 8, type hints)
 - [ ] AQUADIF metadata assigned to new tools
-- [ ] Provenance (ir=) passed in log_tool_usage for new tools
+- [ ] Analysis provenance (`ir=` in `log_tool_usage`) supplied when required by AQUADIF; `UTILITY` editor tools do not require analysis IR
+- [ ] Saved figure edits retain revision provenance (parent, actor, request, diff, retained source and execution record)
 - [ ] Self-review completed
 ```
 
