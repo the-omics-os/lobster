@@ -171,7 +171,7 @@ We follow a simple principle: **be kind, be constructive, be scientific.**
 
 - **[Documentation](https://docs.omics-os.com)** -- comprehensive guides
 - **[GitHub Issues](https://github.com/the-omics-os/lobster/issues)** -- bugs and feature requests
-- **[Email](mailto:kevin.yar@omics-os.com)** -- direct help
+- **Email:** kevin.yar &lt;at&gt; omics-os &lt;dot&gt; com -- direct help
 
 ## License
 
