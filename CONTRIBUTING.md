@@ -14,8 +14,8 @@ make dev-install
 
 # 3. Activate and configure
 source .venv/bin/activate
-lobster init          # API keys, agent selection
-lobster config test   # Verify connectivity
+lobster init          # LLM provider, key and agent packages
+lobster config test   # Optional: one real connectivity check (one paid LLM call)
 
 # 4. Verify
 lobster chat          # Interactive mode
@@ -28,28 +28,30 @@ git checkout -b feature/your-feature-name
 
 | Requirement | Notes |
 |-------------|-------|
-| Python 3.12+ | Required |
+| Python 3.12 or 3.13 | Required |
 | Git | Required |
 | `uv` | **Mandatory** -- all Python tooling uses `uv`. Never bare `pip`. |
-| LLM API key | Anthropic, AWS Bedrock, or other supported provider |
+| LLM provider | Omics-OS Cloud, Anthropic, AWS Bedrock, Google Gemini, OpenAI, OpenRouter, Nebius AI Studio, Azure AI or Ollama Cloud (each needs a key), or a local Ollama (no key). See `.env.example`. |
 
 ## Architecture Overview
 
-Lobster AI v1.0.0 uses a **modular package architecture**:
+Lobster AI uses a **modular package architecture**: a core package plus agent packages (22 agents, coordinated by the supervisor):
 
 ```
-lobster/                     # Core SDK (supervisor, services, tools, infrastructure)
+lobster/                     # Core SDK (supervisor, services, tools, CLI, MCP server)
 packages/
   lobster-transcriptomics/   # 3 agents (transcriptomics, annotation, DE analysis)
   lobster-research/          # 2 agents (research, data expert)
   lobster-visualization/     # 1 agent
-  lobster-proteomics/        # 3 agents (proteomics, proteomics DE, biomarker)
+  lobster-proteomics/        # 4 agents (proteomics, proteomics DE, biomarker, peptide)
   lobster-genomics/          # 2 agents (genomics, variant analysis)
   lobster-metabolomics/      # 1 agent
   lobster-metadata/          # 1 agent
   lobster-structural-viz/    # 1 agent
   lobster-ml/                # 3 agents (ML, feature selection, survival)
   lobster-drug-discovery/    # 4 agents (drug discovery, cheminformatics, clinical, PGx)
+  lobster-vector/            # vector search backend (no agents)
+  lobster-ai-tui/            # the terminal UI binary for `lobster chat` (no agents)
 ```
 
 **Key concepts:**
@@ -71,7 +73,7 @@ lobster scaffold agent --name my_expert --display-name "My Expert" \
 # 2. Implement tools and services in the generated package
 #    See skills/lobster-dev/ for detailed patterns
 
-# 3. Validate the plugin structure (7 checks)
+# 3. Validate the plugin structure (9 checks)
 lobster validate-plugin ./lobster-mydomain/
 
 # 4. Register entry points in your package's pyproject.toml
@@ -91,7 +93,7 @@ All analysis services return a 3-tuple:
 (processed_adata, stats_dict, ir)  # ir = AnalysisStep (provenance)
 ```
 
-Tools must pass the `ir` to `data_manager.log_tool_usage(..., ir=ir)` for reproducibility. See `skills/lobster-dev/references/creating-services.md` for the full pattern.
+Tools must pass the `ir` to `data_manager.log_tool_usage(..., ir=ir)`, so the step is recorded and appears in the exported notebook. A literal `ir=None` records nothing and fails the contract tests. See `skills/lobster-dev/references/creating-services.md` for the full pattern.
 
 ## AQUADIF Tool Metadata
 
