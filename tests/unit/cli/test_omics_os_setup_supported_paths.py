@@ -90,6 +90,24 @@ def assert_supported_guidance(output):
     assert "@omicsos/lobster" not in output
 
 
+def test_shipped_hints_name_the_omics_os_cli_only():
+    # Every h() literal is a key of this catalog, so it covers the code strings too.
+    import lobster.i18n as i18n
+
+    phrases = json.loads(
+        (Path(i18n.__file__).parent / "phrases.zh.json").read_text(encoding="utf-8")
+    )
+    text = "\n".join([*phrases, *phrases.values()])
+    assert "omics-os files download {sid} <path>" in text
+    for stale in (
+        "@omicsos/lobster",
+        "lobster-cli cloud",
+        "lobster cloud files download",
+        "settings/billing",
+    ):
+        assert stale not in text
+
+
 def assert_cloud_config(tmp_path, expected_key):
     config = json.loads(
         (tmp_path / ".lobster_workspace" / "provider_config.json").read_text()

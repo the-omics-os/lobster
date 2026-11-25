@@ -46,7 +46,7 @@ location is unclear rather than guessing from the word "Cloud".
 When both clients are installed, check `which lobster`. npm `lobster init` is a
 Cloud onboarding wizard, not local Python setup. In a Python environment, use
 `uv run python -m lobster <command>` to address the Python engine explicitly.
-An npm `lobster-cli cloud status` result does not establish that Python is installed
+An npm `omics-os status` result does not establish that Python is installed
 or that its local provider is configured.
 
 ## Requirements and Permission Boundaries

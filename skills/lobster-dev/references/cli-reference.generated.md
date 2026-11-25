@@ -101,7 +101,7 @@ Remove the Omics-OS Cloud key Lobster saved (not the omics-os CLI's sign-in).
 
 ### `lobster cloud projects`
 
-List your Omics-OS Cloud projects (also: omics-os lobster projects list).
+List your Omics-OS Cloud projects (also: omics-os projects list).
 
   - `json` (boolean, optional) - Output JSON
 

@@ -226,7 +226,7 @@ class GatewayBedrockClient:
             401: ("UnauthorizedAccess", rejected_key_message(self._endpoint)),
             402: (
                 "BudgetExceeded",
-                "Monthly budget exhausted. Visit https://app.omics-os.com/settings/billing",
+                "Monthly budget exhausted. Visit https://app.omics-os.com/account",
             ),
             403: (
                 "AccessDeniedException",

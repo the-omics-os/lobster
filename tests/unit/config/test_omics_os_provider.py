@@ -286,6 +286,21 @@ class TestGatewayBedrockClient:
             client._handle_error(402, body)
         assert "BudgetExceeded" in str(exc_info.value)
 
+    def test_handle_error_402_without_detail_links_to_account(self):
+        from botocore.exceptions import ClientError
+
+        from lobster.config.providers.gateway_bedrock_client import GatewayBedrockClient
+
+        client = GatewayBedrockClient(
+            endpoint="https://example.com",
+            token_fn=lambda: "tok",
+        )
+        with pytest.raises(ClientError) as exc_info:
+            client._handle_error(402, "")
+        # Billing lives on /account; /settings/billing is not a route.
+        assert "https://app.omics-os.com/account" in str(exc_info.value)
+        assert "settings/billing" not in str(exc_info.value)
+
     def test_handle_error_422(self):
         from botocore.exceptions import ClientError
 

@@ -723,11 +723,11 @@ def query(
         file_count = len(workspace_files)
         listing = (
             h(
-                "[dim]{n} file in workspace · download: lobster cloud files download {sid} <path>[/dim]"
+                "[dim]{n} file in workspace · download: omics-os files download {sid} <path>[/dim]"
             )
             if file_count == 1
             else h(
-                "[dim]{n} files in workspace · download: lobster cloud files download {sid} <path>[/dim]"
+                "[dim]{n} files in workspace · download: omics-os files download {sid} <path>[/dim]"
             )
         )
         console.print(listing.format(n=file_count, sid=sid))
@@ -739,7 +739,7 @@ def projects(
         False, "--json", "-j", is_flag=True, help=h("Output JSON")
     ),
 ) -> None:
-    """List your Omics-OS Cloud projects (also: omics-os lobster projects list)."""
+    """List your Omics-OS Cloud projects (also: omics-os projects list)."""
     from lobster.cli_internal.commands.light.cloud_query import (
         CloudQueryError,
         _validate_endpoint,
