@@ -87,13 +87,9 @@ def create_clinical_tools(
                 disease_name = assoc.get("disease_name", "Unknown")
                 score = assoc.get("overall_score", 0)
                 dt_scores = assoc.get("datatype_scores", {})
-                top_dt = sorted(
-                    dt_scores.items(), key=lambda x: x[1], reverse=True
-                )[:3]
+                top_dt = sorted(dt_scores.items(), key=lambda x: x[1], reverse=True)[:3]
                 dt_str = ", ".join(f"{k}={v:.2f}" for k, v in top_dt)
-                lines.append(
-                    f"  - {disease_name}: score={score:.3f} ({dt_str})"
-                )
+                lines.append(f"  - {disease_name}: score={score:.3f} ({dt_str})")
 
             if n_assoc > 10:
                 lines.append(f"  ... and {n_assoc - 10} more associations")
@@ -102,7 +98,10 @@ def create_clinical_tools(
         except Exception as e:
             return f"Error getting target-disease evidence: {e}"
 
-    get_target_disease_evidence.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    get_target_disease_evidence.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     get_target_disease_evidence.tags = ["ANALYZE"]
 
     @tool
@@ -119,9 +118,7 @@ def create_clinical_tools(
                     effect_a, effect_b, effect_ab
                 )
             elif model == "hsa":
-                _, stats, ir = synergy_service.hsa_model(
-                    effect_a, effect_b, effect_ab
-                )
+                _, stats, ir = synergy_service.hsa_model(effect_a, effect_b, effect_ab)
             elif model == "loewe":
                 # Loewe requires dose and IC50 data; approximate using effects
                 # For single-point scoring, use Bliss as fallback with Loewe note
@@ -158,13 +155,9 @@ def create_clinical_tools(
             lines = [f"Synergy scoring ({model_name}):"]
 
             if "excess" in stats:
-                lines.append(
-                    f"  Excess effect: {stats['excess']:.4f}"
-                )
+                lines.append(f"  Excess effect: {stats['excess']:.4f}")
             if "combination_index" in stats:
-                lines.append(
-                    f"  Combination Index: {stats['combination_index']:.4f}"
-                )
+                lines.append(f"  Combination Index: {stats['combination_index']:.4f}")
             if "effect_ab_expected" in stats:
                 lines.append(
                     f"  Expected: {stats['effect_ab_expected']:.4f}, "
@@ -301,9 +294,9 @@ def create_clinical_tools(
                     lines.append(f"    - {cat}: {count}")
 
             if tissues:
-                top_tissues = sorted(
-                    tissues.items(), key=lambda x: x[1], reverse=True
-                )[:5]
+                top_tissues = sorted(tissues.items(), key=lambda x: x[1], reverse=True)[
+                    :5
+                ]
                 lines.append("  Affected tissues:")
                 for tissue, count in top_tissues:
                     lines.append(f"    - {tissue}: {count}")
@@ -343,9 +336,7 @@ def create_clinical_tools(
             ]
 
             if tractable_mods:
-                lines.append(
-                    f"  Tractable modalities: {', '.join(tractable_mods)}"
-                )
+                lines.append(f"  Tractable modalities: {', '.join(tractable_mods)}")
 
             for modality, verdict in verdicts.items():
                 n_pos = verdict.get("n_positive", 0)
@@ -357,15 +348,16 @@ def create_clinical_tools(
                 for assessment in verdict.get("assessments", []):
                     label = assessment.get("label", "")
                     value = assessment.get("value", False)
-                    lines.append(
-                        f"    - {label}: {'Yes' if value else 'No'}"
-                    )
+                    lines.append(f"    - {label}: {'Yes' if value else 'No'}")
 
             return "\n".join(lines)
         except Exception as e:
             return f"Error assessing tractability: {e}"
 
-    assess_clinical_tractability.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    assess_clinical_tractability.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     assess_clinical_tractability.tags = ["ANALYZE"]
 
     @tool
@@ -392,8 +384,7 @@ def create_clinical_tools(
             # Filter for clinically relevant activity types
             clinical_types = {"IC50", "Ki", "EC50", "Kd", "ED50", "MIC"}
             clinical_activities = [
-                a for a in activities
-                if a.get("standard_type", "") in clinical_types
+                a for a in activities if a.get("standard_type", "") in clinical_types
             ]
 
             lines = [
@@ -402,6 +393,8 @@ def create_clinical_tools(
                 f"  Activity types: {', '.join(f'{k}({v})' for k, v in type_counts.items())}",
                 f"  Clinical-grade records: {len(clinical_activities)}",
             ]
+            if stats.get("truncated"):
+                lines.insert(2, f"  Partial data: {stats['coverage']}")
 
             # Group by target
             target_map = {}
@@ -465,17 +458,14 @@ def create_clinical_tools(
             if phase_dist:
                 lines.append(
                     f"  Phase distribution: "
-                    + ", ".join(
-                        f"Phase {p}={c}" for p, c in sorted(phase_dist.items())
-                    )
+                    + ", ".join(f"Phase {p}={c}" for p, c in sorted(phase_dist.items()))
                 )
 
             if mechanisms:
                 lines.append("  Mechanisms of action:")
                 for moa in mechanisms[:5]:
                     targets = [
-                        t.get("symbol", t.get("id", ""))
-                        for t in moa.get("targets", [])
+                        t.get("symbol", t.get("id", "")) for t in moa.get("targets", [])
                     ]
                     lines.append(
                         f"    - {moa.get('mechanism', 'Unknown')}"
@@ -490,9 +480,7 @@ def create_clinical_tools(
                         f"(phase {ind.get('max_phase', 0)})"
                     )
                 if n_indications > 10:
-                    lines.append(
-                        f"    ... and {n_indications - 10} more indications"
-                    )
+                    lines.append(f"    ... and {n_indications - 10} more indications")
 
             return "\n".join(lines)
         except Exception as e:
@@ -525,10 +513,12 @@ def create_clinical_tools(
                 )
 
                 if "error" in stats:
-                    comparison.append({
-                        "chembl_id": chembl_id,
-                        "error": stats["error"],
-                    })
+                    comparison.append(
+                        {
+                            "chembl_id": chembl_id,
+                            "error": stats["error"],
+                        }
+                    )
                     continue
 
                 activities = stats.get("activities", [])
@@ -558,14 +548,17 @@ def create_clinical_tools(
                             except (ValueError, TypeError):
                                 pass
 
-                comparison.append({
-                    "chembl_id": chembl_id,
-                    "n_activities": len(activities),
-                    "n_targets": len(n_targets),
-                    "best_ic50_nM": best_ic50,
-                    "best_pchembl": best_pchembl,
-                    "activity_types": type_counts,
-                })
+                comparison.append(
+                    {
+                        "chembl_id": chembl_id,
+                        "n_activities": len(activities),
+                        "n_targets": len(n_targets),
+                        "best_ic50_nM": best_ic50,
+                        "best_pchembl": best_pchembl,
+                        "activity_types": type_counts,
+                        "partial": stats["coverage"] if stats.get("truncated") else "",
+                    }
+                )
 
             lines = [
                 f"Drug candidate comparison ({len(ids)} compounds):",
@@ -576,9 +569,7 @@ def create_clinical_tools(
 
             for comp in comparison:
                 if "error" in comp:
-                    lines.append(
-                        f"  {comp['chembl_id']:<20} ERROR: {comp['error']}"
-                    )
+                    lines.append(f"  {comp['chembl_id']:<20} ERROR: {comp['error']}")
                     continue
 
                 ic50_str = (
@@ -596,6 +587,12 @@ def create_clinical_tools(
                     f"  {comp['chembl_id']:<20} {comp['n_activities']:>10} "
                     f"{comp['n_targets']:>8} {ic50_str:>15} {pchembl_str:>13}"
                 )
+
+            for comp in comparison:
+                if comp.get("partial"):
+                    lines.append(
+                        f"  Partial data for {comp['chembl_id']}: {comp['partial']}"
+                    )
 
             return "\n".join(lines)
         except Exception as e:

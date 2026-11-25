@@ -640,6 +640,11 @@ def create_pharmacogenomics_tools(
             lines = [
                 f"Pharmacogenomic evidence for {chembl_id}:",
                 f"  Total records: {len(activities)}",
+                *(
+                    [f"  Partial data: {stats['coverage']}"]
+                    if stats.get("truncated")
+                    else []
+                ),
                 f"  Activity types: {', '.join(f'{k}({v})' for k, v in type_counts.items())}",
                 f"  Organisms: {len(organism_map)}",
             ]

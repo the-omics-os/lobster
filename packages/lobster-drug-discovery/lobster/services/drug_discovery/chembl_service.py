@@ -24,6 +24,11 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ChEMBL activity pages: records per request (the exported cell uses the
+# same 100), and the most records one call reads.
+ACTIVITY_PAGE_SIZE = 100
+MAX_BIOACTIVITY_RECORDS = 1000
+
 
 class ChEMBLService(BaseAPIService):
     """
@@ -97,6 +102,7 @@ print(f"Found {len(molecules)} compounds matching '{ {{ query | repr }} }'")""",
         self,
         chembl_id: str,
         target_chembl_id: Optional[str],
+        max_records: int = MAX_BIOACTIVITY_RECORDS,
     ) -> AnalysisStep:
         """Create IR for bioactivity retrieval."""
         return AnalysisStep(
@@ -114,17 +120,27 @@ params = {
     "molecule_chembl_id": {{ chembl_id | tojson }},
     "format": "json",
     "limit": 100,
+    "offset": 0,
 }
 {% if target_chembl_id %}params["target_chembl_id"] = {{ target_chembl_id | tojson }}{% endif %}
-response = httpx.get({{ (base_url ~ '/activity') | repr }}, params=params, timeout={{ timeout }})
-response.raise_for_status()
-data = response.json()
-activities = data.get("activities", [])
-print(f"Found {len(activities)} bioactivity records for { {{ chembl_id | repr }} }")""",
+activities = []
+while len(activities) < {{ max_records }}:
+    params["limit"] = min(100, {{ max_records }} - len(activities))
+    response = httpx.get({{ (base_url ~ '/activity') | repr }}, params=params, timeout={{ timeout }})
+    response.raise_for_status()
+    data = response.json()
+    page = data.get("activities", [])
+    activities.extend(page)
+    if not page or not (data.get("page_meta") or {}).get("next"):
+        break
+    params["offset"] += len(page)
+total = (data.get("page_meta") or {}).get("total_count", len(activities))
+print(f"Read {len(activities)} of {total} bioactivity records for { {{ chembl_id | repr }} }")""",
             imports=["import httpx"],
             parameters={
                 "chembl_id": chembl_id,
                 "target_chembl_id": target_chembl_id,
+                "max_records": max_records,
                 "base_url": CHEMBL_API_BASE,
                 "timeout": DEFAULT_HTTP_TIMEOUT,
             },
@@ -142,6 +158,14 @@ print(f"Found {len(activities)} bioactivity records for { {{ chembl_id | repr }}
                     default_value=None,
                     required=False,
                     description="Optional target ChEMBL ID to filter activities",
+                ),
+                "max_records": ParameterSpec(
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=MAX_BIOACTIVITY_RECORDS,
+                    required=False,
+                    validation_rule="max_records > 0",
+                    description="Most activity records to read across pages",
                 ),
             },
             input_entities=[],
@@ -295,40 +319,61 @@ print(f"Found {len(activities)} { {{ activity_type | repr }} } records for targe
         self,
         chembl_id: str,
         target_chembl_id: Optional[str] = None,
+        max_records: int = MAX_BIOACTIVITY_RECORDS,
     ) -> Tuple[None, Dict[str, Any], AnalysisStep]:
         """
         Retrieve bioactivity data (IC50, Ki, EC50, etc.) for a compound.
 
         Calls GET {CHEMBL_API_BASE}/activity filtered by molecule ChEMBL ID
-        and optionally by target ChEMBL ID.
+        and optionally by target ChEMBL ID, following pages until all
+        records are read or *max_records* is reached.
 
         Args:
             chembl_id: ChEMBL molecule identifier (e.g., "CHEMBL25").
             target_chembl_id: Optional target ChEMBL ID to filter results.
+            max_records: Most activity records to read (default 1000).
 
         Returns:
             Tuple of (None, stats_dict, AnalysisStep).
-            stats_dict[``activities``] contains a list of activity records.
+            stats_dict[``activities``] contains a list of activity records;
+            ``total_count``, ``truncated`` and ``coverage`` say how much of
+            ChEMBL's total was read.
         """
         logger.info(
             f"Getting bioactivity for {chembl_id}"
             + (f" vs target {target_chembl_id}" if target_chembl_id else "")
         )
 
-        ir = self._create_ir_get_bioactivity(chembl_id, target_chembl_id)
+        ir = self._create_ir_get_bioactivity(chembl_id, target_chembl_id, max_records)
 
         url = f"{CHEMBL_API_BASE}/activity.json"
         params: Dict[str, Any] = {
             "molecule_chembl_id": chembl_id,
-            "limit": 100,
             "format": "json",
+            "offset": 0,
         }
         if target_chembl_id:
             params["target_chembl_id"] = target_chembl_id
 
-        data, error = self._get_json(url, params)
+        activities_raw: List[Dict[str, Any]] = []
+        total_count: Optional[int] = None
+        has_next = False
+        error: Optional[str] = None
+        while len(activities_raw) < max_records:
+            params["limit"] = min(ACTIVITY_PAGE_SIZE, max_records - len(activities_raw))
+            data, error = self._get_json(url, dict(params))
+            if error is not None:
+                break
+            page = data.get("activities", [])
+            activities_raw.extend(page)
+            page_meta = data.get("page_meta") or {}
+            total_count = page_meta.get("total_count", total_count)
+            has_next = bool(page_meta.get("next")) and bool(page)
+            if not has_next:
+                break
+            params["offset"] += len(page)
 
-        if error is not None:
+        if error is not None and not activities_raw:
             stats: Dict[str, Any] = {
                 "error": error,
                 "chembl_id": chembl_id,
@@ -338,7 +383,27 @@ print(f"Found {len(activities)} { {{ activity_type | repr }} } records for targe
             }
             return None, stats, ir
 
-        activities_raw: List[Dict[str, Any]] = data.get("activities", [])
+        n_read = len(activities_raw)
+        if total_count is None:
+            total_count = n_read
+        truncated = error is not None or has_next or n_read < total_count
+        if error is not None:
+            coverage = (
+                f"{n_read} of {total_count} activities "
+                f"(a later page failed: {error})"
+            )
+        elif truncated and n_read >= max_records:
+            coverage = (
+                f"{n_read} of {total_count} activities "
+                f"(stopped at the limit of {max_records})"
+            )
+        elif truncated:
+            coverage = (
+                f"{n_read} of {total_count} activities "
+                f"(ChEMBL returned no further pages)"
+            )
+        else:
+            coverage = f"all {n_read} activities"
 
         # Parse and summarize activity records
         activities: List[Dict[str, Any]] = []
@@ -367,14 +432,16 @@ print(f"Found {len(activities)} { {{ activity_type | repr }} } records for targe
             "chembl_id": chembl_id,
             "target_chembl_id": target_chembl_id,
             "n_activities": len(activities),
+            "total_count": total_count,
+            "truncated": truncated,
+            "max_records": max_records,
+            "coverage": coverage,
             "activity_type_counts": activity_type_counts,
             "activities": activities,
             "analysis_type": "chembl_bioactivity",
         }
 
-        logger.info(
-            f"Bioactivity retrieval complete: {len(activities)} records for {chembl_id}"
-        )
+        logger.info(f"Bioactivity retrieval complete for {chembl_id}: {coverage}")
         return None, stats, ir
 
     def get_target_compounds(

@@ -123,13 +123,9 @@ def create_shared_tools(
                 datatype_scores = assoc.get("datatype_scores", {})
                 dt_summary = ", ".join(
                     f"{k}={v:.2f}"
-                    for k, v in sorted(
-                        datatype_scores.items(), key=lambda x: -x[1]
-                    )[:3]
+                    for k, v in sorted(datatype_scores.items(), key=lambda x: -x[1])[:3]
                 )
-                response += (
-                    f"{i}. **{disease_name}** (score: {overall:.3f})"
-                )
+                response += f"{i}. **{disease_name}** (score: {overall:.3f})"
                 if dt_summary:
                     response += f" [{dt_summary}]"
                 response += "\n"
@@ -198,7 +194,9 @@ def create_shared_tools(
                 if not isinstance(val, (int, float)):
                     return f"Evidence value for '{key}' must be a number, got {type(val).__name__}."
                 if not (0.0 <= val <= 1.0):
-                    return f"Evidence value for '{key}' must be in [0.0, 1.0], got {val}."
+                    return (
+                        f"Evidence value for '{key}' must be in [0.0, 1.0], got {val}."
+                    )
 
             _, result, ir = target_scoring_service.score_target(evidence_dict)
 
@@ -238,7 +236,9 @@ def create_shared_tools(
             if classification == "high_confidence":
                 response += "\nVerdict: Strong drug target candidate."
             elif classification == "medium_confidence":
-                response += "\nVerdict: Moderate potential, consider gathering more evidence."
+                response += (
+                    "\nVerdict: Moderate potential, consider gathering more evidence."
+                )
             else:
                 response += "\nVerdict: Weak evidence, additional validation needed."
 
@@ -302,8 +302,11 @@ def create_shared_tools(
                 evidence_dict = {}
                 if component_scores:
                     evidence_dict = {
-                        k: v for k, v in component_scores.items()
-                        if isinstance(v, (int, float)) and k in {
+                        k: v
+                        for k, v in component_scores.items()
+                        if isinstance(v, (int, float))
+                        and k
+                        in {
                             "genetic_association",
                             "known_drug",
                             "expression_specificity",
@@ -363,7 +366,9 @@ def create_shared_tools(
             response += f"- Low confidence: {summary.get('low_confidence', 0)}\n"
 
             if errors:
-                response += f"\n**Warnings** ({len(errors)} targets could not be scored):\n"
+                response += (
+                    f"\n**Warnings** ({len(errors)} targets could not be scored):\n"
+                )
                 for err in errors[:5]:
                     response += f"- {err}\n"
 
@@ -452,11 +457,15 @@ def create_shared_tools(
                         response += f", Ro5 violations: {ro5}"
                     response += "\n"
                 if smiles:
-                    response += f"   SMILES: {smiles[:80]}{'...' if len(smiles) > 80 else ''}\n"
+                    response += (
+                        f"   SMILES: {smiles[:80]}{'...' if len(smiles) > 80 else ''}\n"
+                    )
                 response += "\n"
 
             if has_more:
-                response += f"More results available (showing first {min(15, n_results)}).\n"
+                response += (
+                    f"More results available (showing first {min(15, n_results)}).\n"
+                )
 
             return response
 
@@ -513,20 +522,27 @@ def create_shared_tools(
             if n_activities == 0:
                 return (
                     f"No bioactivity data found for {chembl_id}"
-                    + (f" against target {target_chembl_id}" if target_chembl_id else "")
+                    + (
+                        f" against target {target_chembl_id}"
+                        if target_chembl_id
+                        else ""
+                    )
                     + "."
                 )
 
             response = f"**Bioactivity for {chembl_id}**: {n_activities} records\n"
             if target_chembl_id:
                 response += f"Filtered to target: {target_chembl_id}\n"
+            if stats.get("truncated"):
+                response += f"Partial data: {stats['coverage']}\n"
             response += "\n"
 
             # Show activity type distribution
             if type_counts:
                 response += "**Activity types:** "
                 response += ", ".join(
-                    f"{k}: {v}" for k, v in sorted(type_counts.items(), key=lambda x: -x[1])
+                    f"{k}: {v}"
+                    for k, v in sorted(type_counts.items(), key=lambda x: -x[1])
                 )
                 response += "\n\n"
 
@@ -603,7 +619,9 @@ def create_shared_tools(
             )
 
             if "error" in stats:
-                return f"Error finding compounds for {target_chembl_id}: {stats['error']}"
+                return (
+                    f"Error finding compounds for {target_chembl_id}: {stats['error']}"
+                )
 
             compounds = stats.get("compounds", [])
             n_unique = stats.get("n_unique_compounds", 0)
@@ -639,7 +657,9 @@ def create_shared_tools(
                 response += line + "\n"
 
             if has_more:
-                response += f"\nMore compounds available beyond the {limit}-record limit.\n"
+                response += (
+                    f"\nMore compounds available beyond the {limit}-record limit.\n"
+                )
 
             return response
 
@@ -713,8 +733,12 @@ def create_shared_tools(
             response += f"- TPSA: {tpsa} A^2\n" if tpsa is not None else ""
             response += f"- H-bond donors: {hbd}\n" if hbd is not None else ""
             response += f"- H-bond acceptors: {hba}\n" if hba is not None else ""
-            response += f"- Rotatable bonds: {rot_bonds}\n" if rot_bonds is not None else ""
-            response += f"- Heavy atoms: {heavy_atoms}\n" if heavy_atoms is not None else ""
+            response += (
+                f"- Rotatable bonds: {rot_bonds}\n" if rot_bonds is not None else ""
+            )
+            response += (
+                f"- Heavy atoms: {heavy_atoms}\n" if heavy_atoms is not None else ""
+            )
 
             if lipinski:
                 compliant = lipinski.get("compliant", False)
@@ -723,7 +747,9 @@ def create_shared_tools(
                 response += "\n**Lipinski Rule of Five:**\n"
                 response += f"- Compliant: {'Yes' if compliant else 'No'} ({n_violations} violations)\n"
                 for rule_name, passed in rules.items():
-                    status = "PASS" if passed else ("FAIL" if passed is False else "N/A")
+                    status = (
+                        "PASS" if passed else ("FAIL" if passed is False else "N/A")
+                    )
                     response += f"  - {rule_name}: {status}\n"
 
             return response
@@ -901,7 +927,10 @@ def create_shared_tools(
             logger.error(f"Error in check_drug_discovery_status: {e}")
             return f"Error checking drug discovery status: {str(e)}"
 
-    check_drug_discovery_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    check_drug_discovery_status.metadata = {
+        "categories": ["UTILITY"],
+        "provenance": False,
+    }
     check_drug_discovery_status.tags = ["UTILITY"]
 
     # -------------------------------------------------------------------------
