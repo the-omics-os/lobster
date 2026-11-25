@@ -675,9 +675,10 @@ def _with_mkdir(cell, folder_of=None):
         _with_mkdir(A1.replace("to_csv", "to_excel")),
         _with_mkdir(A1.replace("'exports/de.csv'", "'exports/sub/de.csv'")),
         _with_mkdir(_a2()),
+        _with_mkdir(_a2().replace("<= 0.05", "< 0.05")),
         _with_mkdir(_a2(padj=False, lfc=False, method="to_excel")),
     ],
-    ids=["A1", "A1-excel", "A1-subfolder", "A2", "A2-none"],
+    ids=["A1", "A1-excel", "A1-subfolder", "A2", "A2-strict-padj", "A2-none"],
 )
 def test_an_export_cell_that_makes_its_folder_first_is_admitted(tmp_path, cell):
     assert _refusal(tmp_path, cell) is None

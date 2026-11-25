@@ -464,7 +464,12 @@ _EXPORT_HEADS = (
     + padj
     + lfc
     + "results_df = results_df.sort_values('padj')\n"
-    for padj in ("", "results_df = results_df[results_df['padj'] <= _NUMBER]\n")
+    # 1.3.0 kept padj <= the threshold; since 1.3.1 padj < it, as the DE counts
+    for padj in (
+        "",
+        "results_df = results_df[results_df['padj'] <= _NUMBER]\n",
+        "results_df = results_df[results_df['padj'] < _NUMBER]\n",
+    )
     for lfc in (
         "",
         "results_df = results_df[abs(results_df['log2FoldChange']) >= _NUMBER]\n",

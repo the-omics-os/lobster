@@ -3880,7 +3880,7 @@ def de_analysis_expert(
             shrink_lfc: Whether to apply LFC shrinkage (requires DeseqDataSet, default: True)
             output_format: Export format - 'csv' or 'xlsx' (default: 'csv')
             output_path: Custom output path (auto-generated if None)
-            padj_threshold: Maximum adjusted p-value for filtering (default: 0.05)
+            padj_threshold: Keep genes with adjusted p-value below this (default: 0.05)
             lfc_threshold: Minimum absolute log2 fold change for filtering (default: 0.0)
         """
 
@@ -3988,7 +3988,8 @@ def de_analysis_expert(
                 else ""
             )
             if padj_threshold < 1.0 and "padj" in results_df.columns:
-                results_df = results_df[results_df["padj"] <= padj_threshold]
+                # Strict, as the DE counts (padj < alpha): the same genes
+                results_df = results_df[results_df["padj"] < padj_threshold]
             if lfc_threshold > 0 and "log2FoldChange" in results_df.columns:
                 results_df = results_df[
                     abs(results_df["log2FoldChange"]) >= lfc_threshold
@@ -4107,7 +4108,7 @@ def de_analysis_expert(
                 code_template=(
                     "# Extract and export DE results\n"
                     "results_df = adata.uns[{{ de_results_key | string | repr }}]['results_df'].copy()\n"
-                    "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] <= {{ padj_threshold }}]\n{% endif %}"
+                    "{% if padj_threshold < 1.0 %}results_df = results_df[results_df['padj'] < {{ padj_threshold }}]\n{% endif %}"
                     "{% if lfc_threshold > 0 %}results_df = results_df[abs(results_df['log2FoldChange']) >= {{ lfc_threshold }}]\n{% endif %}"
                     "results_df = results_df.sort_values('padj')\n"
                     "Path({{ output_path | string | repr }}).parent.mkdir(parents=True, exist_ok=True)\n"
