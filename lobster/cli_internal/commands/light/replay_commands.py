@@ -1299,6 +1299,43 @@ def _omits_outdated_step(notebook: Path) -> bool:
     return False
 
 
+def _not_replayed_steps(notebook: Path) -> List[str]:
+    """The steps that read two or more modalities, as ``step N: tool``: the export
+    record lists them and each one's code cell carries the same mark. Either is
+    enough, so removing one does not hide the other."""
+    from lobster.core.notebooks.exporter import NOT_REPLAYED_STEPS_KEY
+
+    entries = _manifest(notebook).get(NOT_REPLAYED_STEPS_KEY)
+    entries = list(entries) if isinstance(entries, list) else []
+    try:
+        cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    except (OSError, ValueError, KeyError, TypeError):
+        cells = []  # unreadable: the run refuses it
+    for cell in cells if isinstance(cells, list) else []:
+        marks = (
+            (cell.get("metadata") or {}).get("lobster")
+            if isinstance(cell, dict)
+            else None
+        )
+        if isinstance(marks, dict) and NOT_REPLAYED_STEPS_KEY in marks:
+            entries.append(marks[NOT_REPLAYED_STEPS_KEY])
+    found = []
+    for entry in entries:
+        entry = entry if isinstance(entry, dict) else {}
+        step, tool = entry.get("step"), entry.get("tool")
+        # the notebook is not trusted: only a plain number and tool name are shown
+        named = (
+            f"step {step}: {tool}"
+            if type(step) is int
+            and isinstance(tool, str)
+            and re.fullmatch(r"[\w.\- ]{1,80}", tool)
+            else "a step"
+        )
+        if named not in found:
+            found.append(named)
+    return found
+
+
 def _unrun_custom_cells(notebook: Path) -> List[int]:
     """The cells, numbered from 1, that show custom code of an earlier session
     and are not run: markdown cells that start with the exporter's label."""
@@ -1952,6 +1989,27 @@ def verify_notebook(
                         "was not run."
                     ),
                     None,
+                    RefusalOrigin.PRODUCT,
+                ),
+            )
+        )
+    not_replayed = _not_replayed_steps(notebook)
+    if not_replayed:
+        # no cell binds the modalities these steps read: the run would stop there
+        return finish(
+            report(
+                base_policy,
+                verification_status=VerificationStatus.NOT_RUN,
+                preflight=Preflight.REFUSED,
+                execution=Execution.NOT_RUN,
+                verdict=Verdict.REFUSED,
+                refusal=Refusal(
+                    h(
+                        "This notebook has steps that read two or more modalities "
+                        "({steps}), and a replay starts from one input; it was not "
+                        "run."
+                    ).format(steps=", ".join(not_replayed)),
+                    ", ".join(not_replayed),
                     RefusalOrigin.PRODUCT,
                 ),
             )

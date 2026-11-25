@@ -401,6 +401,10 @@ OMITTED_CUSTOM_CODE_KEY = "omitted_custom_code"
 # export record lists those steps under OUTDATED_STEPS_KEY.
 OUTDATED_TEMPLATE_REASON = "outdated_template"
 OUTDATED_STEPS_KEY = "outdated_steps"
+# The export record's list of the steps that read two or more modalities, as
+# {"step": <step number>, "tool": <step label>}; the code cell of each carries
+# the same entry under this key (under "lobster"). Replay refuses either.
+NOT_REPLAYED_STEPS_KEY = "not_replayed_steps"
 UNRECORDED_INPUT_NOTE = (
     "*Input not recorded: this step runs on the result of the cells above.*"
 )
@@ -441,6 +445,8 @@ class NotebookExporter:
         self.omitted_custom_code: List[int] = []
         # Set by each export: the steps left out for a template it does not write
         self.outdated_steps: List[int] = []
+        # Set by each export: the steps that read two or more modalities
+        self.not_replayed_steps: List[Dict[str, Any]] = []
         logger.debug("Initialized NotebookExporter with IR support")
 
     def _migrated_origin(self) -> Optional[Dict[str, Any]]:
@@ -635,6 +641,13 @@ class NotebookExporter:
             for idx, (activity, _) in enumerate(exportable_pairs, start=1)
             if id(activity) in outdated
         ]
+        # a replay starts from one input: no cell binds what these steps read
+        not_replayed = {
+            id(activity): {"step": idx, "tool": self._step_label(activity)}
+            for idx, (activity, _) in enumerate(exportable_pairs, start=1)
+            if self._reads_modalities(activity)
+        }
+        self.not_replayed_steps = list(not_replayed.values())
         exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
         excluded_activity_types = [
             self._omitted_label(activity)
@@ -804,6 +817,10 @@ class NotebookExporter:
                 # replay names each figure it drew without comparing it
                 label = f"Step {idx}: {self._step_label(activity)}"
                 code_cell.metadata["lobster"] = {FIGURE_CELL_KEY: label}
+            if id(activity) in not_replayed:
+                code_cell.metadata.setdefault("lobster", {})[NOT_REPLAYED_STEPS_KEY] = (
+                    not_replayed[id(activity)]
+                )
             notebook.cells.append(code_cell)
 
             after(position)
@@ -909,6 +926,12 @@ class NotebookExporter:
         """The IR's execution context ({} if absent or not a mapping)."""
         context = cls._ir_field(activity, "execution_context")
         return context if isinstance(context, dict) else {}
+
+    @classmethod
+    def _reads_modalities(cls, activity: Dict[str, Any]) -> int:
+        """How many modalities the step reads when more than one, else 0."""
+        reads = cls._ir_context(activity).get("reads_modalities")
+        return reads if type(reads) is int and reads > 1 else 0
 
     # Fixed labels for an excluded step (never the raw metadata strings).
     _EXCLUDED_STEP_TYPES = frozenset({"execute_custom_code", "custom_code_execution"})
@@ -1263,6 +1286,10 @@ code recorded for it.
         if self.outdated_steps:
             record["data_integrity_manifest"][OUTDATED_STEPS_KEY] = list(
                 self.outdated_steps
+            )
+        if self.not_replayed_steps:
+            record["data_integrity_manifest"][NOT_REPLAYED_STEPS_KEY] = list(
+                self.not_replayed_steps
             )
         origin = self._migrated_origin()
         if origin is not None:
@@ -2152,8 +2179,8 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                     value_str = str(value)
                 doc_content += f"- `{key}`: {value_str}\n"
 
-        reads = self._ir_context(activity).get("reads_modalities")
-        if type(reads) is int and reads > 1:
+        reads = self._reads_modalities(activity)
+        if reads:
             note = h(
                 "Not replayed: this step reads {n} modalities, and a replay starts "
                 "from one input."

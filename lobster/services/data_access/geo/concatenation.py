@@ -391,6 +391,10 @@ class SampleConcatenator:
             # the raw file saved with it, so the merge itself is not a notebook cell.
             concat_ir.exportable = False
             concat_ir.replayable = False
+            # A replay starts from that file, so the merge is in its input, not
+            # a change the replay misses.
+            for key in ("reads_modalities", "replay_incomplete"):
+                concat_ir.execution_context.pop(key, None)
 
             provenance_info = {
                 **analysis_metadata,
