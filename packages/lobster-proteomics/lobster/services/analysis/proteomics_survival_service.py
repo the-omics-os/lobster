@@ -982,6 +982,10 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
                         event[prot_valid][~high_mask],
                         event[prot_valid][high_mask],
                     )
+                    # All values on one side of the median, or no events: no
+                    # p-value, so not tested and kept out of the FDR correction
+                    if np.isnan(lr_result.p_value):
+                        continue
 
                     results.append(
                         {
@@ -1011,6 +1015,7 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
 
             stats = {
                 "n_proteins_tested": len(results),
+                "proteins_processed": len(proteins),
                 "n_significant": len(significant),
                 "fdr_threshold": fdr_threshold,
                 "significant_proteins": [r["protein"] for r in significant],

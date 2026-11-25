@@ -48,6 +48,7 @@ from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.proteomics_network_service import WGCNALiteService
 from lobster.services.analysis.proteomics_survival_service import (
+    DEFAULT_MIN_SAMPLES,
     ProteomicsSurvivalService,
 )
 from lobster.utils.logger import get_logger
@@ -546,7 +547,15 @@ def biomarker_discovery_expert(
                 f"Successfully screened survival biomarkers in '{modality_name}'!\n\n"
             )
             response += "**Batch Kaplan-Meier Biomarker Screening Results:**\n"
-            response += f"- Proteins tested: {stats['n_proteins_tested']}\n"
+            tested, total = stats["n_proteins_tested"], stats["proteins_processed"]
+            if tested == total:
+                response += f"- Proteins tested: {tested}\n"
+            else:
+                response += (
+                    f"- Proteins tested: {tested} of {total}; not tested: "
+                    f"{total - tested} (fewer than {DEFAULT_MIN_SAMPLES} samples with a value, or no "
+                    "p-value: all values on one side of the median, or no events)\n"
+                )
             response += f"- Significant biomarkers (FDR < {fdr_threshold}): {stats['n_significant']}\n"
             response += f"- Stratification method: {stratify_method}\n"
 
