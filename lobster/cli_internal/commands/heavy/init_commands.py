@@ -4692,11 +4692,13 @@ def init_impl(
                 include_lamin=bool(lamin),
             )
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):  # Ctrl-C or Ctrl-D at a prompt
         console.print(h("\n[yellow]⚠️  Configuration cancelled[/yellow]"))
         raise typer.Exit(1)
     except Exception as e:
         console.print(
-            h("\n[red]❌ Configuration failed: {str}[/red]").format(str=str(e))
+            h("\n[red]❌ Configuration failed: {str}[/red]").format(
+                str=str(e) or type(e).__name__
+            )
         )
         raise typer.Exit(1)

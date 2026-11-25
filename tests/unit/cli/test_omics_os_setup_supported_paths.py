@@ -765,7 +765,7 @@ ACCESS_SENT = (
 )
 
 
-def run_classic(monkeypatch, capsys, answers):
+def run_classic(monkeypatch, capsys, answers, exit_code=0):
     """Drive the classic wizard; an answer that is an exception is raised."""
     asked = []
     answers = iter(answers)
@@ -790,7 +790,7 @@ def run_classic(monkeypatch, capsys, answers):
     try:
         init_commands.init_impl(**options)
     except typer.Exit as error:
-        assert error.exit_code == 0
+        assert error.exit_code == exit_code
     return asked, capsys.readouterr().out
 
 
@@ -867,6 +867,20 @@ def test_classic_cancel_on_the_question_returns_to_the_providers(
     assert ACCESS_SENT not in " ".join(out.split())
     assert len([p for p, _ in asked if "Choose provider" in p]) == 2
     assert saved_provider(tmp_path) == "anthropic"
+
+
+@pytest.mark.parametrize("abort", [EOFError(), KeyboardInterrupt()])
+def test_classic_end_of_input_at_the_providers_cancels(monkeypatch, capsys, abort):
+    _, out = run_classic(monkeypatch, capsys, ["1", abort], exit_code=1)
+
+    assert "Configuration cancelled" in out
+    assert "Configuration failed" not in out
+
+
+def test_classic_failure_without_a_message_names_the_error(monkeypatch, capsys):
+    _, out = run_classic(monkeypatch, capsys, ["1", ValueError()], exit_code=1)
+
+    assert "Configuration failed: ValueError" in out
 
 
 def test_access_request_prints_the_address_when_the_browser_fails(monkeypatch, capsys):
