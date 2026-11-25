@@ -71,12 +71,42 @@ def test_a_constant_protein_is_not_tested_nor_corrected():
     assert results["P3"]["fdr"] == pytest.approx(want[p3])
 
 
-def _reply(tmp_path, adata):
+def test_a_protein_with_no_events_is_tested_with_p_one():
+    adata = _patients()
+    adata.obs["E"] = 0.0
+    out, stats, _ = ProteomicsSurvivalService().batch_kaplan_meier(
+        adata, duration_col="T", event_col="E"
+    )
+
+    results = {r["protein"]: r for r in out.uns["batch_kaplan_meier"]["results"]}
+    assert sorted(results) == ["P0", "P3"]
+    assert stats["n_proteins_tested"] == 2
+    # lifelines gives p = 1.0 with no events; Benjamini-Hochberg of [1, 1] is [1, 1]
+    for prot, j in (("P0", 0), ("P3", 3)):
+        assert _logrank_p(adata, j) == 1.0
+        assert results[prot]["p_value"] == 1.0
+        assert results[prot]["fdr"] == 1.0
+
+
+def test_unknown_protein_names_are_not_counted_as_untested():
+    out, stats, _ = ProteomicsSurvivalService().batch_kaplan_meier(
+        _patients(),
+        duration_col="T",
+        event_col="E",
+        proteins=["P0", "NOPE", "P1", "P3", "ALSO_NOPE"],
+    )
+
+    assert stats["n_proteins_tested"] == 2
+    assert stats["proteins_processed"] == 3
+    assert stats["proteins_not_found"] == ["NOPE", "ALSO_NOPE"]
+
+
+def _reply(tmp_path, adata, **kw):
     dm = DataManagerV2(workspace_path=tmp_path / "ws")
     dm.store_modality("prot", adata)
     return factory_tools(biomarker_discovery_expert, BIOMARKER, dm)[
         "find_survival_biomarkers"
-    ].invoke({"modality_name": "prot", "time_column": "T", "event_column": "E"})
+    ].invoke({"modality_name": "prot", "time_column": "T", "event_column": "E", **kw})
 
 
 def test_the_reply_counts_the_proteins_tested_and_those_left_untested(tmp_path):
@@ -84,9 +114,27 @@ def test_the_reply_counts_the_proteins_tested_and_those_left_untested(tmp_path):
 
     assert (
         "- Proteins tested: 2 of 4; not tested: 2 (fewer than 20 samples with a "
-        "value, or no p-value: all values on one side of the median, or no "
-        "events)\n" in reply
+        "value, or no p-value: at least half the samples share the highest "
+        "value)\n" in reply
     ), reply
+    assert "no events" not in reply
+    assert "not found" not in reply
+
+
+def test_the_reply_names_unknown_proteins(tmp_path):
+    reply = _reply(
+        tmp_path, _patients(), proteins=["P0", "NOPE", "P1", "P3", "ALSO_NOPE"]
+    )
+
+    assert "- Proteins tested: 2 of 3; not tested: 1 (" in reply, reply
+    assert "- Not found in the data: NOPE, ALSO_NOPE\n" in reply, reply
+
+
+def test_the_reply_refuses_when_no_protein_is_found(tmp_path):
+    reply = _reply(tmp_path, _patients(), proteins=["NOPE"])
+
+    assert "None of the specified proteins were found" in reply, reply
+    assert "Proteins tested" not in reply
 
 
 def test_the_reply_counts_every_protein_when_all_were_tested(tmp_path):

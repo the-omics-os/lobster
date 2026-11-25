@@ -952,6 +952,13 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
             # Get proteins to analyze
             if proteins is None:
                 proteins = adata_batch.var_names.tolist()
+            not_found = [p for p in proteins if p not in adata_batch.var_names]
+            proteins = [p for p in proteins if p in adata_batch.var_names]
+            if not_found and not proteins:
+                raise ProteomicsSurvivalError(
+                    f"None of the specified proteins were found in the data: "
+                    f"{', '.join(not_found)}"
+                )
 
             # Get survival data
             duration = adata_batch.obs[duration_col].values
@@ -982,8 +989,9 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
                         event[prot_valid][~high_mask],
                         event[prot_valid][high_mask],
                     )
-                    # All values on one side of the median, or no events: no
-                    # p-value, so not tested and kept out of the FDR correction
+                    # At least half the samples share the highest value, so the
+                    # high group is empty: no p-value, so not tested and kept
+                    # out of the FDR correction
                     if np.isnan(lr_result.p_value):
                         continue
 
@@ -1016,6 +1024,7 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
             stats = {
                 "n_proteins_tested": len(results),
                 "proteins_processed": len(proteins),
+                "proteins_not_found": not_found,
                 "n_significant": len(significant),
                 "fdr_threshold": fdr_threshold,
                 "significant_proteins": [r["protein"] for r in significant],

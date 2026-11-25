@@ -554,8 +554,10 @@ def biomarker_discovery_expert(
                 response += (
                     f"- Proteins tested: {tested} of {total}; not tested: "
                     f"{total - tested} (fewer than {DEFAULT_MIN_SAMPLES} samples with a value, or no "
-                    "p-value: all values on one side of the median, or no events)\n"
+                    "p-value: at least half the samples share the highest value)\n"
                 )
+            if stats["proteins_not_found"]:
+                response += f"- Not found in the data: {', '.join(stats['proteins_not_found'])}\n"
             response += f"- Significant biomarkers (FDR < {fdr_threshold}): {stats['n_significant']}\n"
             response += f"- Stratification method: {stratify_method}\n"
 
