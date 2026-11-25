@@ -783,7 +783,18 @@ def config_provider_switch(
     Returns:
         Summary string for conversation history, or None
     """
-    new_provider = provider_name.lower()
+    from lobster.config.providers import ProviderRegistry
+
+    valid = ProviderRegistry.get_provider_names()
+    # "Ollama Cloud", "ollama_cloud" and "ollama-cloud" all name ollama-cloud.
+    new_provider = "-".join((provider_name or "").lower().replace("_", " ").split())
+    if new_provider not in valid:
+        output.print(
+            h(
+                "[red]Unknown provider: {name}. Valid providers: {valid}. Nothing was changed.[/red]"
+            ).format(name=provider_name or "", valid=", ".join(sorted(valid)))
+        )
+        return None
 
     if save:
         output.print(

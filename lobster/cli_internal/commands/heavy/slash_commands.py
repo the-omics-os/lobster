@@ -2918,12 +2918,10 @@ when they are started by agents or analysis workflows.
         elif parts[1] == "provider":
             if len(parts) == 2 or parts[2] == "list":
                 return config_provider_list(client, output)
-            elif parts[2] == "switch":
-                provider_name = parts[3] if len(parts) > 3 else None
-                save = "--save" in parts
-                return config_provider_switch(client, output, provider_name, save)
             else:
-                provider_name = parts[2] if len(parts) > 2 else None
+                # Every word is part of the name: "ollama cloud" is ollama-cloud.
+                words = parts[3:] if parts[2] == "switch" else parts[2:]
+                provider_name = " ".join(w for w in words if w != "--save")
                 save = "--save" in parts
                 return config_provider_switch(client, output, provider_name, save)
         elif parts[1] == "model":

@@ -26,6 +26,19 @@ from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
 logger = logging.getLogger(__name__)
 
 
+def _missing_langchain_ollama() -> str:
+    """One short line: the uv tool reinstall command lists every extra and runs long."""
+    from lobster.core.uv_tool_env import is_uv_tool_env
+
+    if is_uv_tool_env():
+        fix = "lobster init (choose Ollama)"
+    else:
+        from lobster.core.component_registry import get_install_command
+
+        fix = get_install_command("ollama", is_extra=True)
+    return f"Local Ollama support (langchain-ollama) is not installed. Run: {fix}"
+
+
 class OllamaProvider(ILLMProvider):
     """
     Provider for local Ollama models.
@@ -93,12 +106,7 @@ class OllamaProvider(ILLMProvider):
         try:
             import langchain_ollama  # noqa: F401
         except ImportError:
-            from lobster.core.component_registry import get_install_command
-
-            cmd = get_install_command("ollama", is_extra=True)
-            raise ImportError(
-                f"langchain-ollama package not installed. Install with: {cmd}"
-            )
+            raise ImportError(_missing_langchain_ollama())
 
     def is_configured(self) -> bool:
         """
@@ -303,12 +311,7 @@ class OllamaProvider(ILLMProvider):
         try:
             from langchain_ollama import ChatOllama
         except ImportError:
-            from lobster.core.component_registry import get_install_command
-
-            cmd = get_install_command("ollama", is_extra=True)
-            raise ImportError(
-                f"langchain-ollama package not installed. " f"Install with: {cmd}"
-            )
+            raise ImportError(_missing_langchain_ollama())
 
         # Build parameters for ChatOllama
         ollama_params = {

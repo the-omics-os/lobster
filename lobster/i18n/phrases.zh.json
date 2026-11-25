@@ -2256,5 +2256,6 @@
   "A message from Lobster was too large to show and was skipped.": "来自 Lobster 的一条消息过大，无法显示，已跳过。",
   "[red]Setup could not save your answers: {e}[/red]": "[red]设置无法保存你的回答：{e}[/red]",
   "Try saving again?": "要再次尝试保存吗？",
-  "Run lobster init to start again.": "运行 lobster init 重新开始设置。"
+  "Run lobster init to start again.": "运行 lobster init 重新开始设置。",
+  "[red]Unknown provider: {name}. Valid providers: {valid}. Nothing was changed.[/red]": "[red]未知的提供方：{name}。可用的提供方：{valid}。未做任何更改。[/red]"
 }
