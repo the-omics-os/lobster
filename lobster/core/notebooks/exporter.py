@@ -806,7 +806,16 @@ class NotebookExporter:
                 )
                 kept_any = kept_any or written_back is not None
             else:
-                code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
+                # A file import reads input_data only as the notebook's first
+                # step (_has_download_activity); a later one reads its own file.
+                own_file = (
+                    {"read_from": ir.parameters.get("file_path")}
+                    if idx > 1 and ir.operation in self._READS_INPUT_WHEN_FIRST
+                    else {}
+                )
+                code_cell = self._ir_to_code_cell(
+                    ir, validate=validate_syntax, **own_file
+                )
                 binding = self._result_binding(activity)
                 if binding:
                     code_cell.source += (
@@ -932,6 +941,10 @@ class NotebookExporter:
         """How many modalities the step reads when more than one, else 0."""
         reads = cls._ir_context(activity).get("reads_modalities")
         return reads if type(reads) is int and reads > 1 else 0
+
+    # Imports whose step reads input_data; rendered with ``read_from`` (their
+    # recorded file) when another step is the notebook's input.
+    _READS_INPUT_WHEN_FIRST = frozenset({"transcriptomics.import_bulk_counts"})
 
     # Fixed labels for an excluded step (never the raw metadata strings).
     _EXCLUDED_STEP_TYPES = frozenset({"execute_custom_code", "custom_code_execution"})
@@ -1121,7 +1134,7 @@ class NotebookExporter:
         # input load that the earlier cells depend on.
         self_loading_ops = {
             "peptidomics.import_sequences",
-            "transcriptomics.import_bulk_counts",
+            *self._READS_INPUT_WHEN_FIRST,
         }
         return bool(exportable_pairs) and (
             exportable_pairs[0][1].operation in self_loading_ops
@@ -2189,7 +2202,9 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 
         return new_markdown_cell(doc_content)
 
-    def _ir_to_code_cell(self, ir: AnalysisStep, validate: bool = True) -> NotebookNode:
+    def _ir_to_code_cell(
+        self, ir: AnalysisStep, validate: bool = True, **overrides: Any
+    ) -> NotebookNode:
         """
         Convert AnalysisStep IR directly to executable code cell.
 
@@ -2207,7 +2222,7 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
             ValueError: If IR rendering fails
         """
         try:
-            code = ir.render()
+            code = ir.render(**overrides)
         except Exception as e:
             logger.error(f"Failed to render code for {ir.operation}: {e}")
             raise ValueError(f"Failed to render IR for {ir.operation}: {e}") from e

@@ -114,13 +114,18 @@ SUBCLUSTER_STATS_KEYS = (
 
 
 def _bulk_count_table_ir(
+    path: Path,
     source: str,
     gene_id_column: str,
     genes_axis: str,
     genes_axis_used: Optional[str],
     sep: Optional[str],
 ) -> AnalysisStep:
-    """IR for a count file import: read ``input_data`` as the tool read the file."""
+    """IR for a count file import: read ``input_data`` as the tool read the file.
+
+    The exporter renders ``read_from`` (the recorded ``file_path``) when this
+    import is not the notebook's input, so a later import reads its own file.
+    """
     return AnalysisStep(
         operation="transcriptomics.import_bulk_counts",
         tool_name="import_bulk_counts",
@@ -128,7 +133,7 @@ def _bulk_count_table_ir(
         library="lobster",
         code_template=(
             "adata = read_bulk_count_table(\n"
-            "    input_data,\n"
+            "    {{ (read_from | string | repr) if read_from else 'input_data' }},\n"
             "    source={{ source | repr }},\n"
             "    gene_id_column={{ gene_id_column | repr }},\n"
             "    genes_axis={{ genes_axis_used | repr }},\n"
@@ -139,6 +144,7 @@ def _bulk_count_table_ir(
             "from lobster.services.analysis.bulk_import import read_bulk_count_table"
         ],
         parameters={
+            "file_path": str(path.resolve()),
             "source": source,
             "gene_id_column": gene_id_column,
             "genes_axis": genes_axis,
@@ -1553,7 +1559,7 @@ Please check:
                 # The step reads the notebook's input file the way the tool read
                 # this one; the export lists this file as the one loaded.
                 ir = _bulk_count_table_ir(
-                    detected_source, gene_id_column, genes_axis, axis_used, sep
+                    path, detected_source, gene_id_column, genes_axis, axis_used, sep
                 )
                 loaded_file = data_manager.note_file_import(modality_name, path)
             else:

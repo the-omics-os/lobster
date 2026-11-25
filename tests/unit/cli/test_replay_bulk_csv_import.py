@@ -145,3 +145,64 @@ def test_the_export_lists_the_table_as_the_file_loaded(tmp_path, monkeypatch):
     assert "read_h5ad(input_data)" not in code
     assert "genes_axis='columns'" in code
     assert hashlib.sha256(source.read_bytes()).hexdigest() in text
+
+
+def _cells_until_last_import(notebook, input_data):
+    """Run the notebook's code cells (``input_data`` as given) through its last
+    count-table import; return the ``adata`` each import cell left."""
+    cells = [c for c in json.loads(open(notebook).read())["cells"]]
+    code = [c for c in cells if c["cell_type"] == "code"]
+    imports = [
+        i
+        for i, c in enumerate(code)
+        if "read_bulk_count_table(" in "".join(c["source"])
+    ]
+    scope, made = {}, []
+    for i, cell in enumerate(code[: imports[-1] + 1]):
+        exec("".join(cell["source"]), scope)  # nosec B102 - the notebook under test
+        if "parameters" in cell["metadata"].get("tags", []):
+            scope["input_data"] = str(input_data)
+        if i in imports:
+            made.append(scope["adata"].copy())
+    return made
+
+
+@pytest.mark.parametrize("first", ["table", "h5ad"])
+def test_a_later_table_import_reads_its_own_file(tmp_path, monkeypatch, first):
+    """Two files in one session (a table or an h5ad, then a table holding three
+    times its counts): run outside a replay, the notebook builds the later
+    modality from the later file, never from the notebook's input."""
+    monkeypatch.chdir(tmp_path)
+    inputs = tmp_path / "in"
+    inputs.mkdir()
+    counts = _counts()
+    a = _write(counts.copy(), inputs, "genes_rows")
+    b = inputs / "b.csv"
+    (counts * 3).rename_axis("gene_id").to_csv(b)
+    dm = DataManagerV2(workspace_path=tmp_path / "ws")
+    tools = factory_tools(tx.transcriptomics_expert, tx.__name__, dm)
+    if first == "table":
+        reply = tools["import_bulk_counts"].invoke(
+            {"modality_name": "a", "file_path": str(a)}
+        )
+        assert "Successfully imported" in reply, reply
+    else:
+        import anndata
+
+        a = inputs / "a.h5ad"
+        anndata.AnnData(counts.T.astype(np.float32)).write_h5ad(a)
+        dm.load_modality("a", a, adapter="transcriptomics_bulk")
+    reply = tools["import_bulk_counts"].invoke(
+        {"modality_name": "b", "file_path": str(b)}
+    )
+    assert "Successfully imported" in reply, reply
+    notebook = dm.export_notebook("two", "two files", filter_strategy="successful")
+
+    made = _cells_until_last_import(notebook, a)
+
+    # known answer: the later file's counts, samples on rows (numpy, not the reader)
+    expected = (counts.to_numpy() * 3).T
+    np.testing.assert_array_equal(np.asarray(made[-1].X), expected)
+    assert list(made[-1].obs_names) == SAMPLES
+    if first == "table":  # the notebook's input stays the first file
+        np.testing.assert_array_equal(np.asarray(made[0].X), counts.to_numpy().T)
