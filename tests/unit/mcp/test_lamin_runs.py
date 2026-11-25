@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from lobster.config import global_config
 from lobster.core import projects
 from tests.unit.core.catalog.test_lamin_project_runs import READBACK, _run
 from tests.unit.mcp.replay_input import make_input
@@ -36,6 +37,13 @@ DATA = Path(__file__).parent / "data"
 NAMES = ["first", "second", "third"]
 
 
+def _own_config(env: dict) -> dict:
+    """A child process uses this test's config folder, never the user's: its
+    project registry (projects.json) is the one this process reads."""
+    env["XDG_CONFIG_HOME"] = str(global_config.CONFIG_DIR.parent)
+    return env
+
+
 class LaminHost(Host):
     """``Host`` started in an existing folder, with the research agents on the path."""
 
@@ -51,6 +59,7 @@ class LaminHost(Host):
         env["PYTHONPATH"] = os.pathsep.join(
             [str(ROOT / "packages" / "lobster-research"), env.get("PYTHONPATH", "")]
         )
+        _own_config(env)
         self.proc = subprocess.Popen(  # nosec B603
             [sys.executable, "-c", ENTRY],
             stdin=subprocess.PIPE,
@@ -95,6 +104,7 @@ def by_a_hosts_init(tmp_path: Path):
         ),
     )
     env.pop("LOBSTER_LAMIN", None)
+    _own_config(env)
     done = subprocess.run(  # nosec B603
         [
             sys.executable,
