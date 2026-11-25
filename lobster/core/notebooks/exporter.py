@@ -1626,11 +1626,14 @@ Recorded when this notebook was exported, for your own checks.
                             ir = ir_obj
                         else:
                             ir = AnalysisStep.from_dict(ir_obj)
-                        code = ir.render()
-                        logger.debug("Using IR for data loading cell")
-                        return new_code_cell(code + ml_reset)
                     except Exception as e:
                         logger.warning(f"Failed to use IR for data loading: {e}")
+                        continue
+                    # A template that does not render fails the export, as for
+                    # any analysis step: the stock loader would not be this load.
+                    code = self._ir_to_code_cell(ir, validate=False).source
+                    logger.debug("Using IR for data loading cell")
+                    return new_code_cell(code + ml_reset)
 
         # Fallback to hardcoded cell if no IR found
         logger.debug("Using fallback hardcoded data loading cell")
@@ -1941,23 +1944,25 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 ir = ir_obj
             else:
                 ir = AnalysisStep.from_dict(ir_obj)
-            code = ir.render()
-            path_lines = [
-                line for line in code.splitlines() if line.startswith("output_path = ")
-            ]
-            if not path_lines:
-                # Not the standard saver; keep its code as is.
-                return new_code_cell(code)
-            # Keep the session's file name and compression, but write through
-            # the same guarded save as the fallback.
-            compression = ir.parameters.get("compression")
-            if compression in (None, "", "none"):
-                compression = None
-            logger.debug("Using IR for data saving cell")
-            return new_code_cell(_guarded_save_code(path_lines[0], compression))
         except Exception as e:
             logger.warning(f"Failed to use IR for data saving: {e}")
             return None
+        # A template that does not render fails the export, as for any analysis
+        # step: the stock save would not write what the session saved.
+        code = self._ir_to_code_cell(ir, validate=False).source
+        path_lines = [
+            line for line in code.splitlines() if line.startswith("output_path = ")
+        ]
+        if not path_lines:
+            # Not the standard saver; keep its code as is.
+            return new_code_cell(code)
+        # Keep the session's file name and compression, but write through
+        # the same guarded save as the fallback.
+        compression = ir.parameters.get("compression")
+        if compression in (None, "", "none"):
+            compression = None
+        logger.debug("Using IR for data saving cell")
+        return new_code_cell(_guarded_save_code(path_lines[0], compression))
 
     def _create_data_saving_cell(
         self, emitted_irs: Optional[List[AnalysisStep]] = None

@@ -173,6 +173,28 @@ def test_syntax_error_fails_the_export_and_writes_no_notebook(data_manager):
     assert not (data_manager.workspace_path / "notebooks" / "nb.ipynb").exists()
 
 
+@pytest.mark.parametrize("activity_type", ["load_dataset", "save_dataset"])
+def test_unrenderable_load_or_save_fails_the_export(data_manager, activity_type):
+    """Like an analysis step, a load or save whose code cannot be written stops
+    the export instead of being replaced by the stock cell."""
+    tracker = ProvenanceTracker()
+    bad = _step("adata = read({{ missing.attr }})")
+    tracker.create_activity(
+        activity_type=activity_type,
+        agent="test",
+        parameters={"name": "m"},
+        ir=bad,
+    )
+    tracker.create_activity(
+        activity_type="step_0", agent="test", ir=_step("adata.uns['x'] = 1")
+    )
+
+    with pytest.raises(ValueError, match="Failed to render IR for test.step"):
+        NotebookExporter(tracker, data_manager).export("nb")
+
+    assert not (data_manager.workspace_path / "notebooks" / "nb.ipynb").exists()
+
+
 # --- the fallback save keeps data and records the loss ----------------------
 
 
