@@ -375,15 +375,17 @@ Available modalities: {self.data_manager.list_modalities()}
             ),
         }
 
-        # Code template shows what happened (not executable Python)
-        code_template = f"""# Claude Agent SDK Delegation
-# Task: {task[:100]}
+        # Code template shows what happened (not executable Python). The texts
+        # are template values rendered as comment lines, never template source.
+        code_template = """# Claude Agent SDK Delegation
+# Task:
+{{ task[:100] | comment }}
 #
 # This operation delegated reasoning to a Claude SDK sub-agent
 # with read-only access to Lobster workspace data.
 #
 # Result summary:
-# {result[:500]}
+{{ result | comment }}
 """
 
         return AnalysisStep(
@@ -393,7 +395,11 @@ Available modalities: {self.data_manager.list_modalities()}
             library="claude_agent_sdk",
             code_template=code_template,
             imports=[],  # No imports for delegation
-            parameters={"task": task, "description": description},
+            parameters={
+                "task": task,
+                "description": description,
+                "result": result[:500],
+            },
             parameter_schema=parameter_schema,
             input_entities=[],
             output_entities=[],

@@ -87,6 +87,16 @@ _JINJA_ENV.filters["repr"] = _python_literal
 _JINJA_ENV.filters["tojson"] = _python_literal
 
 
+def _comment(value: Any) -> str:
+    """Render text as Python comment lines: every line, split at each break
+    ``str.splitlines`` knows (\\r, \\x0b, \\x85, \\u2028 among them), starts
+    with ``# `` so no part of it runs."""
+    return "\n".join("# " + line for line in str(value).splitlines()) or "#"
+
+
+_JINJA_ENV.filters["comment"] = _comment
+
+
 @dataclass
 class ParameterSpec:
     """
