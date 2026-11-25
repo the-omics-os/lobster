@@ -527,6 +527,35 @@ def _invalid_de_results_text(key: str, value: Any, expected: str) -> str:
     return f"Invalid DE results format at {key!r}.{expected}"
 
 
+def _smallest_padj_genes(table: pd.DataFrame, limit: int) -> List[str]:
+    """The ``limit`` genes with the smallest padj, ties by larger |LFC|, then name."""
+    lfc_col = next(
+        (
+            c
+            for c in ["log2FoldChange", "logFC", "mean_log2FC", "log2FC", "lfc"]
+            if c in table.columns
+        ),
+        None,
+    )
+    ranked = pd.DataFrame(
+        {
+            "padj": pd.to_numeric(table["padj"], errors="coerce").to_numpy(),
+            "abs_lfc": (
+                pd.to_numeric(table[lfc_col], errors="coerce").abs().to_numpy()
+                if lfc_col
+                else 0.0
+            ),
+            "gene": table.index.astype(str),
+        }
+    ).sort_values(
+        ["padj", "abs_lfc", "gene"],
+        ascending=[True, False, True],
+        na_position="last",
+        kind="mergesort",
+    )
+    return table.index[ranked.index[:limit]].tolist()
+
+
 def _de_result_keys(adata) -> List[str]:
     """Include explicit historical choices, but never infer their chronology."""
     return sorted(
@@ -3102,15 +3131,20 @@ def de_analysis_expert(
                                 de_df["padj"] < 0.05
                             ].index.tolist()
                             if significant_genes:
-                                gene_list = significant_genes[:500]
+                                gene_list = significant_genes
                                 source = (
                                     f"- Genes from DE result '{selected_key}': padj "
                                     f"< 0.05, {len(significant_genes):,} genes"
                                 )
-                                if len(gene_list) < len(significant_genes):
+                                if len(significant_genes) > 500:
+                                    # Table order is gene order, so a positional
+                                    # cut would be an arbitrary subset
+                                    gene_list = _smallest_padj_genes(
+                                        de_df[de_df["padj"] < 0.05], 500
+                                    )
                                     source += (
-                                        f" (the first {len(gene_list):,} in table "
-                                        "order were used)"
+                                        f" (the {len(gene_list):,} with the smallest "
+                                        "adjusted p-value were used)"
                                     )
                                 source += "\n"
                                 logger.info(

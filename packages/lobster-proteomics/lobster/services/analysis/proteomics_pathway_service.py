@@ -11,6 +11,7 @@ All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance trackin
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
+import pandas as pd
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
@@ -54,18 +55,21 @@ class ProteomicsPathwayService:
 
     def _extract_gene_symbols(
         self, adata: anndata.AnnData, max_genes: int = 500
-    ) -> List[str]:
+    ) -> Tuple[List[str], int]:
         """
         Extract gene symbols from DE significant results.
 
         Cleans protein names by stripping UniProt IDs and handling protein group format.
+        Beyond ``max_genes``, the genes with the smallest adjusted p-value are kept,
+        ties broken by larger |log2FC|, then by name; a gene from several
+        comparisons ranks by its best one.
 
         Args:
             adata: AnnData with differential_expression results in uns
             max_genes: Maximum number of genes to extract
 
         Returns:
-            List of cleaned gene symbol strings
+            The cleaned gene symbols, and the number of distinct significant ones
         """
         de_data = adata.uns.get("differential_expression", {})
         significant_results = de_data.get("significant_results", [])
@@ -76,7 +80,7 @@ class ProteomicsPathwayService:
                 "Run find_differential_proteins first."
             )
 
-        gene_symbols = set()
+        rows = []
         for result in significant_results:
             protein_name = result.get("protein", "")
             if not protein_name:
@@ -95,13 +99,31 @@ class ProteomicsPathwayService:
                 cleaned = cleaned.rsplit("_", 1)[0]
 
             if cleaned:
-                gene_symbols.add(cleaned)
+                rows.append(
+                    {
+                        "gene": cleaned,
+                        "padj": result.get("p_adjusted"),
+                        "lfc": result.get("log2_fold_change"),
+                    }
+                )
 
-        gene_list = sorted(gene_symbols)[:max_genes]
+        if not rows:
+            return [], 0
+        # The notebook template repeats these steps, so a replay takes the same genes
+        ranked = pd.DataFrame(rows)
+        ranked["padj"] = pd.to_numeric(ranked["padj"], errors="coerce")
+        ranked["abs_lfc"] = pd.to_numeric(ranked["lfc"], errors="coerce").abs()
+        ranked = ranked.sort_values(
+            ["padj", "abs_lfc", "gene"],
+            ascending=[True, False, True],
+            na_position="last",
+            kind="mergesort",
+        ).drop_duplicates("gene")
+        gene_list = ranked["gene"].head(max_genes).tolist()
         logger.info(
             f"Extracted {len(gene_list)} gene symbols from {len(significant_results)} significant proteins"
         )
-        return gene_list
+        return gene_list, len(ranked)
 
     def _resolve_databases(self, databases: str) -> List[str]:
         """
@@ -147,7 +169,7 @@ class ProteomicsPathwayService:
         """
         try:
             # Extract gene symbols from DE results
-            gene_list = self._extract_gene_symbols(adata, max_genes)
+            gene_list, n_significant = self._extract_gene_symbols(adata, max_genes)
 
             if not gene_list:
                 raise ProteomicsPathwayError(
@@ -200,6 +222,7 @@ class ProteomicsPathwayService:
 
             stats = {
                 "n_genes_input": len(gene_list),
+                "n_genes_significant": n_significant,
                 "n_significant_terms": len(significant_terms),
                 "n_total_terms": len(results),
                 "top_terms": top_terms,
@@ -243,10 +266,27 @@ class ProteomicsPathwayService:
             description="Pathway enrichment analysis on proteomics DE results using Enrichr API",
             library="gseapy",
             code_template="""import gseapy as gp
+import pandas as pd
 
-# Extract significant protein gene symbols from DE results
-de_results = adata.uns['differential_expression']['significant_results']
-gene_list = list(set(r['protein'].split(';')[0].strip() for r in de_results))[:{{ max_genes }}]
+# Gene symbols of the significant proteins: beyond {{ max_genes }}, the ones with
+# the smallest adjusted p-value, ties by larger |log2FC|, then by name
+rows = []
+for r in adata.uns['differential_expression']['significant_results']:
+    gene = r.get('protein', '').split(';')[0].strip()
+    if '_' in gene and gene.split('_')[-1] in ('HUMAN', 'MOUSE', 'RAT', 'BOVIN'):
+        gene = gene.rsplit('_', 1)[0]
+    if gene:
+        rows.append({'gene': gene, 'padj': r.get('p_adjusted'), 'lfc': r.get('log2_fold_change')})
+ranked = pd.DataFrame(rows)
+ranked['padj'] = pd.to_numeric(ranked['padj'], errors='coerce')
+ranked['abs_lfc'] = pd.to_numeric(ranked['lfc'], errors='coerce').abs()
+ranked = ranked.sort_values(
+    ['padj', 'abs_lfc', 'gene'],
+    ascending=[True, False, True],
+    na_position='last',
+    kind='mergesort',
+).drop_duplicates('gene')
+gene_list = ranked['gene'].head({{ max_genes }}).tolist()
 
 # Run Over-Representation Analysis via Enrichr
 enr = gp.enrichr(
@@ -266,7 +306,7 @@ adata.uns['pathway_enrichment'] = {
     'method': 'gseapy.enrichr',
     'results': results_df.to_dict('records')
 }""",
-            imports=["import gseapy as gp"],
+            imports=["import gseapy as gp", "import pandas as pd"],
             parameters={
                 "databases": databases,
                 "enrichr_dbs": enrichr_dbs,

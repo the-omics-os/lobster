@@ -96,7 +96,7 @@ def test_applied_export_filters_are_shown_as_thresholds(tmp_path, monkeypatch):
     assert "- Genes after filtering: 2" in reply
 
 
-def _enrichment_reply(tmp_path, monkeypatch, padj):
+def _enrichment_reply(tmp_path, monkeypatch, padj, lfc=1.0, genes=None):
     from lobster.core.provenance.analysis_ir import AnalysisStep
     from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
@@ -126,8 +126,9 @@ def _enrichment_reply(tmp_path, monkeypatch, padj):
         return pd.DataFrame(), stats, ir
 
     monkeypatch.setattr(BulkRNASeqService, "run_pathway_enrichment", enrichment)
-    genes = [f"GENE{i}" for i in range(len(padj))]
-    table = pd.DataFrame({"padj": padj, "log2FoldChange": 1.0}, index=genes)
+    if genes is None:
+        genes = [f"GENE{i}" for i in range(len(padj))]
+    table = pd.DataFrame({"padj": padj, "log2FoldChange": lfc}, index=genes)
     tools = _tools(tmp_path, monkeypatch, table)
     reply = tools["run_pathway_enrichment"].invoke(
         {"gene_list": [], "modality_name": "de"}
@@ -149,8 +150,41 @@ def test_enrichment_names_the_genes_it_left_out_beyond_500(tmp_path, monkeypatch
 
     assert len(genes) == 500
     assert (
-        f"- Genes from DE result '{KEY}': padj < 0.05, 600 genes (the first 500 in "
-        "table order were used)\n" in reply
+        f"- Genes from DE result '{KEY}': padj < 0.05, 600 genes (the 500 with the "
+        "smallest adjusted p-value were used)\n" in reply
+    ), reply
+
+
+def test_enrichment_beyond_500_takes_the_smallest_padj_ties_by_larger_lfc(
+    tmp_path, monkeypatch
+):
+    rng = np.random.default_rng(7)
+    n = 700
+    # Few distinct values, so padj ties and |LFC| ties both reach the 500th slot
+    padj = rng.choice([1e-8, 1e-4, 0.001, 0.01, 0.03], n)
+    padj[rng.choice(n, 60, replace=False)] = np.nan
+    padj[rng.choice(n, 40, replace=False)] = 0.5
+    lfc = rng.choice([-3.0, -1.0, 0.5, 1.0, 2.0, 3.0], n)
+    # var order is a shuffle, so table order says nothing about padj
+    genes = np.array([f"G{i:04d}" for i in rng.permutation(n)])
+
+    significant = (padj < 0.05) & ~np.isnan(padj)
+    s_padj, s_lfc, s_genes = padj[significant], lfc[significant], genes[significant]
+    order = np.lexsort((s_genes, -np.abs(s_lfc), s_padj))
+    expected = s_genes[order][:500].tolist()
+    # The cut falls inside a padj tie, so the |LFC| rule decides some slots
+    assert s_padj[order][499] == s_padj[order][500]
+    assert significant.sum() > 500
+
+    reply, received = _enrichment_reply(
+        tmp_path, monkeypatch, padj, lfc=lfc, genes=list(genes)
+    )
+
+    assert set(received) == set(expected)
+    assert received == expected
+    assert (
+        f"padj < 0.05, {significant.sum():,} genes (the 500 with the smallest "
+        "adjusted p-value were used)" in reply
     ), reply
 
 

@@ -1000,7 +1000,15 @@ def de_analysis_expert(
             response += f"**Databases**: {', '.join(enrich_stats.get('databases_queried', []))}\n\n"
 
             response += "**Summary:**\n"
-            response += f"- Proteins analyzed: {enrich_stats.get('n_genes_input', 0)}\n"
+            n_input = enrich_stats.get("n_genes_input", 0)
+            n_significant = enrich_stats.get("n_genes_significant", n_input)
+            response += f"- Proteins analyzed: {n_input}"
+            if n_significant > n_input:
+                response += (
+                    f" (the {n_input} with the smallest adjusted p-value, "
+                    f"out of {n_significant} significant)"
+                )
+            response += "\n"
             response += f"- Total terms found: {enrich_stats.get('n_total_terms', 0)}\n"
             response += f"- Significant terms (FDR < {fdr_threshold}): {enrich_stats.get('n_significant_terms', 0)}\n\n"
 
