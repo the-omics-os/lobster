@@ -21,7 +21,9 @@ from lobster.agents.metabolomics.config import (
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.metabolomics_analysis_service import (
+    MetabolomicsAnalysisError,
     MetabolomicsAnalysisService,
+    check_fold_change_threshold,
 )
 from lobster.services.annotation.metabolomics_annotation_service import (
     MetabolomicsAnnotationService,
@@ -35,6 +37,20 @@ from lobster.services.quality.metabolomics_quality_service import (
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _with_fold_changes(stats_ir: AnalysisStep, fc_ir: AnalysisStep) -> AnalysisStep:
+    """One step for both calls: the session stores the fold changes computed on
+    the statistics result, so the notebook computes them there too."""
+    fc_code = fc_ir.code_template.replace("    adata,\n", "    adata_stats,\n", 1)
+    stats_ir.code_template += "\n\n" + fc_code
+    stats_ir.description = (
+        "Run univariate statistics with FDR correction and fold changes"
+    )
+    stats_ir.parameters.update(fc_ir.parameters)
+    stats_ir.parameter_schema.update(fc_ir.parameter_schema)
+    stats_ir.output_entities = list(fc_ir.output_entities)
+    return stats_ir
 
 
 # =============================================================================
@@ -160,7 +176,10 @@ def create_shared_tools(
             logger.error(f"Error in quality assessment: {e}")
             return f"Error assessing quality: {str(e)}"
 
-    assess_metabolomics_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_metabolomics_quality.metadata = {
+        "categories": ["QUALITY"],
+        "provenance": True,
+    }
     assess_metabolomics_quality.tags = ["QUALITY"]
 
     # =========================================================================
@@ -238,7 +257,10 @@ def create_shared_tools(
             logger.error(f"Error in feature filtering: {e}")
             return f"Error filtering features: {str(e)}"
 
-    filter_metabolomics_features.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_metabolomics_features.metadata = {
+        "categories": ["FILTER"],
+        "provenance": True,
+    }
     filter_metabolomics_features.tags = ["FILTER"]
 
     # =========================================================================
@@ -496,11 +518,15 @@ def create_shared_tools(
             group_column: Column in obs containing group labels (e.g., "condition")
             method: Statistical test: "auto", "ttest", "wilcoxon", "anova", or "kruskal"
             fdr_method: FDR correction method (default: Benjamini-Hochberg)
-            fold_change_threshold: Not applied; up/down use |log2FC| > 1 (2-fold)
+            fold_change_threshold: Fold change (> 1) for up/down: |log2FC| > log2(threshold)
 
         Returns:
             str: Statistical analysis results with significant features and fold changes
         """
+        try:
+            check_fold_change_threshold(fold_change_threshold)
+        except MetabolomicsAnalysisError as e:
+            return str(e)
         try:
             adata = data_manager.get_modality(modality_name)
         except ValueError:
@@ -514,7 +540,9 @@ def create_shared_tools(
 
             # Step 2: Calculate fold changes on the same data
             adata_fc, fc_stats, fc_ir = analysis_service.calculate_fold_changes(
-                adata_stats, group_column=group_column
+                adata_stats,
+                group_column=group_column,
+                fold_change_threshold=fold_change_threshold,
             )
 
             result_name = f"{modality_name}_statistics"
@@ -535,9 +563,10 @@ def create_shared_tools(
                     "group_column": group_column,
                     "method": method,
                     "fdr_method": fdr_method,
+                    "fold_change_threshold": fold_change_threshold,
                 },
                 description="Ran univariate statistics with fold change analysis",
-                ir=stats_ir,
+                ir=_with_fold_changes(stats_ir, fc_ir),
                 agent=agent_name,
             )
 
@@ -550,11 +579,11 @@ def create_shared_tools(
             response += f"- Groups: {stats['groups']}\n"
 
             response += f"\n**Fold Change Summary ({fc_stats['comparison']} vs {fc_stats['reference']}):**\n"
-            response += f"- Upregulated (log2FC > 1): {fc_stats['n_upregulated']}\n"
+            cut = np.log2(fold_change_threshold)
             response += (
-                f"- Downregulated (log2FC < -1): {fc_stats['n_downregulated']}\n"
+                f"- Upregulated (log2FC > {cut:.3g}): {fc_stats['n_upregulated']}\n"
             )
-            response += f"- fold_change_threshold {fold_change_threshold}: not applied; up/down use |log2FC| > 1 (2-fold)\n"
+            response += f"- Downregulated (log2FC < -{cut:.3g}): {fc_stats['n_downregulated']}\n"
 
             response += f"\n**New modality created**: '{result_name}'"
             return response
@@ -563,7 +592,10 @@ def create_shared_tools(
             logger.error(f"Error in statistical analysis: {e}")
             return f"Error running statistics: {str(e)}"
 
-    run_metabolomics_statistics.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_metabolomics_statistics.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     run_metabolomics_statistics.tags = ["ANALYZE"]
 
     # =========================================================================

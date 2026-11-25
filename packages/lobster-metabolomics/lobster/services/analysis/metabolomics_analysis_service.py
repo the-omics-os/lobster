@@ -33,6 +33,20 @@ class MetabolomicsAnalysisError(Exception):
     pass
 
 
+def check_fold_change_threshold(fold_change_threshold: Any) -> None:
+    """Raise unless the threshold is a finite fold change above 1."""
+    if (
+        isinstance(fold_change_threshold, bool)
+        or not isinstance(fold_change_threshold, (int, float))
+        or not np.isfinite(fold_change_threshold)
+        or fold_change_threshold <= 1
+    ):
+        raise MetabolomicsAnalysisError(
+            f"fold_change_threshold must be a finite number greater than 1 "
+            f"(a fold change, e.g. 1.5 or 2), got {fold_change_threshold!r}"
+        )
+
+
 class MetabolomicsAnalysisService:
     """
     Stateless analysis service for metabolomics data.
@@ -276,6 +290,7 @@ print(f"OPLS-DA: R2={stats['r2']:.3f}, Q2={stats['q2']:.3f}")""",
         group_column: str,
         reference_group: Optional[str],
         log_space: bool,
+        fold_change_threshold: float,
     ) -> AnalysisStep:
         """Create IR for fold change calculation."""
         return AnalysisStep(
@@ -291,7 +306,8 @@ adata_fc, stats, _ = service.calculate_fold_changes(
     adata,
     group_column={{ group_column | tojson }},
     reference_group={{ reference_group | tojson }},
-    log_space={{ log_space | tojson }}
+    log_space={{ log_space | tojson }},
+    fold_change_threshold={{ fold_change_threshold }}
 )
 print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {stats['reference']})")""",
             imports=[
@@ -301,6 +317,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                 "group_column": group_column,
                 "reference_group": reference_group,
                 "log_space": log_space,
+                "fold_change_threshold": fold_change_threshold,
             },
             parameter_schema={
                 "group_column": ParameterSpec(
@@ -323,6 +340,14 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                     default_value=True,
                     required=False,
                     description="Whether data is already log-transformed",
+                ),
+                "fold_change_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=2.0,
+                    required=False,
+                    validation_rule="fold_change_threshold > 1",
+                    description="Fold change for up/down: |log2FC| > log2(threshold)",
                 ),
             },
             input_entities=["adata"],
@@ -811,6 +836,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
         group_column: str,
         reference_group: Optional[str] = None,
         log_space: bool = True,
+        fold_change_threshold: float = 2.0,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Calculate log2 fold changes between groups.
@@ -820,10 +846,13 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             group_column: Column in obs containing group labels
             reference_group: Reference group (default: first alphabetically)
             log_space: Whether data is already log-transformed
+            fold_change_threshold: A feature is up when log2FC > log2(threshold)
+                and down when log2FC < -log2(threshold) (default 2-fold)
 
         Returns:
             Tuple of (AnnData with fold changes in var, stats dict, AnalysisStep)
         """
+        check_fold_change_threshold(fold_change_threshold)
         try:
             logger.info("Starting fold change calculation")
 
@@ -887,8 +916,9 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             adata_fc.var["mean_group"] = comp_means
             adata_fc.var["mean_reference"] = ref_means
 
-            n_up = int(np.nansum(log2_fc > 1))
-            n_down = int(np.nansum(log2_fc < -1))
+            cut = np.log2(fold_change_threshold)
+            n_up = int(np.nansum(log2_fc > cut))
+            n_down = int(np.nansum(log2_fc < -cut))
 
             stats = {
                 "reference": reference_group,
@@ -903,7 +933,9 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                 f"({comp_group} vs {reference_group})"
             )
 
-            ir = self._create_ir_fold_changes(group_column, reference_group, log_space)
+            ir = self._create_ir_fold_changes(
+                group_column, reference_group, log_space, fold_change_threshold
+            )
             return adata_fc, stats, ir
 
         except Exception as e:
