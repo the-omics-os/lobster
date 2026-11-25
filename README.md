@@ -46,9 +46,11 @@ cd ~/my-study
 lobster chat
 ```
 ```text
-> Search PubMed for single-cell CRISPR screens in T cells from 2023–2024,
-  download the most cited dataset, run QC, integrate batches with Harmony,
-  cluster the cells, annotate cell types, and export a notebook of the recorded steps.
+> Load pbmc3k_raw.h5ad as pbmc3k and describe it.
+> Filter cells with 200 to 2500 genes and under 5% mitochondrial counts, keep genes
+  seen in at least 3 cells, then normalize to 10,000 counts per cell and log1p.
+> Select 2000 highly variable genes, run PCA, cluster with Leiden, compute a UMAP
+  and find marker genes for each cluster.
 ```
 
 <div align="center">
@@ -120,13 +122,13 @@ Lobster AI is a multi-agent system: specialist agents for each omics domain, orc
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology-light.svg">
-    <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
+    <img alt="How you call Lobster AI and what you get: from the terminal, an MCP host or another program; analysis runs on your machine, where data files stay; you get data files, plots, a notebook of the recorded steps and replay --verify; over the network: the LLM provider you choose and public databases such as GEO, SRA and PubMed" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
   </picture>
   <br/><br/>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core-light.svg">
-    <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="88%">
+    <img alt="Inside the Lobster AI engine, top to bottom: interfaces (terminal, MCP server, agent stdio); a LangGraph supervisor that routes requests to specialist agents; scientific tools such as Scanpy, PyDESeq2 and Harmony; the data manager that records tool steps for notebook export and replay --verify; projects and an optional LaminDB catalog; data access through file adapters and GEO, SRA, PubMed and MetaboLights" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="88%">
   </picture>
 </div>
 
