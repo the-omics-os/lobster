@@ -509,7 +509,14 @@ def _skipped_line(target: PurgeTarget, unmarked: str) -> str:
 
 def _print_uninstall_hint(output: "OutputAdapter") -> None:
     """Print the uninstall command for the way lobster-ai was installed."""
+    import sys
+
+    from lobster.cli_internal.provider_hint import quote
     from lobster.core import self_upgrade
+
+    # Name this install's interpreter, as `lobster upgrade` does, so the
+    # command works without activating the virtual environment.
+    python = quote(sys.executable)
 
     ways = {
         "uv-tool": (
@@ -518,9 +525,12 @@ def _print_uninstall_hint(output: "OutputAdapter") -> None:
         ),
         "uv-pip": (
             h("\n  [bold]Using uv pip (virtual environment):[/bold]"),
-            "uv pip uninstall lobster-ai",
+            f"uv pip uninstall --python {python} lobster-ai",
         ),
-        "pip": (h("\n  [bold]Using pip:[/bold]"), "pip uninstall lobster-ai"),
+        "pip": (
+            h("\n  [bold]Using pip:[/bold]"),
+            f"{python} -m pip uninstall lobster-ai",
+        ),
         "pipx": (
             h("\n  [bold]Using pipx (if installed via pipx):[/bold]"),
             "pipx uninstall lobster-ai",
@@ -532,7 +542,7 @@ def _print_uninstall_hint(output: "OutputAdapter") -> None:
         method = "manual"
     for heading, command in [ways[method]] if method in ways else ways.values():
         output.print(heading)
-        output.print(f"    [white]{command}[/white]")
+        output.print(f"    [white]{escape(command)}[/white]")
 
 
 def purge(
