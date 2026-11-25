@@ -9,6 +9,7 @@ executable code without manual mapping registries.
 
 import logging
 import math
+import operator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -52,34 +53,43 @@ class _BoundedTemplateEnvironment(SandboxedEnvironment):
     intercepted_binops = frozenset({"*", "**"})
 
     def call_binop(self, context, operator, left, right):
+        lint, rint = _as_int(left), _as_int(right)
         if operator == "**":
             if (
-                isinstance(left, int)
-                and isinstance(right, int)
-                and right > 0
-                and abs(left) > 1
-                # right is checked alone first: a huge int cannot become a float
+                lint is not None
+                and rint is not None
+                and rint > 0
+                and abs(lint) > 1
+                # rint is checked alone first: a huge int cannot become a float
                 and (
-                    right > _MAX_TEMPLATE_INT_BITS
-                    or right * math.log2(abs(left)) > _MAX_TEMPLATE_INT_BITS
+                    rint > _MAX_TEMPLATE_INT_BITS
+                    or rint * math.log2(abs(lint)) > _MAX_TEMPLATE_INT_BITS
                 )
             ):
                 raise SecurityError("the power in this template is too large")
-        elif isinstance(left, int) and isinstance(right, int):
+        elif lint is not None and rint is not None:
             if (
-                abs(left).bit_length() + abs(right).bit_length() - 1
+                abs(lint).bit_length() + abs(rint).bit_length() - 1
                 > _MAX_TEMPLATE_INT_BITS
             ):
                 raise SecurityError("the product in this template is too large")
         else:
-            sequence, count = (left, right) if isinstance(right, int) else (right, left)
+            sequence, count = (left, rint) if rint is not None else (right, lint)
             if (
-                isinstance(count, int)
+                count is not None
                 and isinstance(sequence, (str, bytes, list, tuple))
                 and len(sequence) * count > _MAX_TEMPLATE_SEQUENCE
             ):
                 raise SecurityError("the repeated value in this template is too long")
         return super().call_binop(context, operator, left, right)
+
+
+def _as_int(value: Any) -> Optional[int]:
+    """The int an integer operand stands for (NumPy integers too, via ``__index__``)."""
+    try:
+        return operator.index(value)
+    except TypeError:
+        return None
 
 
 _JINJA_ENV = _BoundedTemplateEnvironment(autoescape=False)  # nosec B701

@@ -10,6 +10,7 @@ an object's internals stops the render instead.
 import os
 import time
 
+import numpy as np
 import pytest
 from jinja2.sandbox import SecurityError
 
@@ -106,3 +107,27 @@ def test_an_oversized_power_stops_the_cell_render():
 )
 def test_small_powers_and_products_render_as_before(expression, rendered):
     assert _JINJA_ENV.from_string("{{ " + expression + " }}").render() == rendered
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["'a' * n", "n * 'a'", "[1] * n", "n * [1]", "(1,) * n"],
+)
+@pytest.mark.parametrize("n", [np.int64(10**6), np.int32(10**6), np.uint64(10**6)])
+def test_a_numpy_integer_count_is_held_to_the_same_limit(expression, n):
+    started = time.monotonic()
+
+    with pytest.raises(SecurityError):
+        _JINJA_ENV.from_string("{{ " + expression + " }}").render(n=n)
+
+    assert time.monotonic() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    "expression, rendered",
+    [("'ab' * n", "ababab"), ("n * [0]", "[0, 0, 0]"), ("n * 4", "12")],
+)
+def test_a_small_numpy_integer_count_renders_as_before(expression, rendered):
+    out = _JINJA_ENV.from_string("{{ " + expression + " }}").render(n=np.int64(3))
+
+    assert out == rendered
