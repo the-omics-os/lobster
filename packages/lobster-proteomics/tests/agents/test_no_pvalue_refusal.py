@@ -290,3 +290,66 @@ def test_a_target_flat_where_the_proteins_have_values_is_named(tmp_path):
         "with it."
     ), reply
     assert stored == []
+
+
+# Two proteins measured in different samples (A in s0-s4, B in s5-s9), with a
+# target that is the same within each protein's samples but differs between
+# them. The refusal said every protein has the same value in every sample.
+
+
+def _disjoint(target, b_values=(6.0, 9.0, 7.0, 10.0, 8.0)):
+    nan5 = [np.nan] * 5
+    x = np.array([[1.0, 3.0, 2.0, 5.0, 4.0] + nan5, nan5 + list(b_values)]).T
+    obs = pd.DataFrame({"target": target}, index=[f"s{i}" for i in range(10)])
+    return ad.AnnData(x, obs=obs, var=pd.DataFrame(index=["A", "B"]))
+
+
+def test_disjoint_proteins_with_a_target_flat_within_each_are_named(tmp_path):
+    from scipy.stats import pearsonr
+
+    adata = _disjoint([1.0] * 5 + [2.0] * 5)
+    # scipy itself has no correlation over each protein's samples
+    for j, rows in ((0, slice(0, 5)), (1, slice(5, 10))):
+        r, _ = pearsonr(adata.X[rows, j], adata.obs["target"].to_numpy()[rows])
+        assert np.isnan(r)
+
+    reply, stored = _call(
+        tmp_path, adata, "run_correlation_analysis", target_column="target"
+    )
+
+    assert reply == (
+        "**Correlation refused: no protein has a p-value.**\n\n"
+        "Of 2 tests, none has a p-value: the proteins have values in different "
+        "samples, and within the samples of each protein every value of 'target' "
+        "is the same (A: 5 samples, all 1; B: 5 samples, all 2), so no protein "
+        "can be correlated with it. Choose a target that varies within the "
+        "samples where each protein has a value. No result modality was stored."
+    ), reply
+    assert stored == []
+
+
+def test_one_flat_protein_and_one_flat_target_name_both_causes(tmp_path):
+    reply, _ = _call(
+        tmp_path,
+        _disjoint([1.0] * 5 + [2.0, 3.0, 4.0, 5.0, 6.0], b_values=[7.0] * 5),
+        "run_correlation_analysis",
+        target_column="target",
+    )
+
+    assert reply.startswith(
+        "**Correlation refused: no protein has a p-value.**\n\n"
+        "Of 2 tests, none has a p-value: in the samples where a protein and "
+        "'target' both have a value, the protein or 'target' has one value."
+    ), reply
+
+
+def test_disjoint_proteins_with_a_varying_target_are_tested(tmp_path):
+    reply, stored = _call(
+        tmp_path,
+        _disjoint([1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 4.0, 6.0, 8.0, 9.0]),
+        "run_correlation_analysis",
+        target_column="target",
+    )
+
+    assert "- Tests performed: 2\n" in reply, reply
+    assert stored == ["prot_correlation"]

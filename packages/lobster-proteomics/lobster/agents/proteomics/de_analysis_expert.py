@@ -128,6 +128,36 @@ def _correlation_refusal(adata, target_column: str, stats: dict):
     usable = target.notna().to_numpy() & ~np.isnan(adata.X).all(axis=1)
     values = target[usable]
     if values.nunique() > 1:
+        # the target over each tested protein's samples (as the service pairs them)
+        both = ~np.isnan(adata.X) & target.notna().to_numpy()[:, None]
+        tested = np.flatnonzero(both.sum(axis=0) >= MIN_CORRELATION_SAMPLES)
+        within = [target[both[:, j]] for j in tested]
+        if all(t.nunique() == 1 for t in within):
+            shown = [
+                f"{adata.var_names[j]}: {len(t):,} samples, all {t.iloc[0]:g}"
+                for j, t in zip(tested[:3], within)
+            ]
+            if len(tested) > 3:
+                shown.append(f"{len(tested) - 3:,} more")
+            return _no_pvalue_refusal(
+                "Correlation",
+                n,
+                stats,
+                "the proteins have values in different samples, and within the "
+                f"samples of each protein every value of '{target_column}' is the "
+                f"same ({'; '.join(shown)}), so no protein can be correlated with it",
+                "Choose a target that varies within the samples where each protein "
+                "has a value.",
+            )
+        if any(t.nunique() == 1 for t in within):
+            return _no_pvalue_refusal(
+                "Correlation",
+                n,
+                stats,
+                f"in the samples where a protein and '{target_column}' both have a "
+                f"value, the protein or '{target_column}' has one value",
+                _FLAT_ADVICE,
+            )
         return _no_pvalue_refusal(
             "Correlation",
             n,
