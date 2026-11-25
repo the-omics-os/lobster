@@ -471,15 +471,24 @@ class AgentClient(BaseClient):
         # Add user message
         self.messages.append(HumanMessage(content=user_input))
 
-        # Prepare graph input with full conversation history
-        # This enables session continuity by providing all previous messages
-        graph_input = {"messages": self.messages}
-
         config = {
             "configurable": {"thread_id": self.session_id},
             "callbacks": self.callbacks,
             "recursion_limit": 1000,  # High limit to support complex multi-agent analyses
         }
+
+        # A thread with checkpointed messages already holds the earlier turns,
+        # including the model's own answers; self.messages keeps id-less copies
+        # of those answers, so resending it would give the model each answer
+        # twice. Send the whole history only to an empty thread (a restored
+        # session), so the conversation continues.
+        turn_messages = self.messages
+        try:
+            if self.graph.get_state(config).values.get("messages"):
+                turn_messages = [self.messages[-1]]
+        except Exception:
+            logger.debug("Could not read the thread state", exc_info=True)
+        graph_input = {"messages": turn_messages}
 
         # Reset per-turn delegation capture so one turn's manifests cannot be
         # credited to the next. Without this, a turn that wrote nothing would inherit
