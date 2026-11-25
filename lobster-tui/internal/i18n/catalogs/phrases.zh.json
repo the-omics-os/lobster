@@ -2252,5 +2252,8 @@
   "{file} could not be read, so the code tool is off for every agent until it is fixed: {error}": "无法读取 {file}，因此在修复之前所有智能体的代码工具均已关闭：{error}",
   "{file}: {key} must be true or false (found {kind}); the code tool is off for {agent} until it is fixed.": "{file}：{key} 必须是 true 或 false（实际为 {kind}）；在修复之前 {agent} 的代码工具已关闭。",
   "{file}: agent_settings must be a table (found {kind}); the code tool is off for every agent until it is fixed.": "{file}：agent_settings 必须是一个表（实际为 {kind}）；在修复之前所有智能体的代码工具均已关闭。",
-  "A message from Lobster was too large to show and was skipped.": "来自 Lobster 的一条消息过大，无法显示，已跳过。"
+  "A message from Lobster was too large to show and was skipped.": "来自 Lobster 的一条消息过大，无法显示，已跳过。",
+  "[red]Setup could not save your answers: {e}[/red]": "[red]设置无法保存你的回答：{e}[/red]",
+  "Try saving again?": "要再次尝试保存吗？",
+  "Run lobster init to start again.": "运行 lobster init 重新开始设置。"
 }
