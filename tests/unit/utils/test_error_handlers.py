@@ -435,3 +435,46 @@ class TestIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestAuthenticationGuidanceNamesTheProvider:
+    """A refused key gets advice for the provider in use, not Anthropic's."""
+
+    def _text(self, monkeypatch, provider):
+        if provider:
+            monkeypatch.setenv("LOBSTER_LLM_PROVIDER", provider)
+        else:
+            monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+        error = Exception("401 Unauthorized")
+        guidance = AuthenticationErrorHandler().handle(error, str(error))
+        return guidance.description + "\n" + "\n".join(guidance.solutions)
+
+    def test_omics_os_gets_omics_os_advice(self, monkeypatch):
+        text = self._text(monkeypatch, "omics-os")
+        assert "Omics-OS Cloud" in text and "OMICS_OS_API_KEY" in text
+        for wrong in ("ANTHROPIC_API_KEY", "anthropic.com", "Bedrock"):
+            assert wrong not in text
+
+    def test_unknown_provider_gets_no_one_companys_advice(self, monkeypatch):
+        text = self._text(monkeypatch, None)
+        for wrong in ("ANTHROPIC_API_KEY", "anthropic.com", "Bedrock"):
+            assert wrong not in text
+
+    def test_global_setup_provider_is_found_without_the_environment(
+        self, monkeypatch, tmp_path
+    ):
+        """The installer route: provider only in ~/.config/lobster/providers.json."""
+        from lobster.config import global_config
+
+        monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path)
+        (tmp_path / "providers.json").write_text('{"default_provider": "omics-os"}')
+        text = self._text(monkeypatch, None)
+        assert "The Omics-OS Cloud API key" in text and "OMICS_OS_API_KEY" in text
+
+    def test_an_unknown_provider_gets_a_plain_sentence(self, monkeypatch, tmp_path):
+        from lobster.config import global_config
+
+        monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path)  # no file
+        text = self._text(monkeypatch, None)
+        assert text.startswith("The API key was refused or is not set.")
+        assert "your provider" not in text

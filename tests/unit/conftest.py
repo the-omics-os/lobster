@@ -36,3 +36,12 @@ def restore_model_pricing():
     table = settings.MODEL_PRICING
     table.clear()
     table.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def no_omics_os_key_check_network(monkeypatch):
+    """`lobster init` checks a saved Omics-OS key over the network; unit
+    tests answer "could not reach" instead. Tests of the check replace it."""
+    from lobster.config import cloud_setup
+
+    monkeypatch.setattr(cloud_setup, "_probe_key", lambda server, key: None)

@@ -8,6 +8,7 @@ from typing import Callable, Optional
 
 import httpx
 
+from lobster.config.cloud_setup import rejected_key_message
 from lobster.config.credentials import get_api_key, get_endpoint
 from lobster.config.endpoint_policy import (
     EndpointPolicyError,
@@ -158,9 +159,7 @@ def create_cloud_session(
         raise CloudQueryError(f"Cannot reach cloud: {e}") from e
 
     if resp.status_code == 401:
-        raise CloudQueryError(
-            "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com, then run 'lobster cloud login --api-key <key>'."
-        )
+        raise CloudQueryError(rejected_key_message(rest_base))
     if resp.status_code == 402:
         raise CloudQueryError(
             "Monthly budget exhausted. Check usage: lobster cloud status"
@@ -341,9 +340,7 @@ def stream_cloud_query(
                 headers={**headers, "Content-Type": "application/json"},
             ) as resp:
                 if resp.status_code == 401:
-                    result.set_error(
-                        "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com, then run 'lobster cloud login --api-key <key>'."
-                    )
+                    result.set_error(rejected_key_message(stream_base))
                     return result
                 if resp.status_code == 402:
                     result.set_error(

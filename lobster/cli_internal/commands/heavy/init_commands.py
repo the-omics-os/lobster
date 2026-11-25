@@ -1234,7 +1234,8 @@ def _create_global_config(config_dict: Dict[str, Any]) -> Path:
         return config_path
 
     except Exception as e:
-        logger.error(f"Failed to create global config: {e}")
+        # The caller tells the user in plain words; this is for the debug log.
+        logger.debug(f"Failed to create global config: {e}")
         raise
 
 
@@ -1511,7 +1512,7 @@ def _postprocess_tui_init_result(
     if provider_name == "omics-os":
         from lobster.config.cloud_setup import (
             OMICS_OS_AUTH_GUIDANCE,
-            OMICS_OS_KEY_NOT_VERIFIED,
+            check_omics_os_key,
         )
 
         if not api_key:
@@ -1550,7 +1551,7 @@ def _postprocess_tui_init_result(
             fail_cloud_setup_write(error)
         raise
     if provider_name == "omics-os":
-        console.print(OMICS_OS_KEY_NOT_VERIFIED)
+        console.print(check_omics_os_key(api_key), markup=False)
     _print_lamin_notes(
         normalized_result.get("lamin_enabled"),
         global_config=global_config,
@@ -3072,6 +3073,13 @@ def init_impl(
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
             raise typer.Exit(1)
         cloud_api_key = cloud_api_key.strip()
+        if isinstance(model, str) and model.strip():
+            # Before the backup below, so "Nothing was changed" holds.
+            console.print(
+                "✗ bad_argument: omics-os has no model setting; drop --model. Nothing was changed.",
+                markup=False,
+            )
+            raise typer.Exit(2)
 
     # Check if configuration already exists
     workspace_provider_path = (
@@ -3692,6 +3700,10 @@ def init_impl(
                 if credentials:
                     credentials_path = save_global_credentials(credentials)
 
+                if cloud_selected:
+                    from lobster.config.cloud_setup import check_omics_os_key
+
+                    console.print(check_omics_os_key(cloud_api_key), markup=False)
                 console.print(h("[green]✅ Global configuration saved:[/green]"))
                 console.print(
                     h("  • Config: {global_config_path}").format(
@@ -3743,6 +3755,10 @@ def init_impl(
             workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
             _create_workspace_config(config_dict, workspace_path)
             _save_lamin_choice(lamin, workspace_path, previous=lamin_previous)
+            if cloud_selected:
+                from lobster.config.cloud_setup import check_omics_os_key
+
+                console.print(check_omics_os_key(cloud_api_key), markup=False)
 
             # Success message for non-interactive
             from lobster.i18n import t
@@ -3758,10 +3774,6 @@ def init_impl(
             )
 
         _print_lamin_notes(lamin, global_config=global_config, install=not skip_extras)
-        if cloud_selected:
-            from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
-
-            console.print(OMICS_OS_KEY_NOT_VERIFIED)
 
         # In a uv tool env, run the install now. It ends the process when it
         # runs: the tool's environment is replaced on disk.
@@ -3861,15 +3873,38 @@ def init_impl(
 
                         _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
                         _ev_path = init_root / ".env"
-                        _tui_result = _postprocess_tui_init_result(
-                            _tui_result,
-                            workspace_path=_ws_path,
-                            env_path=_ev_path,
-                            global_config=global_config,
-                            skip_extras=skip_extras,
-                            preset=preset,
-                            agents=_flag_agents,
-                        )
+                        # The wizard worked; a failure from here on is a save
+                        # error, not "Go TUI unavailable". Keep the answers for a
+                        # retry and never start a second wizard.
+                        _answers = _tui_result
+                        while True:
+                            try:
+                                _tui_result = _postprocess_tui_init_result(
+                                    dict(_answers),
+                                    workspace_path=_ws_path,
+                                    env_path=_ev_path,
+                                    global_config=global_config,
+                                    skip_extras=skip_extras,
+                                    preset=preset,
+                                    agents=_flag_agents,
+                                )
+                                break
+                            except typer.Exit:
+                                raise
+                            except Exception as _save_exc:
+                                logger.debug(
+                                    "Saving the wizard's answers failed", exc_info=True
+                                )
+                                console.print(
+                                    h(
+                                        "[red]Setup could not save your answers: {e}[/red]"
+                                    ).format(e=_markup_escape(str(_save_exc)))
+                                )
+                                if not Confirm.ask(
+                                    h("Try saving again?"), default=True
+                                ):
+                                    console.print(h("Run lobster init to start again."))
+                                    raise typer.Exit(1)
 
                         _print_init_summary(
                             _tui_result,
@@ -4112,7 +4147,7 @@ def init_impl(
         if provider_name == "omics-os":
             from lobster.config.cloud_setup import (
                 OMICS_OS_AUTH_GUIDANCE,
-                OMICS_OS_KEY_NOT_VERIFIED,
+                check_omics_os_key,
             )
 
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
@@ -4606,7 +4641,7 @@ def init_impl(
                 success_message += "\n"
 
         if config_dict.get("provider") == "omics-os":
-            console.print(OMICS_OS_KEY_NOT_VERIFIED)
+            console.print(check_omics_os_key(api_key), markup=False)
         # A failed package install replaces the "run lobster chat" next step.
         failed_installs = _failed_install_lines()
         if failed_installs:

@@ -166,7 +166,10 @@ def _gateway_error(status):
     from lobster.config.providers.gateway_bedrock_client import GatewayBedrockClient
 
     try:
-        GatewayBedrockClient._handle_error(None, status, "{}")
+        client = GatewayBedrockClient(
+            endpoint="https://app.omics-os.com", token_fn=lambda: None
+        )
+        client._handle_error(status, "{}")
     except Exception as exc:
         return {"code": type(exc).__name__, "message": str(exc)}
     raise AssertionError("no error raised")

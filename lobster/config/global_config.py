@@ -289,6 +289,10 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default Azure AI model (e.g., 'gpt-4o', 'deepseek-r1', 'phi-4')",
     )
 
+    openai_default_model: Optional[str] = Field(
+        None, description="Default OpenAI model (e.g., 'gpt-6.1-sol')"
+    )
+
     openrouter_default_model: Optional[str] = Field(
         None,
         description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
@@ -356,7 +360,8 @@ class GlobalProviderConfig(ProviderConfigBase):
             config_path.write_text(self.model_dump_json(indent=2))
             logger.info(f"Saved global config to {config_path}")
         except Exception as e:
-            logger.error(f"Failed to save global config: {e}")
+            # Callers (lobster init) tell the user; this is for the debug log.
+            logger.debug(f"Failed to save global config: {e}")
             raise
 
     @classmethod

@@ -220,11 +220,10 @@ class GatewayBedrockClient:
         """Raise botocore-compatible ClientError for ChatBedrockConverse error handling."""
         from botocore.exceptions import ClientError
 
+        from lobster.config.cloud_setup import rejected_key_message
+
         error_map = {
-            401: (
-                "UnauthorizedAccess",
-                "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com.",
-            ),
+            401: ("UnauthorizedAccess", rejected_key_message(self._endpoint)),
             402: (
                 "BudgetExceeded",
                 "Monthly budget exhausted. Visit https://app.omics-os.com/settings/billing",
@@ -259,11 +258,7 @@ class GatewayBedrockClient:
                 pass
 
             if status_code == 401:
-                msg = (
-                    "Omics-OS Cloud API key rejected or expired: create a new one "
-                    "at app.omics-os.com. Alternatively, use the npm "
-                    "omics-os client: omics-os login --device."
-                )
+                msg = rejected_key_message(self._endpoint)
             else:
                 # Preserve the gateway's tier/policy refusal and its detail;
                 # a 403 is not evidence that replacing credentials will help.

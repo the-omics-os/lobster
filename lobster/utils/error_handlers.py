@@ -1145,20 +1145,43 @@ class AuthenticationErrorHandler(ErrorHandler):
         return any(pattern in error_lower for pattern in patterns)
 
     def handle(self, error: Exception, error_str: str) -> ErrorGuidance:
-        """Generate authentication troubleshooting guidance."""
+        """Generate authentication troubleshooting guidance for the provider in use."""
+        from lobster.config.constants import PROVIDER_DISPLAY_NAMES
+        from lobster.ui.bridge.init_adapter import _PROVIDER_ENV_KEYS
+
+        # Project setup puts LOBSTER_LLM_PROVIDER in .env; global setup (the
+        # installer route) keeps the provider in providers.json.
+        # shortcut: a provider set only in a workspace's provider_config.json
+        # gets the general advice; resolve it if that shows up.
+        provider = os.environ.get("LOBSTER_LLM_PROVIDER", "").strip().lower()
+        if not provider:
+            try:
+                from lobster.config.global_config import GlobalProviderConfig
+
+                provider = (GlobalProviderConfig.load().default_provider or "").lower()
+            except Exception:  # advice only; never mask the original error
+                provider = ""
+        name = PROVIDER_DISPLAY_NAMES.get(provider)
+        keys = " and ".join(_PROVIDER_ENV_KEYS.get(provider) or [])
         return ErrorGuidance(
             error_type="authentication",
             title="🔑 Authentication Failed",
             description=(
-                "Your API key is invalid or not configured correctly. "
-                "Lobster AI requires a valid API key to access LLM services."
+                f"The {name} API key was refused or is not set."
+                if name
+                else "The API key was refused or is not set."
             ),
             solutions=[
-                "Check your .env file contains: ANTHROPIC_API_KEY=sk-ant-...",
-                "Verify the API key is valid at: https://console.anthropic.com/",
-                "Ensure .env file is in the project root directory",
-                "Reload environment variables: source .env && lobster chat",
-                "For AWS Bedrock: Verify AWS credentials are configured correctly",
+                (
+                    f"Check {keys} in your project's .env file or in "
+                    "~/.config/lobster/credentials.env"
+                    if keys
+                    else "Check the API key in your project's .env file or in "
+                    "~/.config/lobster/credentials.env"
+                ),
+                "Enter a new key: lobster init --force",
+                "See which provider is in use: lobster status",
+                "Contact us for assistance: info@omics-os.com",
             ],
             severity="error",
             documentation_url="https://github.com/the-omics-os/lobster/wiki/03-configuration",
