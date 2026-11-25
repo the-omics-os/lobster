@@ -82,11 +82,6 @@ KNOWN = {
         "disease_mappings",
     ): "the service's fixed mapping table",
     (
-        "packages/lobster-ml/lobster/services/quality/cross_validation_service.py",
-        "_create_stratified_kfold_ir",
-        "model_class",
-    ): "the class name of a Python caller's model factory; no tool calls it",
-    (
         "packages/lobster-proteomics/lobster/agents/proteomics/shared_tools.py",
         "import_affinity_data",
         "detected_platform",

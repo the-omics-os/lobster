@@ -5,6 +5,8 @@ Tests model parameter extraction, sparse memory safety, prediction capping,
 feature importance storage, and exact version pinning.
 """
 
+import ast
+
 import numpy as np
 import psutil
 import pytest
@@ -223,15 +225,15 @@ class TestCrossValidationService:
             adata=adata,
             target_column="label",
             model_factory=model_factory,
-            model_class="CustomModel",  # Explicit override
-            model_params={"param1": 123},
+            model_class="LogisticRegression",  # Explicit override
+            model_params={"C": 0.5},
             n_splits=3,
             random_state=42,
         )
 
         # Should use explicitly provided values
-        assert ir.parameters["model_class"] == "CustomModel"
-        assert ir.parameters["model_params"]["param1"] == 123
+        assert ir.parameters["model_class"] == "LogisticRegression"
+        assert ir.parameters["model_params"]["C"] == 0.5
 
     def test_basic_functionality_preserved(self, cv_service):
         """Test that basic CV functionality still works after changes."""
@@ -267,3 +269,76 @@ class TestCrossValidationService:
         assert ir.tool_name == "stratified_kfold_cv"
         assert "model_class" in ir.parameters
         assert "sklearn_version" in ir.execution_context
+
+
+def _ir(cv_service, model_class, model_params=None):
+    return cv_service._create_stratified_kfold_ir(
+        target_column="label",
+        model_class=model_class,
+        model_params=model_params or {},
+        n_splits=3,
+        shuffle=True,
+        random_state=0,
+        scale_features=True,
+        return_predictions=False,
+        return_importances=False,
+    )
+
+
+def _imports_and_names(rendered):
+    tree = ast.parse(rendered)
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    return imported, names
+
+
+@pytest.mark.parametrize(
+    "hostile", ["RandomForestClassifier\nimport os", "x)}}{{ 7*7", "os.system"]
+)
+def test_a_model_class_outside_the_list_is_refused(cv_service, hostile):
+    with pytest.raises(ValueError, match="model_class"):
+        _ir(cv_service, hostile)
+
+    adata = TestCrossValidationService()._create_test_adata(n_obs=30, n_vars=4)
+    with pytest.raises(ValueError, match="model_class"):
+        cv_service.stratified_kfold_cv(
+            adata=adata,
+            target_column="label",
+            model_factory=lambda: RandomForestClassifier(n_estimators=2),
+            model_class=hostile,
+            n_splits=3,
+        )
+
+
+def test_a_model_parameter_stays_a_value_in_the_cell(cv_service):
+    rendered = _ir(
+        cv_service,
+        "RandomForestClassifier",
+        {"n_estimators": "1)\nimport os\nos.getcwd(#"},
+    ).render()
+
+    imported, names = _imports_and_names(rendered)
+    assert "os" not in imported
+    assert "os" not in names
+
+
+@pytest.mark.parametrize(
+    "model_class",
+    [
+        "RandomForestClassifier",
+        "XGBClassifier",
+        "LogisticRegression",
+        "SVC",
+        "GradientBoostingClassifier",
+    ],
+)
+def test_each_listed_model_class_imports_what_its_cell_builds(cv_service, model_class):
+    imported, names = _imports_and_names(_ir(cv_service, model_class).render())
+
+    assert model_class in imported
+    assert model_class in names

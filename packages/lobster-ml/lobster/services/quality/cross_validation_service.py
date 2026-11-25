@@ -12,8 +12,8 @@ import pandas as pd
 from anndata import AnnData
 from scipy.sparse import issparse
 
-from lobster.core.utils.dtype_guards import is_text_dtype
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.utils.dtype_guards import is_text_dtype
 from lobster.services.ml.sparse_utils import (
     check_sparse_conversion_safe,
 )
@@ -22,6 +22,24 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 __all__ = ["CrossValidationService"]
+
+# The estimators the notebook cell knows how to build; the cell has one branch each.
+CV_MODEL_CLASSES = (
+    "RandomForestClassifier",
+    "XGBClassifier",
+    "LogisticRegression",
+    "SVC",
+    "GradientBoostingClassifier",
+)
+
+
+def _check_model_class(model_class: Any) -> None:
+    """Refuse a model class the notebook cell cannot build."""
+    if model_class not in CV_MODEL_CLASSES:
+        raise ValueError(
+            f"Unsupported model_class {model_class!r}: use one of "
+            f"{', '.join(CV_MODEL_CLASSES)}."
+        )
 
 
 class CrossValidationService:
@@ -126,6 +144,8 @@ class CrossValidationService:
         Returns:
             AnalysisStep with full CV pipeline code template
         """
+        _check_model_class(model_class)
+
         # Parameter schema with ParameterSpec objects
         parameter_schema = {
             "target_column": ParameterSpec(
@@ -291,38 +311,42 @@ skf = StratifiedKFold(
 {% if model_class == "RandomForestClassifier" %}
 from sklearn.ensemble import RandomForestClassifier
 model = RandomForestClassifier(
-    n_estimators={{ model_params.get('n_estimators', 100) }},
-    max_depth={{ model_params.get('max_depth', None) }},
-    min_samples_split={{ model_params.get('min_samples_split', 2) }},
+    n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+    max_depth={{ model_params.get('max_depth', None) | repr }},
+    min_samples_split={{ model_params.get('min_samples_split', 2) | repr }},
     random_state={{ random_state }}
 )
 {% elif model_class == "XGBClassifier" %}
 from xgboost import XGBClassifier
 model = XGBClassifier(
-    n_estimators={{ model_params.get('n_estimators', 100) }},
-    max_depth={{ model_params.get('max_depth', 6) }},
-    learning_rate={{ model_params.get('learning_rate', 0.3) }},
+    n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+    max_depth={{ model_params.get('max_depth', 6) | repr }},
+    learning_rate={{ model_params.get('learning_rate', 0.3) | repr }},
     random_state={{ random_state }}
 )
 {% elif model_class == "LogisticRegression" %}
 from sklearn.linear_model import LogisticRegression
 model = LogisticRegression(
-    C={{ model_params.get('C', 1.0) }},
-    max_iter={{ model_params.get('max_iter', 100) }},
+    C={{ model_params.get('C', 1.0) | repr }},
+    max_iter={{ model_params.get('max_iter', 100) | repr }},
     random_state={{ random_state }}
 )
 {% elif model_class == "SVC" %}
 from sklearn.svm import SVC
 model = SVC(
-    C={{ model_params.get('C', 1.0) }},
+    C={{ model_params.get('C', 1.0) | repr }},
     kernel={{ model_params.get("kernel", "rbf") | string | repr }},
     probability=True,
     random_state={{ random_state }}
 )
-{% else %}
-# Generic sklearn estimator fallback
-from sklearn.utils import all_estimators
-model = {{ model_class }}(**{{ model_params }})
+{% elif model_class == "GradientBoostingClassifier" %}
+from sklearn.ensemble import GradientBoostingClassifier
+model = GradientBoostingClassifier(
+    n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+    learning_rate={{ model_params.get('learning_rate', 0.1) | repr }},
+    max_depth={{ model_params.get('max_depth', 3) | repr }},
+    random_state={{ random_state }}
+)
 {% endif %}
 
 # Storage for results
@@ -349,33 +373,38 @@ for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
     # Train model (create fresh instance per fold)
     {% if model_class == "RandomForestClassifier" %}
     fold_model = RandomForestClassifier(
-        n_estimators={{ model_params.get('n_estimators', 100) }},
-        max_depth={{ model_params.get('max_depth', None) }},
-        min_samples_split={{ model_params.get('min_samples_split', 2) }},
+        n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+        max_depth={{ model_params.get('max_depth', None) | repr }},
+        min_samples_split={{ model_params.get('min_samples_split', 2) | repr }},
         random_state={{ random_state }} + fold_idx
     )
     {% elif model_class == "XGBClassifier" %}
     fold_model = XGBClassifier(
-        n_estimators={{ model_params.get('n_estimators', 100) }},
-        max_depth={{ model_params.get('max_depth', 6) }},
-        learning_rate={{ model_params.get('learning_rate', 0.3) }},
+        n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+        max_depth={{ model_params.get('max_depth', 6) | repr }},
+        learning_rate={{ model_params.get('learning_rate', 0.3) | repr }},
         random_state={{ random_state }} + fold_idx
     )
     {% elif model_class == "LogisticRegression" %}
     fold_model = LogisticRegression(
-        C={{ model_params.get('C', 1.0) }},
-        max_iter={{ model_params.get('max_iter', 100) }},
+        C={{ model_params.get('C', 1.0) | repr }},
+        max_iter={{ model_params.get('max_iter', 100) | repr }},
         random_state={{ random_state }} + fold_idx
     )
     {% elif model_class == "SVC" %}
     fold_model = SVC(
-        C={{ model_params.get('C', 1.0) }},
+        C={{ model_params.get('C', 1.0) | repr }},
         kernel={{ model_params.get("kernel", "rbf") | string | repr }},
         probability=True,
         random_state={{ random_state }} + fold_idx
     )
-    {% else %}
-    fold_model = {{ model_class }}(**{{ model_params }})
+    {% elif model_class == "GradientBoostingClassifier" %}
+    fold_model = GradientBoostingClassifier(
+        n_estimators={{ model_params.get('n_estimators', 100) | repr }},
+        learning_rate={{ model_params.get('learning_rate', 0.1) | repr }},
+        max_depth={{ model_params.get('max_depth', 3) | repr }},
+        random_state={{ random_state }} + fold_idx
+    )
     {% endif %}
     fold_model.fit(X_train, y_train)
 
@@ -605,7 +634,8 @@ print(f"CV complete: accuracy={aggregated_metrics['accuracy']['mean']:.3f}+/-{ag
             return_importances: Track feature importances per fold
             store_predictions: If True, store sampled predictions (max 1000/fold).
                 If False (default), store aggregated metrics only to prevent metadata bloat.
-            model_class: Model class name for provenance (auto-extracted if not provided)
+            model_class: Model class name for provenance (auto-extracted if not
+                provided); must be one of CV_MODEL_CLASSES
             model_params: Model hyperparameters for provenance (auto-extracted if not provided)
             feature_space_key: If provided, use adata.obsm[feature_space_key]
                               instead of adata.X as feature matrix.
@@ -642,6 +672,8 @@ print(f"CV complete: accuracy={aggregated_metrics['accuracy']['mean']:.3f}+/-{ag
                 logger.warning(f"Could not extract model info from factory: {e}")
                 model_class = "UnknownModel"
                 model_params = {}
+        # Before any training: the notebook cell must be able to build this model.
+        _check_model_class(model_class)
 
         # Validate target column
         if target_column not in adata.obs.columns:
@@ -802,9 +834,7 @@ print(f"CV complete: accuracy={aggregated_metrics['accuracy']['mean']:.3f}+/-{ag
                 "mean_importance": mean_importance[top_indices].tolist(),
                 "stability": stability[top_indices].tolist(),
             }
-            logger.info(
-                "Stored feature importance: full arrays in var, top 100 in uns"
-            )
+            logger.info("Stored feature importance: full arrays in var, top 100 in uns")
 
         # Store results in adata
         adata = adata.copy()
