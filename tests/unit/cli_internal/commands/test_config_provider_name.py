@@ -94,3 +94,28 @@ def test_missing_langchain_ollama_message_is_short(monkeypatch):
     assert "\n" not in message
     assert len(message) < 120
     assert "langchain-ollama" in message and "lobster init" in message
+
+
+def _shown(output):
+    from rich.text import Text
+
+    return " ".join(Text.from_markup(str(m)).plain for _, m in output.messages)
+
+
+@pytest.mark.parametrize(
+    "command", ["/config provider switch", "/config provider --save"]
+)
+def test_no_name_asks_for_one(tmp_path, command):
+    client, output = _Client(tmp_path), _Output()
+    assert _run(command, client, output) is None
+    assert client.switched_to == []
+    text = _shown(output)
+    assert "Name a provider." in text and "anthropic" in text
+    assert "Unknown provider" not in text
+
+
+def test_a_typed_name_is_shown_as_typed_not_as_markup(tmp_path):
+    client, output = _Client(tmp_path), _Output()
+    _run("/config provider [bold]x", client, output)
+    assert client.switched_to == []
+    assert "Unknown provider: [bold]x." in _shown(output)

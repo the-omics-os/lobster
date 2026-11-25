@@ -10,6 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from rich.markup import escape
+
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
@@ -788,11 +790,18 @@ def config_provider_switch(
     valid = ProviderRegistry.get_provider_names()
     # "Ollama Cloud", "ollama_cloud" and "ollama-cloud" all name ollama-cloud.
     new_provider = "-".join((provider_name or "").lower().replace("_", " ").split())
+    if not new_provider:
+        output.print(
+            h(
+                "[red]Name a provider. Valid providers: {valid}. Nothing was changed.[/red]"
+            ).format(valid=", ".join(sorted(valid)))
+        )
+        return None
     if new_provider not in valid:
         output.print(
             h(
                 "[red]Unknown provider: {name}. Valid providers: {valid}. Nothing was changed.[/red]"
-            ).format(name=provider_name or "", valid=", ".join(sorted(valid)))
+            ).format(name=escape(provider_name), valid=", ".join(sorted(valid)))
         )
         return None
 

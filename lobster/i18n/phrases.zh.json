@@ -2258,6 +2258,7 @@
   "Try saving again?": "要再次尝试保存吗？",
   "Run lobster init to start again.": "运行 lobster init 重新开始设置。",
   "[red]Unknown provider: {name}. Valid providers: {valid}. Nothing was changed.[/red]": "[red]未知的提供方：{name}。可用的提供方：{valid}。未做任何更改。[/red]",
+  "[red]Name a provider. Valid providers: {valid}. Nothing was changed.[/red]": "[red]请指定一个提供方。可用的提供方：{valid}。未做任何更改。[/red]",
   "Not replayed: this step reads {n} modalities, and a replay starts from one input.": "未重放：此步骤读取 {n} 个模态，而重放只从一个输入开始。",
   "This notebook has steps that read two or more modalities ({steps}), and a replay starts from one input; it was not run.": "此 notebook 含有读取两个或更多模态的步骤（{steps}），而 replay 只从一个输入开始；notebook 未运行。"
 }
