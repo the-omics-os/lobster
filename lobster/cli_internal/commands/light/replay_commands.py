@@ -1182,8 +1182,9 @@ def _outside_reason(number: int, real: Path, shown: str, workspace: Path) -> str
         ).format(n=number, path=real.relative_to(workspace).as_posix())
     return h(
         "Code cell {n} uses the path {path}, outside this replay's folder; a "
-        "replay reads and writes only its own folder, so a file the notebook "
-        "reads must be imported in the session. The notebook was not run."
+        "replay reads only its own folder and the file given with --input. If "
+        "this is the notebook's input file, give it with --input. The notebook "
+        "was not run."
     ).format(n=number, path=shown)
 
 

@@ -2121,7 +2121,7 @@
   "The export record predates input roles v2; re-export the notebook.": "导出记录早于输入角色记录 v2；请重新导出 notebook。",
   "A custom-code cell was recorded before 1.3.0 and reads the session's workspace; the notebook was not run.": "某个自定义代码单元格是在 1.3.0 之前记录的，会读取会话的工作区；notebook 未运行。",
   "Code cell {n} reads or writes {path} in the workspace; a replay uses only its own folder. The notebook was not run.": "第 {n} 个代码单元格读取或写入工作区中的 {path}；replay 只使用自己的文件夹。notebook 未运行。",
-  "Code cell {n} uses the path {path}, outside this replay's folder; a replay reads and writes only its own folder, so a file the notebook reads must be imported in the session. The notebook was not run.": "第 {n} 个代码单元格使用了路径 {path}，它在此次 replay 的文件夹之外；replay 只读写自己的文件夹，因此 notebook 读取的文件必须在会话中导入。notebook 未运行。",
+  "Code cell {n} uses the path {path}, outside this replay's folder; a replay reads only its own folder and the file given with --input. If this is the notebook's input file, give it with --input. The notebook was not run.": "第 {n} 个代码单元格使用了路径 {path}，它在此次 replay 的文件夹之外；replay 只读取自己的文件夹和用 --input 指定的文件。如果这是 notebook 的输入文件，请用 --input 指定它。notebook 未运行。",
   "Code cell {n} is not the code the export step writes; the notebook was not run.": "第 {n} 个代码单元格不是导出步骤生成的代码；notebook 未运行。",
   "Cell {n}: custom code from an earlier session is shown, not run. Files it changed are compared without its changes, and files only it wrote are not listed.": "第 {n} 个单元格：来自早前会话的自定义代码只显示、未运行。它改动过的文件在比较时不含其改动，只由它写入的文件不会列出。",
   "Code cell {n} names the replay's input file {name} and writes files, so it could change that file; the notebook was not run.": "第 {n} 个代码单元格指向 replay 的输入文件 {name}，并且会写入文件，因此可能改动该文件；notebook 未运行。",

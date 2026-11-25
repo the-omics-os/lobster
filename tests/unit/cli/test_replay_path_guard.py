@@ -239,7 +239,10 @@ def test_the_load_cell_naming_where_the_session_loaded_from_is_admitted(tmp_path
     assert _refusal(tmp_path, _load_cell(LOADED)) is None
 
 
-IMPORT_TEXT = "so a file the notebook reads must be imported in the session"
+OUTSIDE_ADVICE = (
+    "a replay reads only its own folder and the file given with --input. If this "
+    "is the notebook's input file, give it with --input."
+)
 
 
 def _outside_file(tmp_path):
@@ -254,7 +257,7 @@ def test_a_load_cell_naming_a_file_on_this_machine_is_refused(tmp_path):
     would open it, so the notebook is refused as any read of it is."""
     outside = _outside_file(tmp_path)
     reason = _refusal(tmp_path, _load_cell(str(outside)))
-    assert reason is not None and str(outside) in reason and IMPORT_TEXT in reason
+    assert reason is not None and str(outside) in reason and OUTSIDE_ADVICE in reason
 
 
 def test_a_load_cell_whose_link_leads_to_a_file_here_is_refused(tmp_path):
@@ -269,7 +272,7 @@ def test_a_load_cell_whose_link_leads_to_a_file_here_is_refused(tmp_path):
     elsewhere.symlink_to(outside)
     for text in ("pbmc.h5ad", str(elsewhere)):
         reason = _refusal(tmp_path, _load_cell(text))
-        assert reason is not None and IMPORT_TEXT in reason, (text, reason)
+        assert reason is not None and OUTSIDE_ADVICE in reason, (text, reason)
 
 
 def test_a_load_cell_that_climbs_out_to_a_file_here_is_refused(tmp_path):
@@ -279,7 +282,7 @@ def test_a_load_cell_that_climbs_out_to_a_file_here_is_refused(tmp_path):
     reason = _refusal(tmp_path, _load_cell("../../pbmc.h5ad"))
     assert reason is not None and "pbmc.h5ad in the workspace" in reason, reason
     reason = _refusal(tmp_path, _load_cell(f"../../../lab/{outside.name}"))
-    assert reason is not None and IMPORT_TEXT in reason, reason
+    assert reason is not None and OUTSIDE_ADVICE in reason, reason
 
 
 @pytest.mark.parametrize(
@@ -463,7 +466,8 @@ def test_a_session_whose_loaded_file_is_here_is_refused_and_never_opened(
 ):
     """The replay notebook carries load_modality's cell with the session's
     absolute path. On the machine that file is on, the replay refuses before any
-    kernel starts: the file, made unreadable, is not opened."""
+    kernel starts: the file, made unreadable, is not opened. The reason's advice
+    works: given that file with --input, the notebook runs."""
     notebook, source, dm_workspace = _service_loaded(tmp_path, monkeypatch)
     copy = tmp_path / "elsewhere" / "bulk.h5ad"
     copy.parent.mkdir()
@@ -476,8 +480,12 @@ def test_a_session_whose_loaded_file_is_here_is_refused_and_never_opened(
         source.chmod(0o644)
     assert code == 4 and out["verdict"] == "REFUSED", out
     reason = out["report"]["refusal"]["reason"]
-    assert str(source) in reason and IMPORT_TEXT in reason, reason
+    assert str(source) in reason and OUTSIDE_ADVICE in reason, reason
+    assert "imported in the session" not in reason, reason
     assert _nothing_ran(dm_workspace) and _state(source) == before
+    code, out = _verify(notebook, source, dm_workspace)
+    assert out["verdict"] in ("MATCH", "MISMATCH"), out  # run, not refused
+    assert _state(source) == before
 
 
 @needs_kernel
@@ -548,7 +556,7 @@ def test_custom_code_that_reads_a_folder_outside_the_workspace_is_refused(
     tmp_path, monkeypatch
 ):
     """A user's original outside the workspace: the replay does not read it; the
-    reason says to import it in the session."""
+    reason says what a replay reads."""
     dm, source, notebook = _session(tmp_path, monkeypatch, "result = 1\n")
     outside = tmp_path / "raw10x"
     outside.mkdir()
@@ -559,7 +567,7 @@ def test_custom_code_that_reads_a_folder_outside_the_workspace_is_refused(
     assert code == 4 and out["verdict"] == "REFUSED", out
     reason = out["report"]["refusal"]["reason"]
     assert f"uses the path {outside}, outside this replay's folder" in reason
-    assert "imported in the session" in reason
+    assert OUTSIDE_ADVICE in reason
     assert _nothing_ran(dm.workspace_path)
 
 
@@ -599,8 +607,8 @@ def test_the_reasons_have_their_chinese_lines():
         "Code cell {n} reads or writes {path} in the workspace; a replay uses only "
         "its own folder. The notebook was not run.",
         "Code cell {n} uses the path {path}, outside this replay's folder; a replay "
-        "reads and writes only its own folder, so a file the notebook reads must be "
-        "imported in the session. The notebook was not run.",
+        "reads only its own folder and the file given with --input. If this is the "
+        "notebook's input file, give it with --input. The notebook was not run.",
     ):
         for catalog in catalogs:
             assert reason in json.loads(catalog.read_text()), (catalog, reason)
