@@ -1277,6 +1277,37 @@ class NetworkErrorHandler(ErrorHandler):
         )
 
 
+# How each provider SDK says that it has no model by the configured name:
+# Bedrock, Anthropic, OpenAI, Ollama, Gemini.
+UNKNOWN_MODEL = re.compile(
+    r"model identifier is invalid|not_found_error.{0,80}model|model_not_found"
+    r'|model "[^"]+" not found|models/\S+ is not found',
+    re.IGNORECASE,
+)
+
+
+class UnknownModelErrorHandler(ErrorHandler):
+    """Handles a model name the provider does not have."""
+
+    def can_handle(self, error: Exception, error_str: str) -> bool:
+        return bool(UNKNOWN_MODEL.search(error_str))
+
+    def handle(self, error: Exception, error_str: str) -> ErrorGuidance:
+        return ErrorGuidance(
+            error_type="model_not_found",
+            title="Model Not Available",
+            description="The provider has no model by the name in your settings.",
+            solutions=[
+                "List the models: /config model",
+                "Switch and keep it: /config model <name> --save",
+                "From the shell: lobster init",
+            ],
+            severity="error",
+            can_retry=False,
+            metadata={"original_error": error_str[:200]},
+        )
+
+
 class ContextLimitErrorHandler(ErrorHandler):
     """
     Handles context/token limit errors.
@@ -1475,6 +1506,7 @@ class ErrorHandlerRegistry:
         # Order matters - first match wins
         # Context limit must come before rate limit (both can have 429 status)
         self.register(ContextLimitErrorHandler())
+        self.register(UnknownModelErrorHandler())
         self.register(RateLimitErrorHandler())
         self.register(AuthenticationErrorHandler())
         self.register(QuotaExceededErrorHandler())

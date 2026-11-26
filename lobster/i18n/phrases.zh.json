@@ -2263,5 +2263,8 @@
   "Not replayed: this step reads {n} modalities, and a replay starts from one input.": "未重放：此步骤读取 {n} 个模态，而重放只从一个输入开始。",
   "This notebook has steps that read two or more modalities ({steps}), and a replay starts from one input; it was not run.": "此 notebook 含有读取两个或更多模态的步骤（{steps}），而 replay 只从一个输入开始；notebook 未运行。",
   "[dim]Installed packages, also ones left unticked, serve every folder that has no experts of its own. To choose the experts of one project, run `lobster init` in its folder.[/dim]": "[dim]已安装的软件包（包括未勾选的）适用于所有没有自己专家设置的文件夹。要为某个项目选择专家，请在该项目的文件夹中运行 `lobster init`。[/dim]",
-  "  Model: {model}": "  模型：{model}"
+  "  Model: {model}": "  模型：{model}",
+  "Model Not Available": "模型不可用",
+  "The provider has no model by the name in your settings. List the models with /config model, then switch with /config model <name> --save.": "模型服务没有您设置中的这个模型名称。请用 /config model 列出模型，再用 /config model <name> --save 切换。",
+  "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init.": "请在 lobster chat 中输入这些 /config 命令。要在终端中更改模型服务或模型，请运行 lobster init。"
 }

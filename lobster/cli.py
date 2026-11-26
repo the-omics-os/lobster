@@ -284,7 +284,7 @@ def config_callback(
             with recorded_run_status(client):
                 output = ConsoleOutputAdapter(console)
                 # Use unified config_show implementation from config_commands.py
-                config_show(client, output)
+                config_show(client, output, from_shell=True)
         except Exception as e:
             console.print(f"[red]{t('cli.config.error', detail=str(e))}[/red]")
             console.print(f"[dim]{t('cli.config.run_init')}[/dim]")
@@ -1639,7 +1639,7 @@ def config_show_subcommand(
         from lobster.core.catalog.factory import recorded_run_status
 
         with recorded_run_status(client):
-            config_show(client, ConsoleOutputAdapter(console))
+            config_show(client, ConsoleOutputAdapter(console), from_shell=True)
     except Exception as e:
         console.print(
             h("[red]Error displaying configuration: {error}[/red]").format(error=str(e))

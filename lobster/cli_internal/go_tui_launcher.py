@@ -397,6 +397,16 @@ def _friendly_error(raw: str) -> tuple:
     cloud_refusal = "Omics-OS Cloud:"
     if cloud_refusal in msg:
         return ("Omics-OS Cloud", msg[msg.index(cloud_refusal) :])
+    from lobster.utils.error_handlers import UNKNOWN_MODEL
+
+    # Before the AWS checks: Bedrock names the operation in this error too.
+    if UNKNOWN_MODEL.search(msg):
+        return (
+            h("Model Not Available"),
+            h(
+                "The provider has no model by the name in your settings. List the models with /config model, then switch with /config model <name> --save."
+            ),
+        )
     if "security token" in msg or "UnrecognizedClientException" in msg:
         return (
             h("Provider Error"),

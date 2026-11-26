@@ -450,7 +450,9 @@ def _build_agent_composition(
     return config_source, installed_count, total_count
 
 
-def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
+def config_show(
+    client: "AgentClient", output: OutputAdapter, from_shell: bool = False
+) -> Optional[str]:
     """
     Show current configuration including provider, profile, config files, and agent models.
 
@@ -698,6 +700,17 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # ========================================================================
     # Usage hints
     # ========================================================================
+    if from_shell:
+        _render_blocks(
+            output,
+            [
+                hint_block(
+                    h(
+                        "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init."
+                    )
+                )
+            ],
+        )
     _print_config_command_reference(output, TABLE_WIDTH)
 
     return f"Displayed configuration (provider: {provider}, profile: {profile})"
