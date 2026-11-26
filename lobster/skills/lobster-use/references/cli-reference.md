@@ -437,6 +437,12 @@ Prompt caching is off unless `LOBSTER_BEDROCK_PROMPT_CACHE=1`. The opt-in is int
 for direct own-AWS Bedrock Anthropic inference; it requests cache points, not a
 promised hit or saving. No Cloud activation follows from this setting.
 
+A session continued in a new process (`lobster query --session-id`) restores only the
+questions and final answers, unless `LOBSTER_SESSION_TOOL_HISTORY=1` was set when the
+earlier turn was saved. Then the session file in the workspace also keeps that turn's
+tool calls and results, which can include data values such as file paths, gene names or
+sample ids, and the next turn sends the earlier turn as the model received it.
+
 Price lookup uses the packaged offline snapshot and explicit manual overrides.
 Unknown prices remain unknown. Local list-price estimates are neither invoices
 nor Cloud billing tariffs.

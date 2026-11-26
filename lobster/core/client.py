@@ -19,6 +19,8 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     RemoveMessage,
+    messages_from_dict,
+    messages_to_dict,
 )
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
@@ -3429,10 +3431,10 @@ class AgentClient(BaseClient):
         Restores the conversation messages to enable multi-turn conversations
         across separate process invocations (e.g., for `lobster query` continuity).
 
-        Note: This restores the conversation messages into the session's graph
-        thread, not the earlier tool calls and results. The LLM will have full
-        conversational context but won't have automatic access to prior tool
-        execution state.
+        Note: A file saved with LOBSTER_SESSION_TOOL_HISTORY=1 holds the graph
+        thread as the model received it (tool calls and results included), and
+        the thread is restored from it. Otherwise only the conversation (questions
+        and final answers) is restored, without the earlier tool calls and results.
 
         Args:
             session_path: Path to session JSON file
@@ -3493,9 +3495,19 @@ class AgentClient(BaseClient):
             self._begin_catalog_run()
 
         # The model reads the conversation from the thread, and a command logged
-        # there before the next question would otherwise hide this history.
+        # there before the next question would otherwise hide this history. A
+        # file saved with the tool history gives the thread exactly what the
+        # model received, so the next request extends the earlier one.
+        thread_messages = self.messages
+        if "messages" in session_data:
+            try:
+                thread_messages = messages_from_dict(session_data["messages"])
+            except Exception as exc:
+                logger.warning(
+                    f"Could not read the saved tool history, using the conversation: {exc}"
+                )
         try:
-            self._replace_thread_messages(self.messages)
+            self._replace_thread_messages(thread_messages)
         except Exception as exc:
             logger.warning(f"Could not restore the conversation thread: {exc}")
 
@@ -3572,6 +3584,19 @@ class AgentClient(BaseClient):
                 },
                 "schema_version": "1.1",
             }
+            # Opt-in: tool calls and results can hold data values, and the
+            # conversation alone has none.
+            if os.environ.get("LOBSTER_SESSION_TOOL_HISTORY") == "1":
+                try:
+                    thread = self.graph.get_state(
+                        {"configurable": {"thread_id": self.session_id}}
+                    )
+                    session_data["messages"] = messages_to_dict(
+                        thread.values.get("messages") or []
+                    )
+                except Exception as exc:
+                    # The conversation is still saved; the next turn falls back to it.
+                    logger.warning(f"Could not save the tool history: {exc}")
 
             with open(session_path, "w") as f:
                 json.dump(session_data, f, indent=2, default=str)

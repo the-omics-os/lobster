@@ -594,3 +594,116 @@ def test_reset_forgets_the_conversation_for_the_model(session):
         "Command Result: Conversation reset",
         "second question",
     ]
+
+
+@pytest.fixture
+def new_process(tmp_path):
+    """Makes a fresh ``AgentClient`` on one workspace, as each ``lobster query``
+    process does; all of them record into one request list."""
+    from lobster.core.client import AgentClient
+
+    requests: list = []
+    script: dict = defaultdict(deque)
+
+    def create_llm(agent_name, *args, **kwargs):
+        return RecordingModel(agent=agent_name, requests=requests, script=script)
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with pytest.MonkeyPatch.context() as patches:
+        _route_create_llm(patches, create_llm)
+
+        def make():
+            return AgentClient(
+                workspace_path=workspace, session_id="per-turn", interactive=False
+            )
+
+        yield make, workspace, requests, script
+
+
+def _turn_with_a_tool_call_then_a_new_process(new_process):
+    make, workspace, requests, script = new_process
+    script["supervisor"].extend([_handoff("call-1"), AIMessage("answer one")])
+    script[EXPERT].append(AIMessage("expert result one"))
+    first = make()
+    assert first.query("first question").get("success") is True
+    saved = workspace / "session_per-turn.json"
+    assert saved.exists()
+
+    second = make()
+    second.load_session(saved)
+    script["supervisor"].append(AIMessage("answer two"))
+    assert second.query("second question").get("success") is True
+    return saved, _supervisor_requests(requests)
+
+
+def test_continued_session_extends_the_previous_turn_with_tool_history(
+    new_process, monkeypatch
+):
+    """With the opt-in, a turn run in a new process sends the earlier turn as the
+    model received it, tool call and tool result included, so the provider's
+    prompt cache can reuse it."""
+    monkeypatch.setenv("LOBSTER_SESSION_TOOL_HISTORY", "1")
+    saved, supervisor = _turn_with_a_tool_call_then_a_new_process(new_process)
+
+    turn_one_last, turn_two = supervisor[1], supervisor[2]
+    assert turn_two[: len(turn_one_last)] == turn_one_last, (
+        "the continued turn rewrites the earlier one:\n"
+        f"before: {turn_one_last}\nafter:  {turn_two}"
+    )
+    assert _contents(turn_two[len(turn_one_last) :]) == [
+        "answer one",
+        "second question",
+    ]
+    assert "messages" in json.loads(saved.read_text())
+
+
+def test_without_the_opt_in_the_session_file_keeps_no_tool_results(
+    new_process, monkeypatch
+):
+    """Tool results can hold data values, so they are saved only on request."""
+    monkeypatch.delenv("LOBSTER_SESSION_TOOL_HISTORY", raising=False)
+    saved, supervisor = _turn_with_a_tool_call_then_a_new_process(new_process)
+
+    data = json.loads(saved.read_text())
+    assert "messages" not in data
+    assert "expert result one" not in saved.read_text()
+    assert _contents(supervisor[2]) == [
+        "first question",
+        "answer one",
+        "second question",
+    ]
+
+
+def test_unreadable_tool_history_falls_back_to_the_conversation(
+    new_process, monkeypatch, caplog
+):
+    import logging
+
+    make, workspace, requests, script = new_process
+    saved = workspace / "saved.json"
+    saved.write_text(
+        json.dumps(
+            {
+                "session_id": "restored",
+                "conversation": [
+                    {"role": "user", "content": "old question"},
+                    {"role": "assistant", "content": "old answer"},
+                ],
+                "messages": [{"type": "not-a-message"}],
+            }
+        )
+    )
+    client = make()
+    with caplog.at_level(logging.WARNING, logger="lobster.core.client"):
+        client.load_session(saved)
+    script["supervisor"].append(AIMessage("answer one"))
+    assert client.query("first question").get("success") is True
+
+    (first,) = _supervisor_requests(requests)
+    assert _contents(first) == ["old question", "old answer", "first question"]
+    assert any(
+        "tool history" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+    ), caplog.text
