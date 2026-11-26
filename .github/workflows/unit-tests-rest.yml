@@ -1,0 +1,112 @@
+name: Unit Tests (rest)
+
+# The unit tests that no other lane runs on a pull request: tests/unit minus
+# what Fast Validation, Basic CI and the Replay Tests shards select.
+# Measuring stage: it runs on a push of the one branch below, or by hand.
+# The push trigger is removed before it runs on pull requests.
+on:
+  push:
+    branches: [ci/unit-tests-rest]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-rest-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  # pyproject's addopts always add --cov=lobster with three reports; no job reads them.
+  PYTEST_ADDOPTS: "--color=yes --tb=short --no-cov"
+  # Fresh resolves stay on the uv.lock versions listed there.
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
+
+jobs:
+  unit-tests-rest:
+    name: Unit Tests (rest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: 3.12
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Install every package
+      id: install
+      run: |
+        uv venv --python 3.12 .venv
+        # hdf5 (PyTables): tests/unit/core/test_hdf_minimum_adapter_refusal.py writes real HDF files.
+        INSTALL_ARGS=(-e ".[dev,openai,server,hdf5]")
+        for PACKAGE_DIR in packages/*; do
+          test -f "$PACKAGE_DIR/pyproject.toml" || continue
+          INSTALL_ARGS+=(-e "$PACKAGE_DIR")
+        done
+        uv pip install "${INSTALL_ARGS[@]}"
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Run the unit tests no other lane runs
+      # Selected by DIRECTORY minus what the other lanes select, so a new test
+      # file outside those paths runs here without editing this list.
+      run: |
+        python -m pytest tests/unit \
+          --ignore=tests/unit/config \
+          --ignore=tests/unit/core/backends \
+          --ignore=tests/unit/core/test_client.py \
+          --ignore=tests/unit/core/test_client_interrupt.py \
+          --ignore=tests/unit/core/test_schemas.py \
+          --ignore=tests/unit/core/test_data_manager_v2.py \
+          --ignore=tests/unit/core/test_self_upgrade.py \
+          --ignore=tests/unit/i18n \
+          --ignore=tests/unit/ci \
+          --ignore=tests/unit/cli \
+          --ignore=tests/unit/release \
+          --ignore=tests/unit/agents/test_agent_registry.py \
+          --ignore=tests/unit/agents/test_research_agent.py \
+          --ignore=tests/unit/agents/test_data_expert.py \
+          --ignore=tests/unit/test_ci_results.py \
+          --ignore=tests/unit/test_contract_callable_selection.py \
+          --ignore=tests/unit/test_contract_discovery.py \
+          --ignore=tests/unit/test_verify_env.py \
+          -m "not slow and not real_api" \
+          --import-mode=importlib \
+          -n auto --dist worksteal \
+          --junit-xml=unit-rest-results.xml \
+          --durations=30 \
+          -v
+
+    - name: Run the replay tests that need proteomics or metabolomics
+      # Measures what the Replay Tests shards add once they install these packages.
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      run: |
+        python -m pytest \
+          tests/unit/cli/test_replay_multi_input.py \
+          tests/unit/cli/test_replay_named_result_steps.py \
+          -m "not slow and not real_api" \
+          --import-mode=importlib \
+          -n auto --dist worksteal \
+          --junit-xml=replay-omics-results.xml \
+          --durations=10 \
+          -v
+
+    - name: Upload test results
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      if: always()
+      with:
+        name: unit-tests-rest-results
+        path: |
+          unit-rest-results.xml
+          replay-omics-results.xml
+        retention-days: 14

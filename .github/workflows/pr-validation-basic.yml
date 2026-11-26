@@ -207,9 +207,11 @@ jobs:
       uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
 
     - name: Install dependencies for replay tests
+      # Proteomics and metabolomics: test_replay_multi_input.py and the omics
+      # cases of test_replay_named_result_steps.py skip without them.
       run: |
         uv venv --python 3.12 .venv
-        uv pip install -e ".[dev,openai,server]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
+        uv pip install -e ".[dev,openai,server]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization -e packages/lobster-proteomics -e packages/lobster-metabolomics
         echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
     - name: Every replay test file is in a shard
