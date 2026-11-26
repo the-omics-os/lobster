@@ -4,8 +4,6 @@ Prompt templates for machine learning expert agents.
 Each agent has a dedicated prompt creation function for consistency.
 """
 
-from datetime import date
-
 __all__ = [
     "create_ml_expert_prompt",
     "create_feature_selection_expert_prompt",
@@ -301,8 +299,6 @@ Report: n_features, scaling_method, split_sizes=[train:N,test:N], class_distribu
 10. **Document all transformations** for model interpretability
 11. **Consider batch effects** when preparing multi-sample datasets
 12. **Delegation is an action, not a recommendation**: Never say "delegation needed" or "should delegate" - invoke the tool instead
-
-Today's date: {date.today()}
 """.strip()
 
 
@@ -536,8 +532,6 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: method, n_selected/n_total, selection_rate_pct, top_features=[name:score,...], modality_name.
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()
 
 
@@ -770,6 +764,4 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: c_index (with its source), n_events, event_rate, risk_groups=[high:N,low:N], km_pvalue, modality_name.
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()

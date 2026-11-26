@@ -5,8 +5,6 @@ This module contains the system prompt used by the research agent.
 Prompts are defined as functions to allow dynamic content (e.g., date).
 """
 
-from datetime import date
-
 
 def _build_routing_table() -> str:
     """Build data type routing guidance from OmicsTypeRegistry.
@@ -142,6 +140,4 @@ Your responses are read by the supervisor AI, not end users. Optimize for machin
 - The supervisor will reformulate your output for the user
 Report: datasets=[accession:year:n_samples:gaps,...], recommendation (sample-level/cohort-level), next_agent, next_action.
 </Response_Format>
-
-Today's date is {date.today().isoformat()}.
 """

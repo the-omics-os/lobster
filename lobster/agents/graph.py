@@ -14,6 +14,7 @@ import functools
 import inspect
 import threading
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -309,8 +310,18 @@ async def _invoke_and_store(
     if data_manager is not None and manifests_enabled():
         snapshot_before = take_snapshot(data_manager)
 
+    # The date is not in the expert's system prompt (it would change that
+    # prompt every day), so it comes with the task.
     result = await agent.ainvoke(
-        {"messages": [{"role": "user", "content": task_description}]}, config=config
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Today's date is {date.today()}.\n\n{task_description}",
+                }
+            ]
+        },
+        config=config,
     )
 
     # Extract the final message content

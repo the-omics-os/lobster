@@ -5,8 +5,6 @@ This module contains the system prompt used by the data expert agent.
 Extracted for modularity and maintainability following the unified agent template.
 """
 
-from datetime import date
-
 
 def create_data_expert_prompt() -> str:
     """
@@ -101,6 +99,4 @@ Your responses are read by the supervisor AI, not end users. Optimize for machin
 - The supervisor will reformulate your output for the user
 Report: modality_name, n_samples, n_features, file_path, adapter, format_detected, warnings.
 </Response_Format>
-
-Today's date is {date.today()}.
 """

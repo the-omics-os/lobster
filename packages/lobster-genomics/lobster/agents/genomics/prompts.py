@@ -2,8 +2,6 @@
 System prompts for genomics expert agent and variant_analysis_expert sub-agent.
 """
 
-from datetime import date
-
 
 def create_genomics_expert_prompt() -> str:
     """Create the system prompt for the genomics expert agent."""
@@ -79,8 +77,7 @@ GWAS report: lambda_gc (flag >1.1), n_significant, top_variants, modality_name. 
 - HWE failures (many variants with hwe_p <1e-6): genotyping errors or population stratification (expect some in disease loci)
 - Too many singletons (MAF <0.001): suggests errors → apply stricter MAF threshold
 </Common_QC_Issues>
-
-Today's date: {date.today()}""".strip()
+""".strip()
 
 
 def create_variant_analysis_expert_prompt() -> str:
@@ -124,5 +121,4 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: annotated/total, consequence_types, rare_count, common_count, pathogenic_count, top_variants=[rsid:score,...], modality_name, next_steps.
 </Response_Format>
-
-Today's date: {date.today()}""".strip()
+""".strip()

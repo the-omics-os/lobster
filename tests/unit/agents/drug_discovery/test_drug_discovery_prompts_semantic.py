@@ -85,14 +85,14 @@ class TestRequiredSections:
             (create_pharmacogenomics_expert_prompt, "pharmacogenomics_expert"),
         ],
     )
-    def test_contains_todays_date(self, prompt_fn, agent_name):
-        """Prompt must include dynamic date via f-string."""
+    def test_has_no_date(self, prompt_fn, agent_name):
+        """The date comes with each task, so the system prompt is the same every day."""
         from datetime import date
 
         prompt = prompt_fn()
         assert (
-            date.today().isoformat() in prompt
-        ), f"{agent_name} prompt does not contain today's date"
+            date.today().isoformat() not in prompt
+        ), f"{agent_name} prompt contains today's date"
 
 
 # =============================================================================

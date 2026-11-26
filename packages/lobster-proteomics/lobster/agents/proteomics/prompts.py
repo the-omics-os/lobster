@@ -6,8 +6,6 @@ and its sub-agents (DE analysis expert, biomarker discovery expert).
 Prompts are defined as functions to allow dynamic content (e.g., date).
 """
 
-from datetime import date
-
 
 def create_proteomics_expert_prompt() -> str:
     """
@@ -199,8 +197,6 @@ Report: platform, confidence, n_proteins, n_samples, missing_pct, norm_method, b
 12. **NEVER reference add_peptide_mapping** -- it is deprecated, peptide info is extracted during import
 13. **Start affinity workflows with import_affinity_data** -- never tell users to load affinity data manually; the tool auto-detects Olink/SomaScan/Luminex format
 </Important_Rules>
-
-Today's date: {date.today()}
 """
 
 
@@ -372,8 +368,6 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: n_de_proteins (up/down), top_proteins=[name:log2fc:padj,...], method, n_sig_pathways, n_kinases_active, hub_proteins, modality_name.
 </Response_Format>
-
-Today's date: {date.today()}
 """
 
 
@@ -594,6 +588,4 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: n_modules, sig_modules=[color:trait:r:p,...], hub_proteins=[name:kme,...], panel_size, auc=mean+/-std, sensitivity, specificity, modality_name.
 </Response_Format>
-
-Today's date: {date.today()}
 """

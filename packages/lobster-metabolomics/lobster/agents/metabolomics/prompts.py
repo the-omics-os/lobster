@@ -5,8 +5,6 @@ This module contains the system prompt used by the metabolomics expert agent.
 Prompt is defined as a function to allow dynamic content (e.g., date).
 """
 
-from datetime import date
-
 
 def create_metabolomics_expert_prompt() -> str:
     """
@@ -286,6 +284,4 @@ Annotation: annotated/total, msi_levels, top_classes.
 Multivariate: pca_var=[pc1,pc2,...], r2, q2, perm_p, n_vip_gt1, overfitting=yes/no.
 Pathway: n_sig_pathways, top=[name:pval:overlap,...], database.
 </Response_Format>
-
-Today's date: {date.today()}
 """

@@ -70,11 +70,10 @@ def create_supervisor_prompt(
     # Drop any empty section (e.g. no supervisor-accessible agents installed).
     sections = [s for s in sections if s]
 
-    context = _build_live_context(data_manager, config)
-    if context:
-        sections.append(context)
-
-    sections.append(f"Today's date is {date.today()}.")
+    # The date and the workspace data change between turns, so they reach the
+    # model in the turn's own message (build_session_context), never here: a
+    # changed system prompt makes the provider re-read the whole conversation.
+    sections.append(_SESSION_CONTEXT_NOTE)
 
     from lobster.i18n import reply_language_instruction
 
@@ -180,7 +179,7 @@ For every incoming request, classify it:
     you believe you could write the code yourself. execute_custom_code is a
     fallback, never a peer of delegation.
 
-DATA INSPECTION: Before delegating any analysis task, call list_available_modalities to understand what data is loaded. If the live context below may be stale (agents have loaded processed data since prompt creation), re-check with list_available_modalities before routing.
+DATA INSPECTION: Before delegating any analysis task, call list_available_modalities to understand what data is loaded. The newest <Session context> block shows the data when that message was sent; agents may have loaded processed data since, so re-check with list_available_modalities before routing.
 
 PARALLEL EXECUTION: When multiple independent tool calls are needed (e.g. handoffs
 to different agents, or data inspection + planning), call them in parallel. Only
@@ -519,10 +518,31 @@ def _list_raw_workspace_files(workspace_path, limit: int = 20) -> list:
     return files
 
 
+_SESSION_CONTEXT_NOTE = (
+    "A user message can start with a <Session context> block. Lobster adds it, "
+    "not the user: today's date and the data in the workspace when the message "
+    "was sent. It is repeated only when something changed, so the newest block "
+    "is current."
+)
+
+
+def build_session_context(
+    data_manager: DataManagerV2, config: Optional[SupervisorConfig] = None
+) -> str:
+    """The block put before a new question: today's date and the workspace data."""
+    if config is None:
+        config = SupervisorConfig.from_env()
+    lines = [f"Today's date is {date.today()}."]
+    live = _build_live_context(data_manager, config)
+    if live:
+        lines.append(live.strip("\n"))
+    return "<Session context>\n" + "\n".join(lines) + "\n</Session context>"
+
+
 def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -> str:
     """Build live context: loaded modalities and optional system info.
 
-    This is a snapshot at graph creation time. For real-time awareness,
+    This is a snapshot when the turn starts. For real-time awareness,
     the cognitive protocol instructs calling list_available_modalities.
     """
     sections = []
@@ -532,7 +552,7 @@ def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -
         try:
             modalities = data_manager.list_modalities()
             if modalities:
-                lines = [f"<Live Context>\nLoaded modalities ({len(modalities)}):"]
+                lines = [f"Loaded modalities ({len(modalities)}):"]
                 for mod_name in modalities:
                     adata = data_manager.get_modality(mod_name)
                     lines.append(

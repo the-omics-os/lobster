@@ -5,9 +5,6 @@ This module contains the system prompt used by the metadata assistant.
 Prompts are defined as functions to allow dynamic content (e.g., date).
 """
 
-from datetime import date
-
-
 # Deferred documentation returned by execute_custom_code on errors/empty calls
 _CUSTOM_CODE_HELP = """Execute Custom Code — Metadata Assistant Guide
 
@@ -113,5 +110,4 @@ Amplicon regions: V1-V9, V3-V4, V4-V5, full-length. Never mix regions (systemati
 Sample types: fecal_stool, gut_luminal_content, gut_mucosal_biopsy, gut_lavage, oral, skin.
 Legacy aliases: "fecal"→fecal_stool (warning), "luminal"→gut_luminal_content, "biopsy"→gut_mucosal_biopsy, "gut"→ValueError.
 </Domain_Knowledge>
-
-Today's date: {date.today()}"""
+"""

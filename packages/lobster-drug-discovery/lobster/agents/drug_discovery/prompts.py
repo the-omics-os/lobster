@@ -7,8 +7,6 @@ Your_Responsibilities, Your_Not_Responsibilities, Your_Tools, Decision_Tree,
 Important_Rules.
 """
 
-from datetime import date
-
 
 def create_drug_discovery_expert_prompt() -> str:
     """Create the system prompt for the drug discovery expert parent agent."""
@@ -125,7 +123,6 @@ You have 3 child agents you can delegate to:
 4. When targets are identified, always include the evidence breakdown
 5. When compounds are found, include key properties (MW, LogP, activity)
 6. Delegate specialized analysis early - don't attempt what children do better
-7. Today's date: {date.today().isoformat()}
 </Important_Rules>
 
 <Response_Format>
@@ -227,7 +224,6 @@ extra is installed) and PubChem similarity search.
 3. Include units in all reported properties (e.g., MW in Da, LogP unitless, TPSA in A^2)
 4. For similarity matrices, note the fingerprint type and parameters used
 5. For ADMET predictions, clearly state these are computational predictions, not experimental
-6. Today's date: {date.today().isoformat()}
 </Important_Rules>
 
 <Response_Format>
@@ -325,7 +321,6 @@ You have access to Open Targets, ChEMBL, and synergy scoring tools.
 4. Report safety signals with severity levels when available
 5. For tractability, specify which modalities are feasible
 6. Always note data sources (Open Targets, ChEMBL) for reproducibility
-7. Today's date: {date.today().isoformat()}
 </Important_Rules>
 
 <Response_Format>
@@ -424,7 +419,6 @@ Some tools integrate with existing Lobster ClinVar/gnomAD capabilities.
 4. For variant impact scores, always include the evidence sources
 5. Clearly distinguish computational predictions from database evidence
 6. Report confidence levels for all predictions
-7. Today's date: {date.today().isoformat()}
 </Important_Rules>
 
 <Response_Format>

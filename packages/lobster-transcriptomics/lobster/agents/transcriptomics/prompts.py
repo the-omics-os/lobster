@@ -9,8 +9,6 @@ This module contains all system prompts used by the transcriptomics agent family
 Prompts are defined as functions to allow dynamic content (e.g., date).
 """
 
-from datetime import date
-
 
 def create_transcriptomics_expert_prompt() -> str:
     """
@@ -271,8 +269,6 @@ If batch_silhouette > 0.3 or median_lisi < 1.5, flag for re-integration.
 11. **Use descriptive modality names** following the pattern: base_operation (e.g., geo_gse12345_clustered)
 12. **CLUSTER COLUMN**: Before calling subcluster_cells, evaluate_clustering_quality, or find_marker_genes, ALWAYS call check_data_status() to identify the actual cluster column name. NEVER assume 'leiden'. Common names: 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1'. Pass the column name explicitly via cluster_key/groupby parameter.
 </Important_Rules>
-
-Today's date: {date.today()}
 """
 
 
@@ -392,8 +388,6 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: n_clusters_annotated, confidence_distribution=[high:N,medium:N,low:N], debris_clusters, modality_name, top_cell_types=[type:count,...].
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()
 
 
@@ -526,6 +520,4 @@ Your responses are read by the parent AI agent, not end users. Optimize for mach
 - The parent agent will reformulate your output
 Report: n_de_genes (up/down), top_genes=[gene:log2fc:padj,...], method, formula, n_sig_pathways, modality_name.
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()

@@ -396,6 +396,9 @@ class AgentClient(BaseClient):
 
         # Conversation state
         self.messages: List[BaseMessage] = []
+        # Hash of the last <Session context> block sent in this thread; None
+        # sends the block with the next question.
+        self._session_context_hash: Optional[str] = None
         self.metadata: Dict[str, Any] = {
             "created_at": datetime.now().isoformat(),
             "session_id": self.session_id,
@@ -491,8 +494,9 @@ class AgentClient(BaseClient):
         # Capture pre-query state so cancellation can cleanly rollback.
         pre_query_msg_count = len(self.messages)
 
-        # Add user message
-        self.messages.append(HumanMessage(content=user_input))
+        # Add user message. The copy sent to the model may carry the session
+        # context; one id makes both the same message in the thread.
+        self.messages.append(HumanMessage(content=user_input, id=str(uuid.uuid4())))
 
         config = {
             "configurable": {"thread_id": self.session_id},
@@ -511,6 +515,17 @@ class AgentClient(BaseClient):
                 "Could not read the conversation thread; sending the whole history"
             )
         turn_messages = [self.messages[-1]] if thread_count else self.messages
+        # The date and the workspace data go into the new question, only when
+        # they changed, so the system prompt and earlier messages stay as sent.
+        # self.messages keeps the question as the user wrote it.
+        context = self._new_session_context()
+        if context:
+            turn_messages = [
+                *turn_messages[:-1],
+                HumanMessage(
+                    content=f"{context}\n\n{user_input}", id=self.messages[-1].id
+                ),
+            ]
         graph_input = {"messages": turn_messages}
 
         # Reset per-turn delegation capture so one turn's manifests cannot be
@@ -1117,6 +1132,21 @@ class AgentClient(BaseClient):
         else:
             yield self._run_query(stream_input, config)
 
+    def _new_session_context(self) -> Optional[str]:
+        """The <Session context> block when it differs from the last one sent."""
+        from lobster.agents.supervisor import build_session_context
+
+        try:
+            block = build_session_context(self.data_manager)
+        except Exception:
+            logger.debug("Could not build the session context", exc_info=True)
+            return None
+        digest = hashlib.sha256(block.encode()).hexdigest()[:16]
+        if digest == self._session_context_hash:
+            return None
+        self._session_context_hash = digest
+        return block
+
     def _thread_message_count(self, config: Dict) -> Optional[int]:
         """How many messages the graph thread holds; None when it cannot be read."""
         try:
@@ -1149,8 +1179,10 @@ class AgentClient(BaseClient):
                 cut at its own count. None leaves the thread as it is.
         """
         try:
-            # 1. Roll back in-memory messages to pre-query state.
+            # 1. Roll back in-memory messages to pre-query state. The rolled-back
+            # question may have carried the session context, so send it again.
             self.messages = self.messages[:pre_query_msg_count]
+            self._session_context_hash = None
 
             # 2. Roll back graph state. The cancelled turn's writes can still be
             # pending rather than checkpointed, and removing one of those by id
@@ -3249,6 +3281,7 @@ class AgentClient(BaseClient):
     def reset(self):
         """Reset the conversation state; the model no longer sees earlier turns."""
         self.messages = []
+        self._session_context_hash = None
         try:
             self._replace_thread_messages([])
         except Exception as exc:
@@ -3527,6 +3560,13 @@ class AgentClient(BaseClient):
                 logger.warning(
                     f"Could not read the saved tool history, using the conversation: {exc}"
                 )
+        # The conversation alone carries no session context, so the next
+        # question sends it; a restored tool history carries the last one.
+        self._session_context_hash = (
+            session_data.get("session_context_hash")
+            if thread_messages is not self.messages
+            else None
+        )
         try:
             self._replace_thread_messages(thread_messages)
         except Exception as exc:
@@ -3625,6 +3665,7 @@ class AgentClient(BaseClient):
                     # and change what the provider is sent.
                     json.dumps(messages)
                     session_data["messages"] = messages
+                    session_data["session_context_hash"] = self._session_context_hash
                 except Exception as exc:
                     # The conversation is still saved; the next turn falls back to it.
                     logger.warning(f"Could not save the tool history: {exc}")

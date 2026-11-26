@@ -1489,9 +1489,8 @@ class TestSystemPrompt:
         call_kwargs = mock_create_agent.call_args[1]
         system_prompt = call_kwargs["prompt"]
 
-        # Verify date formatting (note: system prompt may use ISO format with timestamp)
-        today_date = date.today().isoformat()
-        assert today_date in system_prompt or "todays date:" in system_prompt.lower()
+        # The date comes with each task, so the system prompt is the same every day.
+        assert date.today().isoformat() not in system_prompt
 
         # Verify key prompt sections (updated for new hierarchical agent prompt)
         assert "metadata assistant" in system_prompt.lower()

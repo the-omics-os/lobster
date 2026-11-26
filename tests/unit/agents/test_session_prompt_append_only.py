@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import sys
 from collections import defaultdict, deque
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 from unittest.mock import Mock
@@ -205,7 +207,7 @@ def test_three_turns_send_an_append_only_prompt_to_every_agent(session):
     repeated = {m: last.count(m) for m in last if last.count(m) > 1}
     assert not repeated, f"messages sent more than once: {repeated}"
     # (e) the third turn still carries the first question and its answer
-    contents = [json.loads(m)["content"] for m in last]
+    contents = _contents(last)
     assert "first question" in contents and "answer one" in contents, contents
 
     # Each hand-off starts a fresh expert conversation; within it the same rules hold.
@@ -247,7 +249,7 @@ def _assert_supervisor_append_only(requests):
     last = calls[-1]
     repeated = {m: last.count(m) for m in last if last.count(m) > 1}
     assert not repeated, f"messages sent more than once: {repeated}"
-    return [json.loads(m)["content"] for m in last if json.loads(m)["type"] != "system"]
+    return _contents([m for m in last if json.loads(m)["type"] != "system"])
 
 
 @pytest.mark.no_auto_config
@@ -357,7 +359,7 @@ def test_duplicate_left_by_an_earlier_version_does_not_grow(session):
     supervisor = _supervisor_requests(requests)
     for index in range(2, len(supervisor)):
         assert supervisor[index][: len(supervisor[index - 1])] == supervisor[index - 1]
-    last = [json.loads(m)["content"] for m in supervisor[-1]]
+    last = _contents(supervisor[-1])
     assert last.count("answer one") == 2, last
     assert {c: last.count(c) for c in last if c != "answer one"} == {
         c: 1 for c in last if c != "answer one"
@@ -408,7 +410,7 @@ def test_streamed_turns_send_each_earlier_message_once(session):
         assert events and events[-1]["type"] == "complete", events[-1:]
 
     last = _supervisor_requests(requests)[-1]
-    assert [json.loads(m)["content"] for m in last] == [
+    assert _contents(last) == [
         "first question",
         "answer one",
         "second question",
@@ -436,12 +438,12 @@ def test_restored_session_sends_its_history_once(session, tmp_path):
         assert client.query(text).get("success") is True
 
     first, second = _supervisor_requests(requests)
-    assert [json.loads(m)["content"] for m in first] == [
+    assert _contents(first) == [
         "old question",
         "old answer",
         "first question",
     ]
-    assert [json.loads(m)["content"] for m in second] == [
+    assert _contents(second) == [
         "old question",
         "old answer",
         "first question",
@@ -450,8 +452,20 @@ def test_restored_session_sends_its_history_once(session, tmp_path):
     ]
 
 
+_SESSION_CONTEXT = re.compile(r"\A<Session context>\n.*?\n</Session context>\n\n", re.S)
+
+
 def _contents(rendered):
-    return [json.loads(m)["content"] for m in rendered]
+    """Message texts without the <Session context> block Lobster puts before a
+    question (its own tests check the block)."""
+    return [
+        (
+            _SESSION_CONTEXT.sub("", content)
+            if isinstance(content := json.loads(m)["content"], str)
+            else content
+        )
+        for m in rendered
+    ]
 
 
 def _restore(client, tmp_path):
@@ -802,3 +816,87 @@ def test_tool_history_over_the_cap_is_not_saved(new_process, monkeypatch):
     data = json.loads(client._save_session_json().read_text())
     assert "messages" not in data
     assert [m["content"] for m in data["conversation"]] == ["q", "a"]
+
+
+def _human_texts(messages):
+    return [m.content for m in messages if m.type == "human"]
+
+
+def _fixed_day(monkeypatch, day):
+    """Every module that renders a prompt sees ``day`` as today."""
+    import datetime as _datetime
+
+    class FixedDate(_datetime.date):
+        @classmethod
+        def today(cls):
+            return cls(day.year, day.month, day.day)
+
+    for name, module in tuple(sys.modules.items()):
+        if (
+            name.startswith("lobster.")
+            and isinstance(module, ModuleType)
+            and getattr(module, "date", None) is not None
+            and isinstance(getattr(module, "date"), type)
+            and issubclass(getattr(module, "date"), _datetime.date)
+        ):
+            monkeypatch.setattr(module, "date", FixedDate)
+
+
+def test_new_data_and_a_new_day_keep_every_system_prompt_across_processes(
+    new_process, monkeypatch
+):
+    """A new process re-renders every prompt. Data that appeared in the workspace
+    and the date reach the model in the new question, not in the system prompt."""
+    import datetime as _datetime
+
+    make, workspace, requests, script = new_process
+    script["supervisor"].extend([_handoff("call-1"), AIMessage("answer one")])
+    script[EXPERT].append(AIMessage("expert result one"))
+    first = make()
+    _fixed_day(monkeypatch, _datetime.date(2026, 11, 25))
+    assert first.query("first question").get("success") is True
+    saved = workspace / "session_per-turn.json"
+
+    data_dir = Path(str(first.data_manager.workspace_path)) / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "uploaded_counts.csv").write_text("gene,a\nX,1\n")
+    _fixed_day(monkeypatch, _datetime.date(2026, 11, 26))
+    script["supervisor"].extend([_handoff("call-2"), AIMessage("answer two")])
+    script[EXPERT].append(AIMessage("expert result two"))
+    second = make()
+    _fixed_day(monkeypatch, _datetime.date(2026, 11, 26))
+    second.load_session(saved)
+    assert second.query("second question").get("success") is True
+
+    for agent, prompts in _system_prompts(requests).items():
+        assert all(p == prompts[0] for p in prompts), f"{agent} system prompt changed"
+    supervisor = [m for a, m, _ in requests if a == "supervisor"]
+    first_turn, second_turn = _human_texts(supervisor[0]), _human_texts(supervisor[-1])
+    assert "2026-11-25" in first_turn[0] and first_turn[0].endswith("first question")
+    assert "2026-11-26" in second_turn[-1] and "uploaded_counts.csv" in second_turn[-1]
+    assert second_turn[-1].endswith("second question")
+    expert = [m for a, m, _ in requests if a == EXPERT]
+    assert "2026-11-26" in _human_texts(expert[-1])[0]
+
+
+def test_session_context_is_sent_again_only_when_it_changed(session):
+    client, requests, script = session
+    script["supervisor"].extend(
+        [AIMessage("answer one"), AIMessage("answer two"), AIMessage("answer three")]
+    )
+    assert client.query("first question").get("success") is True
+    assert client.query("second question").get("success") is True
+    data_dir = Path(str(client.data_manager.workspace_path)) / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "uploaded_counts.csv").write_text("gene,a\nX,1\n")
+    assert client.query("third question").get("success") is True
+
+    last = _human_texts([m for a, m, _ in requests if a == "supervisor"][-1])
+    assert "<Session context>" in last[0]
+    assert last[1] == "second question"
+    assert "<Session context>" in last[2] and "uploaded_counts.csv" in last[2]
+    assert [m.content for m in client.messages if m.type == "human"] == [
+        "first question",
+        "second question",
+        "third question",
+    ]

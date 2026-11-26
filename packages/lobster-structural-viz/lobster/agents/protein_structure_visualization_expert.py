@@ -24,7 +24,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 )
 
 # === Heavy imports below ===
-from datetime import date
 from pathlib import Path
 from typing import List, Optional
 
@@ -916,8 +915,6 @@ Your responses are read by the supervisor AI, not end users. Optimize for machin
 - Include: pdb_id, structure_file, rmsd, n_residues, visualization_path, warnings, next steps
 - The supervisor will reformulate your output for the user
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()
 
     # Import state from package-local module

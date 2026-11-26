@@ -29,7 +29,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 )
 
 # === Heavy imports below ===
-from datetime import date
 from pathlib import Path
 from typing import Annotated, List, Optional
 
@@ -988,8 +987,6 @@ Use compact key=value fields: figure_ref, plot_type, modality_name, path, warnin
 Use only committed refs/paths for SUCCESS; dry runs create no revision and deliver no view.
 PENDING means publication is unresolved, not available yet; do not claim failure or that nothing was saved.
 </Response_Format>
-
-Today's date: {date.today()}
 """.strip()
     from lobster.tools.code_tool_switch import attach_code_tool
 
