@@ -22,18 +22,23 @@ def builds(monkeypatch):
 def test_provider_switch_keeps_the_aquadif_monitor(builds, tmp_path):
     from lobster.core.client import AgentClient
 
-    client = AgentClient(workspace_path=tmp_path, provider_override="bedrock")
+    client = AgentClient(
+        workspace_path=tmp_path,
+        provider_override="bedrock",
+        model_override="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        manual_model_params={"temperature": 0.2},
+    )
     result = client.switch_provider("anthropic")
     assert result["success"], result
     assert builds[-1]["provider_override"] == "anthropic"
     assert builds[-1]["aquadif_monitor"] is client.aquadif_monitor
     assert builds[-1]["checkpointer"] is client.checkpointer
     assert builds[-1]["model_override"] is None
+    assert builds[-1]["manual_model_params"] is None
+    assert client.model_override is None
 
 
-def test_failed_provider_switch_keeps_the_running_graph(
-    builds, monkeypatch, tmp_path
-):
+def test_failed_provider_switch_keeps_the_running_graph(builds, monkeypatch, tmp_path):
     from lobster.core import client as client_module
     from lobster.core.client import AgentClient
 
