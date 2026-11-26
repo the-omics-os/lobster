@@ -1334,7 +1334,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 		if !m.ready {
-			return m, nil // Silently ignore input until backend is ready.
+			// Startup can be slow; /exit and /quit still leave, without the
+			// confirm (nothing has run yet). Other input waits in the box.
+			switch strings.ToLower(strings.TrimSpace(m.input.Value())) {
+			case "/exit", "/quit":
+				if m.handler != nil {
+					_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+				}
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, nil
 		}
 		val := strings.TrimSpace(m.input.Value())
 		if val == "" {

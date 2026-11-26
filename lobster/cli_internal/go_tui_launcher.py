@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 
 # Used only to launch the lobster-tui binary (see launch_go_tui_chat).
@@ -386,6 +387,14 @@ def _heartbeat_loop(bridge: _LightBridge, stop_event: threading.Event) -> None:
 # ---------------------------------------------------------------------------
 
 
+# A key the provider refuses: HTTP 401 or the SDKs' own words for it.
+_REFUSED_KEY = re.compile(
+    r"\b401\b|authentication_error|couldn't authenticate|invalid[ _]api[ _]key"
+    r"|invalid x-api-key",
+    re.IGNORECASE,
+)
+
+
 def _friendly_error(raw: str) -> tuple:
     """Map raw error messages to user-friendly (title, message) tuples."""
     msg = raw.strip()
@@ -448,7 +457,7 @@ def _friendly_error(raw: str) -> tuple:
             h("Quota Exceeded"),
             h("LLM provider quota exceeded. Check your billing or switch provider."),
         )
-    if "invalid api key" in msg.lower() or "invalid_api_key" in msg.lower():
+    if _REFUSED_KEY.search(msg):
         return (
             h("Auth Error"),
             h("Invalid API key. Enter a new key: lobster init --force"),
