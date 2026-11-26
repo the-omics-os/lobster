@@ -95,8 +95,7 @@ def resolve_auth(token_override: Optional[str] = None) -> dict:
             "Not authenticated. Get an API key at app.omics-os.com/account and run 'lobster cloud login --api-key <key>'."
         )
 
-    if token.startswith("omk_"):
-        return {"X-API-Key": token}
+    # API keys too: app.omics-os.com forwards only Authorization to the API.
     return {"Authorization": f"Bearer {token}"}
 
 
