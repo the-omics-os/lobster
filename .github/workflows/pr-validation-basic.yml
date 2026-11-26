@@ -7,7 +7,9 @@ on:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  PYTEST_ADDOPTS: "--color=yes --tb=short"
+  # pyproject's addopts always add --cov=lobster with three reports (~45 s per
+  # pytest call); no job reads them, so PR checks run without coverage.
+  PYTEST_ADDOPTS: "--color=yes --tb=short --no-cov"
   # Fresh resolves stay on the uv.lock versions listed there (pytest 9.2.0 vs
   # pytest-benchmark 5.3.0).
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
@@ -71,7 +73,7 @@ jobs:
   fast-validation:
     name: Fast Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     
     steps:
     - name: Checkout PR
@@ -131,6 +133,8 @@ jobs:
         # hardcoded file list silently skips every test file a contributor adds,
         # so the check goes green without ever running the new coverage.
         # Each exclusion below is deliberate — do not drop one without checking:
+        #   test_replay_*.py — each runs an exported notebook in a fresh Jupyter
+        #     kernel (~600 tests, ~24 min serial); they run in the Replay Tests job.
         #   test_go_tui_launcher_completions.py — needs a built Go binary, which
         #     this job does not produce (it runs in ci-basic.yml's go-tui-verify).
         #   TestTTYGuard::test_non_tty_stdin_exits_with_error — passes alone, fails
@@ -153,13 +157,13 @@ jobs:
           tests/unit/agents/test_research_agent.py \
           tests/unit/agents/test_data_expert.py \
           --ignore=tests/unit/cli/test_go_tui_launcher_completions.py \
+          --ignore-glob='tests/unit/cli/test_replay_*' \
           --deselect "tests/unit/cli/test_init_venv_safety.py::TestTTYGuard::test_non_tty_stdin_exits_with_error" \
           --deselect "tests/unit/core/backends/test_mudata_backend.py::TestMuDataGlobalObservations::test_global_obs_with_different_observation_names" \
           -m "not slow and not real_api" \
           --import-mode=importlib \
           --maxfail=5 \
-          --cov=lobster \
-          --cov-report=xml \
+          -n auto --dist worksteal \
           --junit-xml=pr-test-results.xml \
           --durations=5 \
           -v
@@ -169,9 +173,69 @@ jobs:
       if: always()
       with:
         name: pr-test-results
-        path: |
-          pr-test-results.xml
-          coverage.xml
+        path: pr-test-results.xml
+        retention-days: 14
+
+  # =====================================================================
+  # Replay Tests (sharded)
+  # =====================================================================
+  # Each replay test runs an exported notebook in a fresh Jupyter kernel
+  # (3-4 s each, ~600 tests). Sharded by file name so every new
+  # test_replay_* file runs in a shard. Transcriptomics is installed here, so
+  # the replay files that ci-basic.yml skips run on every PR.
+  replay-tests:
+    name: Replay Tests ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['[a-c]', '[d-g]', '[h-z]']
+
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: 3.12
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Install dependencies for replay tests
+      run: |
+        uv venv --python 3.12 .venv
+        uv pip install -e ".[dev,openai,server]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Every replay test file is in a shard
+      run: |
+        outside=$(ls tests/unit/cli/test_replay_*.py | grep -v '/test_replay_[a-z]' || true)
+        if [ -n "$outside" ]; then
+          echo "Replay test files no shard runs: $outside"
+          exit 1
+        fi
+
+    - name: Run replay tests
+      run: |
+        python -m pytest tests/unit/cli/test_replay_${{ matrix.shard }}*.py \
+          -m "not slow and not real_api" \
+          --import-mode=importlib \
+          -n auto --dist worksteal \
+          --junit-xml=replay-test-results.xml \
+          --durations=15 \
+          -v
+
+    - name: Upload test results
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      if: always()
+      with:
+        name: replay-test-results-${{ strategy.job-index }}
+        path: replay-test-results.xml
         retention-days: 14
 
   # =====================================================================
@@ -425,7 +489,7 @@ jobs:
   pr-status:
     name: PR Status Summary
     runs-on: ubuntu-latest
-    needs: [pr-analysis, fast-validation, security-check, extended-tests, go-tui-validation]
+    needs: [pr-analysis, fast-validation, replay-tests, security-check, extended-tests, go-tui-validation]
     if: always()
     
     steps:
@@ -446,6 +510,7 @@ jobs:
           const jobs = {
             'PR Analysis': '${{ needs.pr-analysis.result }}',
             'Fast Validation': '${{ needs.fast-validation.result }}',
+            'Replay Tests': '${{ needs.replay-tests.result }}',
             'Security Check': '${{ needs.security-check.result }}',
             'Extended Tests': '${{ needs.extended-tests.result }}',
             'Go TUI': '${{ needs.go-tui-validation.result }}'
@@ -462,7 +527,7 @@ jobs:
           const isDraft = context.payload.pull_request.draft === true;
           const filesChanged = '${{ needs.pr-analysis.outputs.files_changed }}';
           const hasCoreChanges = '${{ needs.pr-analysis.outputs.has_core_changes }}';
-          const coreJobs = [jobs['Fast Validation'], jobs['Security Check'], jobs['Go TUI']];
+          const coreJobs = [jobs['Fast Validation'], jobs['Replay Tests'], jobs['Security Check'], jobs['Go TUI']];
           const analysisPassed = isDraft
             ? ['success', 'skipped'].includes(jobs['PR Analysis'])
             : jobs['PR Analysis'] === 'success'
