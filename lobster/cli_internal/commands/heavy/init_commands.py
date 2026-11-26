@@ -321,6 +321,25 @@ def _check_preset_or_exit(preset_flag: str, out) -> None:
         raise typer.Exit(1)
 
 
+def _profile_flag_or_exit(profile_flag: Optional[str], out) -> Optional[str]:
+    """--profile for a run with a wizard; the wizards no longer ask for one."""
+    from lobster.config.constants import DEPRECATED_PROFILE_ALIASES, VALID_PROFILES
+
+    # Not a str when init_impl is called directly (a typer.OptionInfo default).
+    if not isinstance(profile_flag, str) or not profile_flag:
+        return None
+    profile_flag = DEPRECATED_PROFILE_ALIASES.get(profile_flag, profile_flag)
+    if profile_flag not in VALID_PROFILES:
+        out.print(
+            h("[red]❌ Error: Invalid profile '{profile}'[/red]").format(
+                profile=profile_flag
+            )
+        )
+        out.print(h("Valid profiles: {join}").format(join=", ".join(VALID_PROFILES)))
+        raise typer.Exit(1)
+    return profile_flag
+
+
 def _prompt_manual_agent_selection(
     workspace_path: Path,
     preset: Optional[str] = None,
@@ -3854,6 +3873,8 @@ def init_impl(
     if preset:
         _check_preset_or_exit(preset, console)
 
+    _flag_profile = _profile_flag_or_exit(profile, console)
+
     # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
     # The Go binary and the questionary fallback both return the same JSON dict,
     # so a single apply_tui_init_result() call handles both paths.
@@ -3899,6 +3920,8 @@ def init_impl(
                         )
                         if lamin is not None:
                             _tui_result["lamin_enabled"] = lamin
+                        if _flag_profile:
+                            _tui_result["profile"] = _flag_profile
 
                         _ws_path = _resolve_workspace_or_exit(
                             create=not global_config, workspace=init_ws
@@ -4013,6 +4036,8 @@ def init_impl(
                 )
                 if lamin is not None:
                     _q_result["lamin_enabled"] = lamin
+                if _flag_profile:
+                    _q_result["profile"] = _flag_profile
                 if _q_lang:
                     _q_result["lang"] = _q_lang
                 if _q_result.get("cancelled", False):
@@ -4474,6 +4499,14 @@ def init_impl(
             and provider_name not in ("omics-os", "ollama")
         ):
             _ensure_provider_installed(provider_name)
+
+        if _flag_profile and provider_name in ("anthropic", "bedrock"):
+            env_lines.append("\n# Agent Configuration Profile")
+            env_lines.append(
+                "# Shown as Mode in lobster status; it does not choose models"
+            )
+            env_lines.append(f"LOBSTER_PROFILE={_flag_profile}")
+            config_dict["profile"] = _flag_profile
 
         # ================================================================== #
         # Step 4 — Agent selection                                            #

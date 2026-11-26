@@ -64,3 +64,28 @@ def test_the_profile_flag_still_sets_the_profile(proj):
     assert "LOBSTER_PROFILE=max" in env
     assert "it does not choose models" in env
     assert get_current_profile(proj / ".lobster_workspace") == "max"
+
+
+def test_the_profile_flag_reaches_the_wizard_answers(monkeypatch, tmp_path):
+    from lobster.config import credentials, global_config
+    from lobster.config.agent_defaults import get_current_profile
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from tests.unit.cli.test_init_project import _init_impl, _wizard
+
+    monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
+    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "creds")
+    monkeypatch.setattr(
+        credentials, "CREDENTIALS_FILE", tmp_path / "creds" / "credentials.json"
+    )
+    for name in ("LOBSTER_PROFILE", "LOBSTER_LLM_PROVIDER", "LOBSTER_WORKSPACE"):
+        monkeypatch.delenv(name, raising=False)
+    study = tmp_path / "study"
+    _wizard(
+        monkeypatch,
+        {"provider": "anthropic", "api_key": KEY, "agents": [], "cancelled": False},
+    )
+    _init_impl(study, profile="ultra")
+
+    workspace = study / ".lobster_workspace"
+    assert WorkspaceProviderConfig.load(workspace).profile == "performance"
+    assert get_current_profile(workspace) == "performance"

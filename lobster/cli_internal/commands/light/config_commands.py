@@ -1685,7 +1685,7 @@ def list_profiles_impl():
         console.print(f"   {name}{marker}")
     console.print()
     console.print(
-        h("[dim]Switch profile: lobster config provider --profile <name> --save[/dim]")
+        h("[dim]Set the profile: lobster init --force --profile <name>[/dim]")
     )
 
 

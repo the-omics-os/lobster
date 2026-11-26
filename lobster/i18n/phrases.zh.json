@@ -965,7 +965,7 @@
   "Input $/M": "输入 $/百万词元",
   "Output $/M": "输出 $/百万词元",
   "\n[cyan]Available Profiles[/cyan]": "\n[cyan]可用配置方案[/cyan]",
-  "[dim]Switch profile: lobster config provider --profile <name> --save[/dim]": "[dim]切换配置方案：lobster config provider --profile <name> --save[/dim]",
+  "[dim]Set the profile: lobster init --force --profile <name>[/dim]": "[dim]设置配置方案：lobster init --force --profile <name>[/dim]",
   "[bold cyan]📍 Environment[/bold cyan]": "[bold cyan]📍 运行环境[/bold cyan]",
   "[bold cyan]🔌 Provider Configuration[/bold cyan]": "[bold cyan]🔌 模型服务配置[/bold cyan]",
   "[bold cyan]⚙️  Profile Configuration[/bold cyan]": "[bold cyan]⚙️  配置方案设置[/bold cyan]",

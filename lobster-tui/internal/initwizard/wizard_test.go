@@ -356,7 +356,7 @@ func TestWizardModelAnthropicGoesFromModelToAgents(t *testing.T) {
 	}
 }
 
-func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
+func TestWizardModelGeminiGoesFromModelToAgents(t *testing.T) {
 	m := NewWizardModel("", "")
 
 	// Select Gemini (index 5 — cloud providers precede it).
@@ -384,12 +384,12 @@ func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 		t.Fatalf("expected stepModelSelect for gemini, got %d", m.step)
 	}
 
-	// Accept default model and should skip profile → agent packages.
+	// Accept default model → agent packages.
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	if m.step != stepAgentPackages {
-		t.Fatalf("expected stepAgentPackages after model select for gemini (non-profile), got %d", m.step)
+		t.Fatalf("expected stepAgentPackages after model select for gemini, got %d", m.step)
 	}
 }
 
@@ -452,7 +452,7 @@ func TestOAuthSucceededAdvancesStep(t *testing.T) {
 	if !m.result.OAuthAuthenticated {
 		t.Fatal("expected OAuthAuthenticated=true")
 	}
-	// Omics-OS has no model catalog and no profile, so should go to agent packages.
+	// Omics-OS has no model catalog, so should go to agent packages.
 	if m.step != stepAgentPackages {
 		t.Fatalf("expected stepAgentPackages after OAuth success, got %d", m.step)
 	}
