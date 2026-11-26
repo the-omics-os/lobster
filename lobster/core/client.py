@@ -3184,6 +3184,23 @@ class AgentClient(BaseClient):
         """
         return self.token_tracker.get_usage_summary()
 
+    def switch_model(self, model_name: str) -> None:
+        """Rebuild the agent graph so the next turn uses ``model_name``.
+
+        The conversation, data, store and checkpointer stay. If the graph cannot
+        be built, the running graph and model stay and the error is raised.
+        """
+        if getattr(self, "_inference_context", None) is not None:
+            raise InferenceRefused("context")
+        options = {
+            **self._graph_options,
+            "provider_override": self.provider_override,
+            "model_override": model_name,
+        }
+        self.graph, self.graph_metadata = create_bioinformatics_graph(**options)
+        self._graph_options = options
+        self.model_override = model_name
+
     def switch_provider(self, provider_name: str) -> Dict[str, Any]:
         """
         Switch LLM provider at runtime and recreate the agent graph.

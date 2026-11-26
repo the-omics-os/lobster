@@ -1201,6 +1201,12 @@ def config_model_switch(
             output.print(f"[dim]{hint}[/dim]")
             return None
 
+        # Rebuild the running chat first: a model that cannot be created raises
+        # here and changes nothing. The graph is built once per session, so
+        # without this the chat kept the model it started with.
+        if hasattr(client, "switch_model"):
+            client.switch_model(model_name)
+
         # Always persist to workspace config — env vars are not read by
         # ConfigResolver and would be lost on next session
         try:
