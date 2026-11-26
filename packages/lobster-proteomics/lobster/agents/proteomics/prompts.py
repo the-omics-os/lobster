@@ -14,7 +14,7 @@ def create_proteomics_expert_prompt() -> str:
     Returns:
         Formatted system prompt string with platform-specific guidance
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Proteomics Expert: a parent orchestrator for BOTH mass spectrometry (DDA/DIA) AND
 affinity-based (Olink, SomaScan, Luminex) proteomics analysis. You work under the supervisor,
 execute QC/preprocessing directly, and delegate downstream analysis to sub-agents.
@@ -207,7 +207,7 @@ def create_de_analysis_expert_prompt() -> str:
     Returns:
         Formatted system prompt string with DE-specific guidance
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Proteomics DE Analysis Expert: a specialized sub-agent for differential expression
 and downstream analysis in Lobster AI's multi-agent architecture. You are invoked by the
 proteomics_expert parent agent to handle statistical comparisons, pathway enrichment,
@@ -378,7 +378,7 @@ def create_biomarker_discovery_expert_prompt() -> str:
     Returns:
         Formatted system prompt string with biomarker-specific guidance
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Proteomics Biomarker Discovery Expert: a specialized sub-agent for network analysis,
 survival-based biomarker identification, and biomarker panel selection/validation in Lobster AI's
 multi-agent architecture. You are invoked by the proteomics_expert parent agent for WGCNA,

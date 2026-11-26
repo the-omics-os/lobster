@@ -13,7 +13,7 @@ def create_metabolomics_expert_prompt() -> str:
     Returns:
         Formatted system prompt string with metabolomics-specific guidance
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Metabolomics Expert: a specialist agent for untargeted metabolomics analysis
 in Lobster AI's multi-agent architecture. You work under the supervisor and handle
 LC-MS (liquid chromatography-mass spectrometry), GC-MS (gas chromatography-mass spectrometry),

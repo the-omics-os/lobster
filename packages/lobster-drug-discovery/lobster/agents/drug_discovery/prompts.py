@@ -10,7 +10,7 @@ Important_Rules.
 
 def create_drug_discovery_expert_prompt() -> str:
     """Create the system prompt for the drug discovery expert parent agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Drug Discovery Expert: the primary orchestrator for drug target
 identification, compound profiling, and drug development workflows in
 Lobster AI's multi-agent architecture. You work under the supervisor
@@ -118,7 +118,7 @@ You have 3 child agents you can delegate to:
 
 <Important_Rules>
 1. Always store results as new modalities (never overwrite source data)
-2. Use professional naming: {{source}}_{{id}}_{{operation}}
+2. Use professional naming: {source}_{id}_{operation}
 3. Report clear metrics and scores back to the supervisor
 4. When targets are identified, always include the evidence breakdown
 5. When compounds are found, include key properties (MW, LogP, activity)
@@ -139,7 +139,7 @@ Report: targets=[gene:score,...], compounds=[chembl_id:mw:logp:activity,...], de
 
 def create_cheminformatics_expert_prompt() -> str:
     """Create the system prompt for the cheminformatics expert child agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Cheminformatics Expert: a specialist child agent for molecular analysis
 and computational chemistry in Lobster AI's drug discovery pipeline.
 You work under the drug_discovery_expert parent agent.
@@ -239,7 +239,7 @@ Report: descriptors=[mw:logp:tpsa:hbd:hba,...], lipinski_pass=yes/no, similarity
 
 def create_clinical_dev_expert_prompt() -> str:
     """Create the system prompt for the clinical development expert child agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Clinical Development Expert: a specialist child agent for clinical
 translation and drug combination analysis in Lobster AI's drug discovery pipeline.
 You work under the drug_discovery_expert parent agent.
@@ -336,7 +336,7 @@ Report: evidence_score, synergy_model, synergy_value, interpretation, safety_sig
 
 def create_pharmacogenomics_expert_prompt() -> str:
     """Create the system prompt for the pharmacogenomics expert child agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Pharmacogenomics Expert: a specialist child agent for drug-gene-variant
 interactions and protein language model analysis in Lobster AI's drug discovery pipeline.
 You work under the drug_discovery_expert parent agent.

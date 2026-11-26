@@ -852,7 +852,7 @@ Results are stored in memory and can be accessed for further processing.
     # -------------------------
     # SYSTEM PROMPT
     # -------------------------
-    system_prompt = f"""
+    system_prompt = """
 You are an expert in protein structure visualization and analysis, specializing in 3D structural biology and integration with multi-omics data.
 
 <Role>

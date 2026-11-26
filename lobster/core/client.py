@@ -154,6 +154,10 @@ logger = logging.getLogger(__name__)
 SESSION_TOOL_HISTORY_MAX_TOKENS = 32_000
 
 
+def _context_digest(block: str) -> str:
+    return hashlib.sha256(block.encode()).hexdigest()[:16]
+
+
 def _tool_history_tokens(messages: List[BaseMessage]) -> int:
     from lobster.agents.context_management import _message_list_token_counter
 
@@ -399,6 +403,9 @@ class AgentClient(BaseClient):
         # Hash of the last <Session context> block sent in this thread; None
         # sends the block with the next question.
         self._session_context_hash: Optional[str] = None
+        # The block each question was sent with, by message id, so the session
+        # file can restore the question as the model received it.
+        self._session_context_by_id: Dict[str, str] = {}
         self.metadata: Dict[str, Any] = {
             "created_at": datetime.now().isoformat(),
             "session_id": self.session_id,
@@ -511,6 +518,9 @@ class AgentClient(BaseClient):
         # or unreadable thread gets the whole history.
         thread_count = self._thread_message_count(config)
         if thread_count is None:
+            # The whole history goes again and its plain questions replace the
+            # ones sent with a block, so this question carries it.
+            self._session_context_hash = None
             logger.warning(
                 "Could not read the conversation thread; sending the whole history"
             )
@@ -520,6 +530,7 @@ class AgentClient(BaseClient):
         # self.messages keeps the question as the user wrote it.
         context = self._new_session_context()
         if context:
+            self._session_context_by_id[self.messages[-1].id] = context
             turn_messages = [
                 *turn_messages[:-1],
                 HumanMessage(
@@ -1141,7 +1152,7 @@ class AgentClient(BaseClient):
         except Exception:
             logger.debug("Could not build the session context", exc_info=True)
             return None
-        digest = hashlib.sha256(block.encode()).hexdigest()[:16]
+        digest = _context_digest(block)
         if digest == self._session_context_hash:
             return None
         self._session_context_hash = digest
@@ -3044,12 +3055,14 @@ class AgentClient(BaseClient):
             else:
                 role = "system"
 
-            history.append(
-                {
-                    "role": role,
-                    "content": msg.content if hasattr(msg, "content") else str(msg),
-                }
-            )
+            entry = {
+                "role": role,
+                "content": msg.content if hasattr(msg, "content") else str(msg),
+            }
+            context = self._session_context_by_id.get(getattr(msg, "id", None))
+            if role == "user" and context:
+                entry["session_context"] = context
+            history.append(entry)
         return history
 
     def _check_redis_health(self) -> Dict[str, Any]:
@@ -3282,6 +3295,7 @@ class AgentClient(BaseClient):
         """Reset the conversation state; the model no longer sees earlier turns."""
         self.messages = []
         self._session_context_hash = None
+        self._session_context_by_id = {}
         try:
             self._replace_thread_messages([])
         except Exception as exc:
@@ -3516,6 +3530,11 @@ class AgentClient(BaseClient):
             raise ValueError("Invalid session file format: conversation must be a list")
 
         self.messages = []
+        self._session_context_by_id = {}
+        # What the model received: a question sent with a <Session context>
+        # block goes back into the thread with it.
+        sent_messages: List[BaseMessage] = []
+        last_context = None
         for msg in conversation:
             if not isinstance(msg, dict):
                 continue
@@ -3525,11 +3544,20 @@ class AgentClient(BaseClient):
 
             # The thread gets the same ids, so sending these again merges them.
             if role == "user":
-                self.messages.append(
-                    HumanMessage(content=content, id=str(uuid.uuid4()))
-                )
+                message = HumanMessage(content=content, id=str(uuid.uuid4()))
+                self.messages.append(message)
+                context = msg.get("session_context")
+                if isinstance(context, str) and context and isinstance(content, str):
+                    self._session_context_by_id[message.id] = context
+                    last_context = context
+                    message = HumanMessage(
+                        content=f"{context}\n\n{content}", id=message.id
+                    )
+                sent_messages.append(message)
             elif role == "assistant":
-                self.messages.append(AIMessage(content=content, id=str(uuid.uuid4())))
+                message = AIMessage(content=content, id=str(uuid.uuid4()))
+                self.messages.append(message)
+                sent_messages.append(message)
             # Skip system messages or unknown roles
 
         # Update session_id to match loaded session for continuity
@@ -3545,7 +3573,10 @@ class AgentClient(BaseClient):
         # there before the next question would otherwise hide this history. A
         # file saved with the tool history gives the thread exactly what the
         # model received, so the next request extends the earlier one.
-        thread_messages = self.messages
+        thread_messages = sent_messages
+        self._session_context_hash = (
+            _context_digest(last_context) if last_context else None
+        )
         if "messages" in session_data:
             try:
                 restored = messages_from_dict(session_data["messages"])
@@ -3556,20 +3587,15 @@ class AgentClient(BaseClient):
                         f"{SESSION_TOOL_HISTORY_MAX_TOKENS} cap"
                     )
                 thread_messages = restored
+                self._session_context_hash = session_data.get("session_context_hash")
             except Exception as exc:
                 logger.warning(
                     f"Could not read the saved tool history, using the conversation: {exc}"
                 )
-        # The conversation alone carries no session context, so the next
-        # question sends it; a restored tool history carries the last one.
-        self._session_context_hash = (
-            session_data.get("session_context_hash")
-            if thread_messages is not self.messages
-            else None
-        )
         try:
             self._replace_thread_messages(thread_messages)
         except Exception as exc:
+            self._session_context_hash = None  # the thread holds no block
             logger.warning(f"Could not restore the conversation thread: {exc}")
 
         # Update metadata with load info

@@ -5,7 +5,7 @@ System prompts for genomics expert agent and variant_analysis_expert sub-agent.
 
 def create_genomics_expert_prompt() -> str:
     """Create the system prompt for the genomics expert agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Genomics Expert: a specialist for whole genome sequencing (WGS) and SNP array
 analysis. You work under the supervisor. You can delegate clinical variant interpretation
 to your child agent, variant_analysis_expert.
@@ -82,7 +82,7 @@ GWAS report: lambda_gc (flag >1.1), n_significant, top_variants, modality_name. 
 
 def create_variant_analysis_expert_prompt() -> str:
     """Create system prompt for variant_analysis_expert sub-agent."""
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Variant Analysis Expert: a sub-agent of the Genomics Expert for clinical
 variant interpretation. You report results back to genomics_expert only.
 </Identity_And_Role>

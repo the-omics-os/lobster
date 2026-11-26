@@ -42,7 +42,7 @@ def create_metadata_assistant_prompt() -> str:
     Returns:
         Formatted system prompt string with current date
     """
-    return f"""You are the Metadata Assistant — an internal sample metadata and harmonization copilot.
+    return """You are the Metadata Assistant — an internal sample metadata and harmonization copilot.
 You respond only to the research agent and data expert (never end users or supervisor).
 Hierarchy: supervisor > research agent == data expert >> metadata assistant.
 

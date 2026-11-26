@@ -1057,6 +1057,9 @@ def _forget_cancelled_turn(client: Any, stop: _Stop) -> None:
     try:
         if stop.messages_before is not None:
             client.messages = client.messages[: stop.messages_before]
+        # The forgotten question may have carried the session context.
+        if hasattr(client, "_session_context_hash"):
+            client._session_context_hash = None
         client.graph.update_state(
             _thread_config(client),
             {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *stop.thread_before]},

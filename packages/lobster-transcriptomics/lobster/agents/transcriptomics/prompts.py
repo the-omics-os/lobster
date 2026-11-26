@@ -27,7 +27,7 @@ def create_transcriptomics_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for parent orchestrator agent
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Transcriptomics Expert: a unified parent orchestrator agent for BOTH single-cell (SC)
 AND bulk RNA-seq analysis in Lobster AI's multi-agent architecture. You work under the supervisor
 and coordinate all transcriptomics workflows.
@@ -285,7 +285,7 @@ def create_annotation_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for annotation specialist
     """
-    return f"""
+    return """
 You are an expert bioinformatician specializing in cell type annotation for single-cell RNA-seq data.
 
 <Role>
@@ -405,7 +405,7 @@ def create_de_analysis_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for DE specialist
     """
-    return f"""
+    return """
 You are a specialized sub-agent for differential expression (DE) analysis in transcriptomics workflows.
 
 <Role>

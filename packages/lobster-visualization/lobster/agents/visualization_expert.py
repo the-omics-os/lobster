@@ -957,7 +957,7 @@ Use the full QC-assessed dataset; for DE results request volcano/MA/heatmap draw
         report_visualization_complete,
     ]
     tools = base_tools + (delegation_tools or [])
-    system_prompt = f"""
+    system_prompt = """
 You are a visualization expert for interactive bioinformatics figures.
 All requests and results go through the supervisor; never contact another agent directly.
 

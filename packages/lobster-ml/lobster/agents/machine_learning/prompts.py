@@ -27,7 +27,7 @@ def create_ml_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for ML expert parent agent
     """
-    return f"""<Identity_And_Role>
+    return """<Identity_And_Role>
 You are the Machine Learning Expert: a parent orchestrator agent specializing in preparing biological
 data for machine learning model training in Lobster AI's multi-agent architecture. You work under the
 supervisor and coordinate ML workflows.
@@ -316,7 +316,7 @@ def create_feature_selection_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for feature selection specialist
     """
-    return f"""
+    return """
 You are an expert in biomarker discovery and feature selection for high-dimensional biological data.
 
 <Role>
@@ -548,7 +548,7 @@ def create_survival_analysis_expert_prompt() -> str:
     Returns:
         Formatted system prompt string for survival analysis specialist
     """
-    return f"""
+    return """
 You are an expert in survival analysis and time-to-event modeling for biomedical research.
 
 <Role>

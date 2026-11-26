@@ -900,3 +900,57 @@ def test_session_context_is_sent_again_only_when_it_changed(session):
         "second question",
         "third question",
     ]
+
+
+def test_continued_session_without_the_opt_in_keeps_the_sent_question(
+    new_process, monkeypatch
+):
+    """The question went out with its <Session context>; a new process restores
+    it the same way, so its request still extends the earlier one."""
+    monkeypatch.delenv("LOBSTER_SESSION_TOOL_HISTORY", raising=False)
+    make, workspace, requests, script = new_process
+    script["supervisor"].extend([AIMessage("answer one"), AIMessage("answer two")])
+    first = make()
+    assert first.query("first question").get("success") is True
+    saved = workspace / "session_per-turn.json"
+    conversation = json.loads(saved.read_text())["conversation"]
+    assert conversation[0]["content"] == "first question"
+
+    second = make()
+    second.load_session(saved)
+    assert second.query("second question").get("success") is True
+
+    turn_one, turn_two = _supervisor_requests(requests)
+    assert turn_two[: len(turn_one)] == turn_one
+    assert _contents(turn_two[len(turn_one) :]) == ["answer one", "second question"]
+    # nothing changed, so the second question goes without a block
+    assert "<Session context>" not in json.loads(turn_two[-1])["content"]
+
+
+def _last_human(requests):
+    return [m for a, m, _ in requests if a == "supervisor"][-1][-1].content
+
+
+def test_reset_sends_the_session_context_again(session):
+    client, requests, script = session
+    script["supervisor"].extend([AIMessage("answer one"), AIMessage("answer two")])
+    assert client.query("first question").get("success") is True
+    client.reset()
+    assert client.query("second question").get("success") is True
+    assert _last_human(requests).startswith("<Session context>")
+
+
+def test_cancelled_turn_sends_the_session_context_again(session):
+    from lobster.cli_internal.mcp_stdio import (
+        _forget_cancelled_turn,
+        _Stop,
+        _thread_messages,
+    )
+
+    client, requests, script = session
+    stop = _Stop(len(client.messages), _thread_messages(client))
+    script["supervisor"].extend([AIMessage("answer one"), AIMessage("answer two")])
+    assert client.query("first question").get("success") is True
+    _forget_cancelled_turn(client, stop)  # the turn that carried the block
+    assert client.query("second question").get("success") is True
+    assert _last_human(requests).startswith("<Session context>")
