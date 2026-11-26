@@ -20,7 +20,13 @@ def workspace(monkeypatch, tmp_path):
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global-config")
-    for name in ("LOBSTER_LLM_PROVIDER", "NCBI_API_KEY", "NCBI_EMAIL"):
+    for name in (
+        "LOBSTER_LLM_PROVIDER",
+        "LOBSTER_WORKSPACE",
+        "LOBSTER_TEST_REPLAY_FIXTURE",
+        "NCBI_API_KEY",
+        "NCBI_EMAIL",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-key")
     ws = tmp_path / ".lobster_workspace"
@@ -52,4 +58,20 @@ def test_config_test_tests_the_workspace_model(workspace, capsys):
     result = json.loads(capsys.readouterr().out)
     assert workspace == [USER_MODEL]
     assert result["checks"]["llm_provider"]["status"] == "pass"
+    assert result["checks"]["llm_provider"]["model"] == USER_MODEL
+
+
+def test_config_test_reads_the_workspace_chat_reads(workspace, capsys, monkeypatch):
+    """LOBSTER_WORKSPACE names the workspace, as for chat; the folder is elsewhere."""
+    from pathlib import Path
+
+    from lobster.core.config_resolver import ConfigResolver
+
+    elsewhere = Path.cwd() / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("LOBSTER_WORKSPACE", str(Path.cwd() / ".lobster_workspace"))
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(ConfigResolver, "_instance", None)
+    config_test_impl(output_json=True)
+    result = json.loads(capsys.readouterr().out)
     assert result["checks"]["llm_provider"]["model"] == USER_MODEL

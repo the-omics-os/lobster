@@ -1363,8 +1363,10 @@ def config_test_impl(output_json: bool = False):
     log(h("Testing LLM Provider..."), "bold")
     try:
         from lobster.config.llm_factory import LLMFactory
+        from lobster.core.workspace import resolve_workspace
 
-        workspace_path = Path.cwd() / ".lobster_workspace"
+        # The workspace chat would use: LOBSTER_WORKSPACE, else the nearest one.
+        workspace_path = resolve_workspace(explicit_path=None, create=False)
         provider = LLMFactory.get_current_provider(workspace_path=workspace_path)
         if provider is None:
             test_results["checks"]["llm_provider"]["message"] = "No API keys found"
