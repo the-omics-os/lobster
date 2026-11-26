@@ -124,7 +124,7 @@ def test_template_fixture_purity_style_and_recipe(name, cells):
     figure = function(data, **args)
     assert isinstance(figure, go.Figure)
     assert len(figure.data) > 0
-    assert figure.layout.template.layout.font.family == "Arial, sans-serif"
+    assert figure.layout.template.layout.font.family == "Manrope, Arial, sans-serif"
     recipe = figure.layout.meta["lobster_template"]
     assert recipe["name"] == name and recipe["version"] == "1"
     assert "data" not in recipe["args"]
@@ -170,9 +170,95 @@ def test_custom_figures_inherit_embedded_house_style():
     try:
         initialize_house_style()
         custom = go.Figure(go.Scatter(x=[1], y=[2]))
-        assert custom.layout.template.layout.font.family == "Arial, sans-serif"
+        assert custom.layout.template.layout.font.family == "Manrope, Arial, sans-serif"
     finally:
         pio.templates.default = previous
+
+
+def test_house_style_values():
+    from lobster.figure_templates import _style
+
+    assert _style.HOUSE_COLORS == [
+        "#404040",
+        "#CC2C18",
+        "#0BAA6B",
+        "#CC9D0D",
+        "#C91A6D",
+        "#F7A696",
+        "#93DAB3",
+        "#F2C777",
+        "#8C1E10",
+        "#005732",
+        "#844B00",
+        "#8E0049",
+        "#F3A3BB",
+        "#8C8C8C",
+    ]
+    stops = [i / 6 for i in range(7)]
+    tail = ["#FFE6E1", "#F7A696", "#EE6853", "#CC2C18", "#8C1E10", "#431009"]
+    assert _style.SEQUENTIAL == [list(s) for s in zip(stops, ["#FFFFFF", *tail])]
+    assert _style.SEQUENTIAL_EXPRESSION == [
+        list(s) for s in zip(stops, ["#E0E0E0", *tail])
+    ]
+    diverging = ["#005732", "#0BAA6B", "#D9F7E5", "#FFFFFF"]
+    diverging += ["#FDE3EC", "#C91A6D", "#8E0049"]
+    assert _style.DIVERGING == [list(s) for s in zip(stops, diverging)]
+    assert _style.DIVERGING[3] == [0.5, "#FFFFFF"]
+    roles = {"INK": "#121212", "TICK": "#636363", "GRID": "#EBEBEB"}
+    roles |= {"AXIS": "#E0E0E0", "NO_CALL": "#E0E0E0", "UP": "#C91A6D"}
+    roles |= {"DOWN": "#0BAA6B", "KEY": "#CC2C18"}
+    assert {name: getattr(_style, name) for name in roles} == roles
+
+    template = _style._house_template()
+    layout = template.layout
+    assert layout.font.family == "Manrope, Arial, sans-serif"
+    assert layout.font.size == 14 and layout.font.color == _style.INK
+    assert layout.paper_bgcolor == layout.plot_bgcolor == "#FFFFFF"
+    assert list(layout.colorway) == _style.HOUSE_COLORS
+    for axis in (layout.xaxis, layout.yaxis):
+        assert axis.gridcolor == _style.GRID
+        assert axis.linecolor == axis.zerolinecolor == axis.tickcolor == _style.AXIS
+        assert axis.tickfont.color == _style.TICK
+    assert layout.legend.bgcolor == "rgba(0,0,0,0)"
+    assert layout.coloraxis.colorbar.outlinewidth == 0
+    assert layout.shapedefaults.line.color == _style.INK
+    assert layout.shapedefaults.line.dash == "dash"
+    scales = layout.colorscale
+
+    def as_lists(scale):
+        return [list(stop) for stop in scale]
+
+    assert as_lists(scales.sequential) == _style.SEQUENTIAL
+    assert as_lists(scales.sequentialminus) == _style.SEQUENTIAL
+    assert as_lists(scales.diverging) == _style.DIVERGING
+    for kind in ("heatmap", "contour"):
+        (trace,) = getattr(template.data, kind)
+        assert as_lists(trace.colorscale) == _style.SEQUENTIAL
+        assert trace.colorbar.outlinewidth == 0
+
+
+def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
+    from lobster.figure_templates._style import HOUSE_COLORS, _house_template
+
+    for kind in ("scatter", "scattergl"):
+        cycle = getattr(_house_template().data, kind)
+        assert len(cycle) == len(HOUSE_COLORS)
+        symbols = [trace.marker.symbol for trace in cycle]
+        dashes = [trace.line.dash for trace in cycle]
+        assert len(set(symbols)) == len(symbols)
+        red, green = HOUSE_COLORS.index("#CC2C18"), HOUSE_COLORS.index("#0BAA6B")
+        assert symbols[red] != symbols[green]
+        assert dashes[red] != dashes[green]
+
+    # The cycle reaches figures: trace n takes colorway n and symbol n together.
+    figure = go.Figure(
+        [go.Scatter(x=[0, 1], y=[0, n], mode="lines+markers") for n in range(3)],
+        layout={"template": _house_template()},
+    )
+    full = figure.full_figure_for_development(warn=False)
+    assert [t.marker.color for t in full.data] == HOUSE_COLORS[:3]
+    assert len({t.marker.symbol for t in full.data}) == 3
+    assert len({t.line.dash for t in full.data}) == 3
 
 
 def test_recipe_size_and_non_json_refuse_before_drawing():

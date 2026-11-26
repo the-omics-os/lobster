@@ -65,6 +65,22 @@ when a regeneration source is needed.
 Every template applies it by default. Users may subsequently change any Plotly
 property.
 
+The style comes from the Omics-OS design tokens. `lobster.figure_templates._style`
+exposes the values:
+
+- `HOUSE_COLORS`: 14 category colours in order, graphite first; a second series
+  is red. Above 14 categories they cycle. Never sample a value scale for
+  categories.
+- `SEQUENTIAL` (white to dark red, the heatmap and contour default),
+  `SEQUENTIAL_EXPRESSION` (starts at grey `#E0E0E0`) and `DIVERGING` (green,
+  white at 0.5, magenta; use it with zmid 0 and a symmetric range).
+- Roles: `INK`, `TICK`, `GRID`, `AXIS`, `NO_CALL`, `UP`, `DOWN` and `KEY`.
+
+The template uses Manrope (falling back to Arial) at 14 in `INK`, a transparent
+legend, colorbars without an outline and dashed `INK` shapes for thresholds.
+Scatter traces cycle marker symbols and line dashes in step with the colours,
+so red and green series never differ by colour alone.
+
 Templates record their name, version and resolved data-free arguments in
 `layout.meta.lobster_template`. This is **declared** recipe metadata, not proof
 that the figure was produced by that template. Settings must be finite JSON and
