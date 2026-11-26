@@ -1301,7 +1301,7 @@ class UnknownModelErrorHandler(ErrorHandler):
             solutions=[
                 "List the models: /config model",
                 "Switch and keep it: /config model <name> --save",
-                "From the shell: lobster init",
+                "From the shell: lobster init --force",
             ],
             severity="error",
             can_retry=False,

@@ -412,22 +412,20 @@ def _friendly_error(raw: str) -> tuple:
         return (
             h("Provider Error"),
             h(
-                "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini"
+                "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster init --force"
             ),
         )
     if "ConverseStream" in msg or "InvokeModel" in msg:
         return (
             h("Provider Error"),
             h(
-                "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini"
+                "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster init --force"
             ),
         )
     if "not authorized" in msg.lower() and "bedrock" in msg.lower():
         return (
             h("Provider Error"),
-            h(
-                "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini"
-            ),
+            h("AWS Bedrock not authorized. Switch provider: lobster init --force"),
         )
     if "rate limit" in msg.lower() or "429" in msg:
         return (
@@ -453,7 +451,7 @@ def _friendly_error(raw: str) -> tuple:
     if "invalid api key" in msg.lower() or "invalid_api_key" in msg.lower():
         return (
             h("Auth Error"),
-            h("Invalid API key. Run: lobster config --provider <provider>"),
+            h("Invalid API key. Enter a new key: lobster init --force"),
         )
     return (h("Error"), msg)
 

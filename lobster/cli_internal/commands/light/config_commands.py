@@ -706,7 +706,7 @@ def config_show(
             [
                 hint_block(
                     h(
-                        "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init."
+                        "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init --force."
                     )
                 )
             ],

@@ -1907,9 +1907,9 @@
   "Tokens: {tokens} | Cost: ${cost}": "词元：{tokens} | 费用：${cost}",
   "Context compacted: {before}->{after} messages (budget {budget} tokens).\nFull delegated outputs remain available via store keys and retrieve_agent_result.": "上下文已压缩：{before}->{after} 条消息（预算 {budget} 词元）。\n已委派的完整输出仍可通过存储键和 retrieve_agent_result 获取。",
   "Context compacted to stay within model budget.\nFull delegated outputs remain available via store keys and retrieve_agent_result.": "上下文已压缩，以保持在模型预算之内。\n已委派的完整输出仍可通过存储键和 retrieve_agent_result 获取。",
-  "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini": "AWS 凭据无效或已过期。请运行：aws configure\n或切换模型服务：lobster config --provider gemini",
-  "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini": "AWS Bedrock 访问被拒绝。请检查 IAM 权限，或切换模型服务：\n  lobster config --provider gemini",
-  "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini": "AWS Bedrock 未获授权。请切换模型服务：lobster config --provider gemini",
+  "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster init --force": "AWS 凭据无效或已过期。请运行：aws configure\n或切换模型服务：lobster init --force",
+  "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster init --force": "AWS Bedrock 访问被拒绝。请检查 IAM 权限，或切换模型服务：\n  lobster init --force",
+  "AWS Bedrock not authorized. Switch provider: lobster init --force": "AWS Bedrock 未获授权。请切换模型服务：lobster init --force",
   "Provider Error": "模型服务错误",
   "Rate limited by the LLM provider. Wait a moment and try again.": "模型服务限制了请求频率，请稍后再试。",
   "Connection Error": "连接错误",
@@ -1919,7 +1919,7 @@
   "Quota Exceeded": "配额已用完",
   "LLM provider quota exceeded. Check your billing or switch provider.": "模型服务配额已用完，请检查账单或切换模型服务。",
   "Auth Error": "认证错误",
-  "Invalid API key. Run: lobster config --provider <provider>": "API 密钥无效。请运行：lobster config --provider <provider>",
+  "Invalid API key. Enter a new key: lobster init --force": "API 密钥无效。请输入新的密钥：lobster init --force",
   "\n{question} {hint}: ": "\n{question} {hint}：",
   "Please enter a number between 1 and {count}.": "请输入 1 到 {count} 之间的数字。",
   "Enter number: ": "请输入编号：",
@@ -2266,5 +2266,5 @@
   "  Model: {model}": "  模型：{model}",
   "Model Not Available": "模型不可用",
   "The provider has no model by the name in your settings. List the models with /config model, then switch with /config model <name> --save.": "模型服务没有您设置中的这个模型名称。请用 /config model 列出模型，再用 /config model <name> --save 切换。",
-  "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init.": "请在 lobster chat 中输入这些 /config 命令。要在终端中更改模型服务或模型，请运行 lobster init。"
+  "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init --force.": "请在 lobster chat 中输入这些 /config 命令。要在终端中更改模型服务或模型，请运行 lobster init --force。"
 }
