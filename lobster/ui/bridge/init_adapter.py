@@ -176,7 +176,7 @@ def apply_tui_init_result(
         effective_profile = "production"  # match classic init default
     if effective_profile:
         env_lines.append("\n# Agent Configuration Profile")
-        env_lines.append("# Determines which Claude models are used for analysis")
+        env_lines.append("# Shown as Mode in lobster status; it does not choose models")
         env_lines.append(f"LOBSTER_PROFILE={effective_profile}")
 
     # Optional keys

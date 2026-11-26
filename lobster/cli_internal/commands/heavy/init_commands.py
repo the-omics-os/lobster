@@ -3515,7 +3515,9 @@ def init_impl(
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:
             env_lines.append("\n# Agent Configuration Profile")
-            env_lines.append("# Determines which Claude models are used for analysis")
+            env_lines.append(
+                "# Shown as Mode in lobster status; it does not choose models"
+            )
             env_lines.append(f"LOBSTER_PROFILE={selected_profile}")
             config_dict["profile"] = selected_profile
             console.print(
@@ -4472,59 +4474,6 @@ def init_impl(
             and provider_name not in ("omics-os", "ollama")
         ):
             _ensure_provider_installed(provider_name)
-
-        # ================================================================== #
-        # Step 3 — Profile selection (Anthropic / Bedrock only)               #
-        # ================================================================== #
-        if provider_name in ("anthropic", "bedrock"):
-            console.print(
-                h("\n[bold white]⚙️  Agent Configuration Profile[/bold white]")
-            )
-            console.print(h("Choose which Claude models to use for analysis:"))
-            console.print()
-            console.print(
-                h(
-                    "  [cyan]1[/cyan] - Development  (Sonnet 4 - fastest, most affordable)"
-                )
-            )
-            console.print(
-                h(
-                    "  [cyan]2[/cyan] - Production   (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]"
-                )
-            )
-            console.print(
-                h("  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality)")
-            )
-            console.print(
-                h(
-                    "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
-                )
-            )
-            console.print()
-
-            profile_choice = Prompt.ask(
-                h("[bold white]Choose profile[/bold white]"),
-                choices=["1", "2", "3", "4"],
-                default="2",
-            )
-
-            profile_map = {
-                "1": "development",
-                "2": "production",
-                "3": "performance",
-                "4": "max",
-            }
-            profile_to_write = profile_map[profile_choice]
-
-            env_lines.append("\n# Agent Configuration Profile")
-            env_lines.append("# Determines which Claude models are used for analysis")
-            env_lines.append(f"LOBSTER_PROFILE={profile_to_write}")
-            config_dict["profile"] = profile_to_write
-            console.print(
-                h("[green]✓ Profile set to: {profile_to_write}[/green]").format(
-                    profile_to_write=profile_to_write
-                )
-            )
 
         # ================================================================== #
         # Step 4 — Agent selection                                            #

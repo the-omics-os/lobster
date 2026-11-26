@@ -7,7 +7,7 @@ Consumed by:
 
 Each ProviderDef declares `model_selection` to fix the Bedrock double-prompt bug:
 - "explicit"  → user picks model from provider's catalog
-- "profile"   → user picks profile (model controlled by profile) — Anthropic, Bedrock
+- "profile"   → no provider uses it: a profile chooses no model
 - "local"     → user picks from locally detected models — Ollama
 - "managed"   → skip model selection entirely — Omics-OS
 """
@@ -148,8 +148,8 @@ class WizardManifest:
 # -- Provider metadata (model_selection + credentials + display names) --
 
 _MODEL_SELECTION: dict[str, Literal["explicit", "profile", "local", "managed"]] = {
-    "anthropic": "profile",
-    "bedrock": "profile",
+    "anthropic": "explicit",
+    "bedrock": "explicit",
     "ollama": "local",
     "gemini": "explicit",
     "azure": "explicit",
@@ -242,29 +242,17 @@ _PROVIDER_AUTH_METHODS: dict[str, list[AuthMethodDef]] = {
     # Other providers: api_key only (no explicit auth_methods needed)
 }
 
-_PROFILE_DESCRIPTIONS: dict[str, tuple[str, str, bool]] = {
-    "development": ("Development", "Sonnet 4 — fastest, most affordable", False),
-    "production": (
-        "Production",
-        "Sonnet 4 + Sonnet 4.5 supervisor [recommended]",
-        True,
-    ),
-    "performance": ("Performance", "Sonnet 4.5 — highest quality", False),
-    "max": ("Max", "Opus 4.5 supervisor — most capable, most expensive", False),
-    "hybrid": ("Hybrid", "Mixed model tiers per agent", False),
-}
-
 
 def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
     """Build a WizardManifest from authoritative sources.
 
-    Reads VALID_PROVIDERS, provider KNOWN_MODELS, VALID_PROFILES,
-    and AVAILABLE_AGENT_PACKAGES to construct the single manifest.
+    Reads VALID_PROVIDERS, provider KNOWN_MODELS and
+    AVAILABLE_AGENT_PACKAGES to construct the single manifest.
     """
     from lobster.cli_internal.commands.heavy.init_commands import (
         AVAILABLE_AGENT_PACKAGES,
     )
-    from lobster.config.constants import VALID_PROFILES, VALID_PROVIDERS
+    from lobster.config.constants import VALID_PROVIDERS
     from lobster.config.providers.registry import ProviderRegistry
 
     # Build provider definitions
@@ -303,21 +291,6 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
                         )
                     )
 
-        # Get profiles for profile-based providers
-        profiles: list[ProfileDef] = []
-        if model_sel == "profile":
-            for pname in VALID_PROFILES:
-                if pname in _PROFILE_DESCRIPTIONS:
-                    pdisp, pdesc, pdefault = _PROFILE_DESCRIPTIONS[pname]
-                    profiles.append(
-                        ProfileDef(
-                            name=pname,
-                            display_name=pdisp,
-                            description=pdesc,
-                            is_default=pdefault,
-                        )
-                    )
-
         auth_methods = _PROVIDER_AUTH_METHODS.get(name, [])
 
         providers.append(
@@ -328,7 +301,6 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
                 model_selection=model_sel,
                 credentials=creds,
                 models=models,
-                profiles=profiles,
                 auth_methods=auth_methods,
             )
         )

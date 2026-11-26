@@ -70,12 +70,13 @@ def list_available_profiles():
     print_colored("\n Available Agent Profiles", "cyan")
     print_colored("=" * 60, "cyan")
 
-    # Profiles are defined as named constants; list them explicitly.
+    # A profile is a label shown as Mode; the model comes from the model
+    # setting (lobster init, /config model), never from the profile.
     profiles = {
-        "development": "Sonnet 4 — fastest, most affordable",
-        "production": "Sonnet 4 + Sonnet 4.5 supervisor (recommended)",
-        "performance": "Sonnet 4.5 — highest quality",
-        "max": "Opus 4.5 supervisor — most capable, most expensive",
+        "development": "label only; does not choose models",
+        "production": "label only; does not choose models (default)",
+        "performance": "label only; does not choose models",
+        "max": "label only; does not choose models",
     }
 
     current = get_current_profile()
@@ -190,7 +191,7 @@ NCBI_API_KEY="your-ncbi-api-key-here"
 # AGENT CONFIGURATION (Professional System)
 # =============================================================================
 
-# Profile-based configuration (recommended)
+# Profile: a label shown as Mode in lobster status; it does not choose models.
 # Available profiles: development, production, performance, max
 LOBSTER_PROFILE=production
 
@@ -220,22 +221,6 @@ DEBUG=False
 LOBSTER_MAX_FILE_SIZE_MB=500
 LOBSTER_CLUSTER_RESOLUTION=0.5
 LOBSTER_CACHE_DIR=data/cache
-
-# =============================================================================
-# EXAMPLE CONFIGURATIONS
-# =============================================================================
-
-# Example 1: Development setup (Claude Haiku 4.5 - fastest, most affordable)
-# LOBSTER_PROFILE=development
-
-# Example 2: Production setup (Claude Sonnet 4 - balanced quality & speed)
-# LOBSTER_PROFILE=production
-
-# Example 3: Performance setup (Claude Sonnet 4.5 - highest quality)
-# LOBSTER_PROFILE=performance
-
-# Example 4: Max setup (Claude Opus 4.5 - experimental, most expensive)
-# LOBSTER_PROFILE=max
 """
 
     with open(".env.template", "w") as f:

@@ -326,7 +326,7 @@ func TestWizardModelOllamaUsesSelect(t *testing.T) {
 	}
 }
 
-func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
+func TestWizardModelAnthropicGoesFromModelToAgents(t *testing.T) {
 	m := NewWizardModel("", "")
 
 	// Select Anthropic (index 1).
@@ -351,8 +351,8 @@ func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
-	if m.step != stepProfile {
-		t.Fatalf("expected stepProfile after model select for anthropic, got %d", m.step)
+	if m.step != stepAgentPackages {
+		t.Fatalf("expected stepAgentPackages after model select for anthropic, got %d", m.step)
 	}
 }
 

@@ -5,11 +5,10 @@ Canonical question order (matches Go TUI wizard):
   1. Provider selection  (from manifest.providers)
   2. Credentials         (from selected_provider.credentials)
   3. Model selection     (routed by selected_provider.model_selection)
-  4. Profile selection   (if model_selection == "profile")
-  5. Agent packages      (from manifest.agent_packages)
-  6. Optional keys       (NCBI, Cloud key — skip Cloud if Omics-OS)
-  7. Smart Standardization (if selected agents benefit)
-  8. LaminDB catalog     (when ``lamin_default`` is given; default No)
+  4. Agent packages      (from manifest.agent_packages)
+  5. Optional keys       (NCBI, Cloud key — skip Cloud if Omics-OS)
+  6. Smart Standardization (if selected agents benefit)
+  7. LaminDB catalog     (when ``lamin_default`` is given; default No)
 
 Returns the exact same JSON dict as the Go TUI wizard so that
 ``apply_tui_init_result()`` handles both paths without branching.
@@ -269,32 +268,6 @@ def run_questionary_init(
                 result["model_id"] = selected_model
 
         # mode == "managed" → skip model selection (Omics-OS)
-
-        # ================================================================== #
-        # Step 4 — Profile (if model_selection == "profile")                 #
-        # ================================================================== #
-        if mode == "profile" and provider_def.profiles:
-            profile_choices = [
-                questionary.Choice(
-                    f"{p.display_name:<14} ({p.description})", value=p.name
-                )
-                for p in provider_def.profiles
-            ]
-            default_profile = next(
-                (p.name for p in provider_def.profiles if p.is_default),
-                "production",
-            )
-
-            profile = questionary.select(
-                h("Select agent configuration profile:"),
-                choices=profile_choices,
-                default=default_profile,
-            ).ask()
-
-            if profile is None:
-                return _cancelled(result)
-
-            result["profile"] = profile
 
         # ================================================================== #
         # Step 5 — Agent packages (from manifest)                            #

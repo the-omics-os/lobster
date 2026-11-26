@@ -1,14 +1,16 @@
 // Package initwizard provides the interactive init wizard for lobster-tui.
 //
-// The wizard collects configuration in up to seven steps:
+// The wizard collects configuration in up to six steps:
 //  0. Language (Select) — only when LOBSTER_INIT_ASK_LANG=1; the rest of the
 //     wizard switches to the chosen language immediately
 //  1. Provider selection (Select)
 //  2. API key entry (Input, provider-specific)
 //  3. Model selection — cloud providers only (Select + custom input)
-//  4. Profile selection — Anthropic and Bedrock only (Select)
-//  5. Agent package selection (MultiSelect)
-//  6. Optional keys — NCBI and Omics-OS Cloud (Confirm + Input)
+//  4. Agent package selection (MultiSelect)
+//  5. Optional keys — NCBI and Omics-OS Cloud (Confirm + Input)
+//
+// There is no profile step: a profile chooses no model, so asking for one
+// after the model step only offered other models by name.
 //
 // On completion, a single JSON object is written to stdout and the process
 // exits 0. On user cancellation, {"cancelled":true} is written and the
@@ -40,7 +42,6 @@ type WizardResult struct {
 	Provider                      string   `json:"provider"`
 	APIKey                        string   `json:"api_key"`
 	APIKeySecondary               string   `json:"api_key_secondary"`
-	Profile                       string   `json:"profile"`
 	Agents                        []string `json:"agents"`
 	NCBIKey                       string   `json:"ncbi_key"`
 	CloudKey                      string   `json:"cloud_key"`
@@ -72,12 +73,6 @@ const (
 	customOllamaModel   = "__custom_ollama_model__"
 	defaultOllamaModel  = "gpt-oss:20b"
 )
-
-// providersWithProfile are the providers that expose a profile selection step.
-var providersWithProfile = map[string]bool{
-	providerAnthropic: true,
-	providerBedrock:   true,
-}
 
 type initAgentPackage struct {
 	Name         string
@@ -251,7 +246,6 @@ const (
 	stepProvider wizardStep = iota
 	stepAPIKey
 	stepModelSelect
-	stepProfile
 	stepAgentPackages
 	stepOptionalKeys
 	stepDone
@@ -582,9 +576,6 @@ type WizardModel struct {
 	modelCustom   textinput.Model
 	modelIsCustom bool
 
-	// Step 4: Profile
-	profileSelect singleSelectModel
-
 	// OAuth browser login state (Omics-OS Cloud)
 	oauthCancel    chan struct{}
 	oauthWaiting   bool
@@ -721,8 +712,6 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAPIKey(msg)
 	case stepModelSelect:
 		return m.updateModelSelect(msg)
-	case stepProfile:
-		return m.updateProfile(msg)
 	case stepOptionalKeys:
 		return m.updateOptionalKeys(msg)
 	case stepDone:
@@ -748,8 +737,6 @@ func (m WizardModel) View() tea.View {
 		content = m.viewAPIKey()
 	case stepModelSelect:
 		content = m.viewModelSelect()
-	case stepProfile:
-		content = m.profileSelect.View(m.theme)
 	case stepOptionalKeys:
 		content = m.viewOptionalKeys()
 	case stepDone:
@@ -759,17 +746,15 @@ func (m WizardModel) View() tea.View {
 }
 
 // ---------------------------------------------------------------------------
-// Step 5: Agent packages (after provider/model/profile)
+// Step 4: Agent packages (after provider/model)
 // ---------------------------------------------------------------------------
 
 func (m WizardModel) updateAgentPackages(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var done, cancelled bool
 	m.agentSelect, done, cancelled = m.agentSelect.Update(msg)
 	if cancelled {
-		// Go back to the previous step: profile if applicable, else model select, else API key.
-		if providersWithProfile[m.result.Provider] {
-			m.step = stepProfile
-		} else if _, ok := providerModels()[m.result.Provider]; ok {
+		// Go back to model select if the provider has a model catalog, else API key.
+		if _, ok := providerModels()[m.result.Provider]; ok {
 			m.step = stepModelSelect
 		} else {
 			m.step = stepAPIKey
@@ -1197,22 +1182,7 @@ func (m *WizardModel) initModelSelectStep(models []struct {
 }
 
 func (m *WizardModel) advanceFromModelSelect() {
-	if providersWithProfile[m.result.Provider] {
-		m.profileSelect = singleSelectModel{
-			title:       "Performance Profile",
-			description: "Choose a profile that balances cost and capability.",
-			items: []singleSelectItem{
-				{label: "Development  -- Sonnet 4, fastest and most affordable", value: "development"},
-				{label: "Production   -- Sonnet 4 + Sonnet 4.5 supervisor [Recommended]", value: "production"},
-				{label: "Performance  -- Sonnet 4.5, highest quality", value: "performance"},
-				{label: "Max          -- Opus 4.5 supervisor, most capable, expensive", value: "max"},
-			},
-			cursor: 1, // Default to production
-		}
-		m.step = stepProfile
-	} else {
-		m.step = stepAgentPackages
-	}
+	m.step = stepAgentPackages
 }
 
 func (m WizardModel) updateOllamaKey(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1382,33 +1352,7 @@ func (m WizardModel) viewAPIKey() string {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Profile (Anthropic / Bedrock only)
-// ---------------------------------------------------------------------------
-
-func (m WizardModel) updateProfile(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var value string
-	var done, cancelled bool
-	m.profileSelect, value, done, cancelled = m.profileSelect.Update(msg)
-	if cancelled {
-		// Go back to model select if provider has a model catalog, else API key.
-		if _, ok := providerModels()[m.result.Provider]; ok {
-			m.step = stepModelSelect
-		} else {
-			m.step = stepAPIKey
-			m.initAPIKeyStep()
-		}
-		return m, textinput.Blink
-	}
-	if done {
-		m.result.Profile = value
-		m.step = stepAgentPackages
-		return m, textinput.Blink
-	}
-	return m, nil
-}
-
-// ---------------------------------------------------------------------------
-// Step 6: Optional keys
+// Step 5: Optional keys
 // ---------------------------------------------------------------------------
 
 func (m *WizardModel) initOptionalKeys() {
