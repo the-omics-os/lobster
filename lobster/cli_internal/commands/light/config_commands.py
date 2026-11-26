@@ -1428,15 +1428,17 @@ def config_test_impl(output_json: bool = False):
             # Test LLM connectivity
             if provider is not None:
                 try:
-                    # Use provider's default model for connectivity test
-                    from lobster.config.providers import get_provider
+                    # Test the model the chat's supervisor uses: workspace, then
+                    # global config, then the provider default.
+                    from lobster.core.config_resolver import ConfigResolver
 
-                    provider_obj = get_provider(provider)
-                    default_model = (
-                        provider_obj.get_default_model() if provider_obj else ""
-                    )
+                    user_model, _source = ConfigResolver.get_instance(
+                        workspace_path
+                    ).resolve_model(agent_name="supervisor", provider=provider)
+                    test_results["checks"]["llm_provider"]["model"] = user_model
+                    log(h("  Model: {model}").format(model=user_model), "yellow")
                     test_config = {
-                        "model_id": default_model,
+                        "model_id": user_model,
                         "temperature": 1.0,
                         "max_tokens": 50,
                     }
