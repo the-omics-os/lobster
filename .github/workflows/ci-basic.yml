@@ -120,6 +120,9 @@ jobs:
     - name: Run release publication contract tests
       id: release-contracts
       if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      env:
+        # This venv has no pytest-cov, so it cannot take the job's --no-cov.
+        PYTEST_ADDOPTS: "--color=yes --tb=short"
       run: |
         uv venv --python 3.12 .venv
         uv pip install --python .venv/bin/python pytest pytest-timeout pyyaml
