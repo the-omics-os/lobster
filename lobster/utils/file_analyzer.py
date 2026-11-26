@@ -595,6 +595,7 @@ def get_workspace_files_metadata(
         List of file metadata dictionaries
     """
     workspace_path = Path(workspace_path)
+    root = workspace_path.resolve()
 
     if directory:
         search_path = workspace_path / directory
@@ -603,10 +604,18 @@ def get_workspace_files_metadata(
 
     files_metadata = []
 
+    # Resolved, not lexical: '..', an absolute path or a link must not lead
+    # the listing out of the workspace.
+    if not search_path.resolve().is_relative_to(root):
+        logger.warning(
+            f"Refused to list a directory outside the workspace: {directory}"
+        )
+        return files_metadata
+
     try:
         if search_path.exists():
             for file_path in search_path.rglob("*"):
-                if file_path.is_file():
+                if file_path.is_file() and file_path.resolve().is_relative_to(root):
                     try:
                         metadata = FileAnalyzer.analyze_file_metadata(file_path)
                         # Add relative path information
