@@ -739,3 +739,66 @@ def test_tool_history_json_cannot_hold_is_left_out_whole(new_process, monkeypatc
     assert "messages" in json.loads(saved.read_text())
     if sys.platform != "win32":
         assert stat.S_IMODE(saved.stat().st_mode) == 0o600
+
+
+def _over_the_cap():
+    """A tool history larger than the cap: one tool result of ~35k estimated
+    tokens (chars/4), as a large table pasted back by an expert would be."""
+    from langchain_core.messages import HumanMessage, ToolMessage
+
+    return [
+        HumanMessage("q", id="h1"),
+        _handoff("call-big"),
+        ToolMessage("x" * 140_000, tool_call_id="call-big", id="t1"),
+        AIMessage("a", id="a1"),
+    ]
+
+
+def test_tool_history_over_the_cap_is_not_restored(new_process, caplog):
+    """A restored tool history grows with every turn; past the cap the session
+    falls back to the conversation, so what is restored stays bounded."""
+    import logging
+
+    from langchain_core.messages import messages_to_dict
+
+    make, workspace, requests, script = new_process
+    saved = workspace / "saved.json"
+    saved.write_text(
+        json.dumps(
+            {
+                "session_id": "restored",
+                "conversation": [
+                    {"role": "user", "content": "q"},
+                    {"role": "assistant", "content": "a"},
+                ],
+                "messages": messages_to_dict(_over_the_cap()),
+            }
+        )
+    )
+    client = make()
+    with caplog.at_level(logging.WARNING, logger="lobster.core.client"):
+        client.load_session(saved)
+    script["supervisor"].append(AIMessage("answer one"))
+    assert client.query("first question").get("success") is True
+
+    (first,) = _supervisor_requests(requests)
+    assert _contents(first) == ["q", "a", "first question"]
+    assert any(
+        "tool history" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+    ), caplog.text
+
+
+def test_tool_history_over_the_cap_is_not_saved(new_process, monkeypatch):
+    from langchain_core.messages import HumanMessage
+
+    make, _workspace, _requests, _script = new_process
+    monkeypatch.setenv("LOBSTER_SESSION_TOOL_HISTORY", "1")
+    client = make()
+    client._replace_thread_messages(_over_the_cap())
+    client.messages = [HumanMessage("q"), AIMessage("a")]
+
+    data = json.loads(client._save_session_json().read_text())
+    assert "messages" not in data
+    assert [m["content"] for m in data["conversation"]] == ["q", "a"]

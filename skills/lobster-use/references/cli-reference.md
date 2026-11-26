@@ -444,7 +444,9 @@ saved. Then the session file in the workspace (mode 0600) also keeps the earlier
 tool calls and results, which can include data values such as file paths, gene names or
 sample ids, and the next turn sends those turns as the model received them. Stored
 results named by `store_key` in that history stay in the process that made them.
-Unset the variable and the next save writes the file without the tool history.
+A tool history over about 32,000 estimated tokens is not kept; the session then
+continues from the questions and answers. Unset the variable and the next save writes
+the file without the tool history.
 
 Price lookup uses the packaged offline snapshot and explicit manual overrides.
 Unknown prices remain unknown. Local list-price estimates are neither invoices

@@ -146,6 +146,20 @@ from lobster.utils.callbacks import TokenTrackingCallback
 logger = logging.getLogger(__name__)
 
 
+# A restored tool history grows with every turn, so it is kept and restored only
+# up to this many estimated tokens (the context trimmer's chars/4 estimate). The
+# 1.3.1 measurement sessions held 0.3-3k tokens of history after 4-5 turns, so
+# this is dozens of tool turns; it stays below the message budget the trimmer
+# leaves on a 128k-window model, so a restored history is not cut on arrival.
+SESSION_TOOL_HISTORY_MAX_TOKENS = 32_000
+
+
+def _tool_history_tokens(messages: List[BaseMessage]) -> int:
+    from lobster.agents.context_management import _message_list_token_counter
+
+    return _message_list_token_counter(messages)
+
+
 class AgentClient(BaseClient):
     def __init__(
         self,
@@ -3501,7 +3515,14 @@ class AgentClient(BaseClient):
         thread_messages = self.messages
         if "messages" in session_data:
             try:
-                thread_messages = messages_from_dict(session_data["messages"])
+                restored = messages_from_dict(session_data["messages"])
+                tokens = _tool_history_tokens(restored)
+                if tokens > SESSION_TOOL_HISTORY_MAX_TOKENS:
+                    raise ValueError(
+                        f"{tokens} estimated tokens, over the "
+                        f"{SESSION_TOOL_HISTORY_MAX_TOKENS} cap"
+                    )
+                thread_messages = restored
             except Exception as exc:
                 logger.warning(
                     f"Could not read the saved tool history, using the conversation: {exc}"
@@ -3591,7 +3612,14 @@ class AgentClient(BaseClient):
                     thread = self.graph.get_state(
                         {"configurable": {"thread_id": self.session_id}}
                     )
-                    messages = messages_to_dict(thread.values.get("messages") or [])
+                    thread_messages = thread.values.get("messages") or []
+                    tokens = _tool_history_tokens(thread_messages)
+                    if tokens > SESSION_TOOL_HISTORY_MAX_TOKENS:
+                        raise ValueError(
+                            f"{tokens} estimated tokens, over the "
+                            f"{SESSION_TOOL_HISTORY_MAX_TOKENS} cap"
+                        )
+                    messages = messages_to_dict(thread_messages)
                     # No str() fallback here: a value JSON cannot hold (bytes of
                     # a redacted reasoning block) would come back as other text
                     # and change what the provider is sent.
