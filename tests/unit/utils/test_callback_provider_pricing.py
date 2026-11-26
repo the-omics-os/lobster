@@ -1,9 +1,8 @@
 """The token tracker prices a model by the ACTIVE provider's catalog row.
 
 MODEL_PRICING is keyed by model id alone and the last registered provider wins, so two
-providers that list the same id at different prices shadow each other: Bedrock lists
-``us.anthropic.claude-sonnet-4-5-20250929-v1:0`` at 3.30/16.50 (regional premium) and
-the Omics-OS provider at 3.00/15.00; Azure lists ``gpt-4o`` at 5/15, OpenAI at 2.5/10.
+providers that list the same id at different prices shadow each other: Azure lists
+``gpt-4o`` at 5/15, OpenAI at 2.5/10.
 A tracker given ``provider_for_pricing`` prefers the active provider's row and falls back
 to the merged table; without it nothing changes (Cloud builds its tracker that way).
 """
@@ -47,13 +46,13 @@ def test_the_registry_can_list_one_providers_rows():
     assert rows[S45]["input_per_million"] == 3.3
     assert ProviderRegistry.get_all_models_with_pricing("omics-os")[S45][
         "input_per_million"
-    ] == pytest.approx(3.0)
+    ] == pytest.approx(3.3)
     assert ProviderRegistry.get_all_models_with_pricing("no-such-provider") == {}
 
 
 def test_without_a_resolver_the_merged_table_decides_as_today():
     # Same construction as lobster-cloud api/routes/chat_stream.py: no new kwarg.
-    assert cost(S45) == pytest.approx(18.0)  # omics-os row 3 + 15
+    assert cost(S45) == pytest.approx(19.8)  # omics-os row 3.3 + 16.5
     assert cost("gpt-4o") == pytest.approx(12.5)  # openai row 2.5 + 10
 
 
@@ -61,7 +60,7 @@ def test_without_a_resolver_the_merged_table_decides_as_today():
     "provider,model,expected",
     [
         ("bedrock", S45, 19.8),  # 3.3 + 16.5
-        ("omics-os", S45, 18.0),
+        ("omics-os", S45, 19.8),
         ("azure", "gpt-4o", 20.0),  # 5 + 15
         ("openai", "gpt-4o", 12.5),
     ],
@@ -82,17 +81,17 @@ def test_a_failing_or_unknown_resolver_never_breaks_the_run(resolver, caplog):
         return resolver
 
     with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
-        assert cost(S45, provider) == pytest.approx(18.0)  # today's row
+        assert cost("gpt-4o", provider) == pytest.approx(12.5)  # today's row
 
 
 def test_the_resolver_is_read_at_call_time():
-    active = ["bedrock"]
+    active = ["azure"]
     tracker = TokenTrackingCallback(
         "switch", MODEL_PRICING, provider_for_pricing=lambda: active[0]
     )
-    assert end(tracker, S45)["latest_cost_usd"] == pytest.approx(19.8)
-    active[0] = "omics-os"  # runtime provider switch
-    assert end(tracker, S45)["latest_cost_usd"] == pytest.approx(18.0)
+    assert end(tracker, "gpt-4o")["latest_cost_usd"] == pytest.approx(20.0)
+    active[0] = "openai"  # runtime provider switch
+    assert end(tracker, "gpt-4o")["latest_cost_usd"] == pytest.approx(12.5)
 
 
 def test_a_model_known_only_to_the_active_provider_is_priced_not_unpriced():

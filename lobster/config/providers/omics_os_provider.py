@@ -71,8 +71,9 @@ class OmicsOSProvider(ILLMProvider):
             provider="omics-os",
             context_window=200000,
             is_default=True,
-            input_cost_per_million=3.00,
-            output_cost_per_million=15.00,
+            # The us. profile's regional rate, as Omics-OS Cloud charges it.
+            input_cost_per_million=3.30,
+            output_cost_per_million=16.50,
         ),
         ModelInfo(
             name="global.anthropic.claude-sonnet-5-5",

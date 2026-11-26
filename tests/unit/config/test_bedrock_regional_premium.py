@@ -61,17 +61,35 @@ def test_catalog_agrees_with_the_packaged_list_prices(suffix, global_rate, us_ra
         assert PRICES[prefix + suffix] == (float(rates.input), float(rates.output))
 
 
-# Sonnet 4.5 is left out: the Omics-OS Cloud provider lists the same id at the price a
-# Cloud user is charged (3/15) and wins in the merged MODEL_PRICING, shadowing the
-# Bedrock entry. That key collision is a separate, commercial question.
-SHADOWED = "anthropic.claude-sonnet-4-5-20250929-v1:0"
-
-
-@pytest.mark.parametrize(
-    "suffix,global_rate,us_rate", [c for c in CLAUDE_4X if c[0] != SHADOWED]
-)
+@pytest.mark.parametrize("suffix,global_rate,us_rate", CLAUDE_4X)
 def test_the_merged_cost_table_carries_the_premium(suffix, global_rate, us_rate):
     from lobster.config.settings import MODEL_PRICING
 
     entry = MODEL_PRICING["us." + suffix]
     assert (entry["input_per_million"], entry["output_per_million"]) == us_rate
+
+
+def test_every_bedrock_profile_row_of_every_provider_matches_the_catalog_base_rate():
+    """The input/output rate of every ``us.``/``global.`` row, in every provider's
+    catalog, is the packaged catalog's base rate. The uncached cost comes from these
+    rows and the cached cost from the catalog, so a row that drifts prices the
+    uncached turns of a session at another rate than its cached ones."""
+    from lobster.config.providers.registry import ProviderRegistry
+
+    ProviderRegistry.get_all_models_with_pricing()  # registers the providers
+    checked, divergent = 0, {}
+    for provider in ProviderRegistry._providers:
+        rows = ProviderRegistry.get_all_models_with_pricing(provider)
+        for model, row in rows.items():
+            if not model.startswith(("us.", "global.")):
+                continue
+            checked += 1
+            rates = get_rates("bedrock", model)
+            catalog = (
+                None if rates is None else (float(rates.input), float(rates.output))
+            )
+            listed = (row["input_per_million"], row["output_per_million"])
+            if listed != catalog:
+                divergent[f"{provider}:{model}"] = {"row": listed, "catalog": catalog}
+    assert checked >= 35
+    assert not divergent, divergent
