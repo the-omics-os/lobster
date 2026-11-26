@@ -3192,14 +3192,20 @@ class AgentClient(BaseClient):
         """
         if getattr(self, "_inference_context", None) is not None:
             raise InferenceRefused("context")
-        options = {
-            **self._graph_options,
-            "provider_override": self.provider_override,
-            "model_override": model_name,
-        }
+        self._rebuild_graph(
+            provider_override=self.provider_override, model_override=model_name
+        )
+        self.model_override = model_name
+
+    def _rebuild_graph(self, **changes: Any) -> None:
+        """Build the graph from this client's options with ``changes``.
+
+        Data, store, checkpointer, callbacks and the AQUADIF monitor carry over.
+        Nothing changes unless the new graph is built.
+        """
+        options = {**self._graph_options, **changes}
         self.graph, self.graph_metadata = create_bioinformatics_graph(**options)
         self._graph_options = options
-        self.model_override = model_name
 
     def switch_provider(self, provider_name: str) -> Dict[str, Any]:
         """
@@ -3249,18 +3255,16 @@ class AgentClient(BaseClient):
                 ):  # nosec B110 # Missing optional workspace preferences use the documented defaults.
                     pass
 
-            # Recreate graph with new provider
+            # Recreate graph with new provider. The previous model and manual
+            # parameters belong to the previous provider.
             try:
-                self.graph, self.graph_metadata = create_bioinformatics_graph(
-                    data_manager=self.data_manager,
-                    checkpointer=self.checkpointer,
-                    store=self.store,
-                    callback_handler=self.callbacks,
+                self._rebuild_graph(
                     provider_override=provider_name,
-                    workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
+                    model_override=None,
+                    manual_model_params=None,
                     config=agent_config,
-                    interactive=self.interactive,
                 )
+                self.model_override = None
 
                 logger.info(f"Successfully switched to provider: {provider_name}")
                 return {
@@ -3269,18 +3273,8 @@ class AgentClient(BaseClient):
                     "message": f"Switched to {provider_name} provider",
                 }
             except Exception as e:
-                # Rollback on failure
+                # The running graph was never replaced; only the override goes back.
                 self.provider_override = old_provider
-                self.graph, self.graph_metadata = create_bioinformatics_graph(
-                    data_manager=self.data_manager,
-                    checkpointer=self.checkpointer,
-                    store=self.store,
-                    callback_handler=self.callbacks,
-                    provider_override=old_provider,
-                    workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
-                    config=agent_config,
-                    interactive=self.interactive,
-                )
                 return {
                     "success": False,
                     "error": f"Failed to switch provider: {str(e)}",
