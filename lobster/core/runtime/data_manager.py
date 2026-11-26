@@ -941,6 +941,14 @@ class DataManagerV2:
         # Plot management (delegated to PlotManager via lazy property)
         self._plot_manager: Optional[PlotManager] = None
         self.max_plots_history: int = 50  # Passed to PlotManager on initialization
+        # Every figure this process makes defaults to the omics_os Plotly template.
+        # Plotly and the templates are optional; a missing one never blocks a session.
+        try:
+            from lobster.figure_templates import initialize_house_style
+
+            initialize_house_style()
+        except Exception:
+            logger.debug("House style not set: Plotly or templates unavailable")
 
         # Multi-process safe session file access
         self._session_lock = threading.Lock()
