@@ -14,6 +14,9 @@ REFUSED_KEY_ERRORS = [
     "'message': 'invalid x-api-key'}}",
     "Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-xx.', "
     "'type': 'invalid_request_error', 'code': 'invalid_api_key'}}",
+    "unauthorized (status code: 401)",  # Ollama Cloud
+    "Error code: 401 - {'error': {'message': 'No auth credentials found', "
+    "'code': 401}}",  # OpenRouter
 ]
 
 
@@ -24,6 +27,15 @@ def test_a_refused_key_says_how_to_enter_a_new_one(raw):
     assert "lobster init --force" in message
 
 
-def test_a_number_that_merely_contains_401_is_not_a_refused_key():
-    title, _ = _friendly_error("The table has 4012 rows")
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "The table has 4012 rows",
+        "HTTP Error 401: Unauthorized",  # a tool's download, not the model's key
+        'File "x.py", line 401, in run',
+        "p-value 0.401 exceeded the cut-off",
+    ],
+)
+def test_a_401_that_is_not_the_model_key_is_left_alone(raw):
+    title, _ = _friendly_error(raw)
     assert title != "Auth Error"

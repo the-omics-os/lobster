@@ -387,10 +387,12 @@ def _heartbeat_loop(bridge: _LightBridge, stop_event: threading.Event) -> None:
 # ---------------------------------------------------------------------------
 
 
-# A key the provider refuses: HTTP 401 or the SDKs' own words for it.
+# A key the provider refuses: the SDKs' 401 ("Error code: 401", Ollama's
+# "status code: 401") or their own words for it. A bare 401 is not enough:
+# tool errors ("HTTP Error 401", "line 401") reach this function too.
 _REFUSED_KEY = re.compile(
-    r"\b401\b|authentication_error|couldn't authenticate|invalid[ _]api[ _]key"
-    r"|invalid x-api-key",
+    r"(?:error|status) code: 401\b|authentication_error|couldn't authenticate"
+    r"|invalid[ _]api[ _]key|invalid x-api-key",
     re.IGNORECASE,
 )
 
