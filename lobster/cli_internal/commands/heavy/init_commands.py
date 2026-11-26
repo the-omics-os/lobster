@@ -639,10 +639,27 @@ def _check_and_prompt_install_packages(
 
 
 def _save_agent_config(
-    selected_agents: list[str], workspace_path: Path, preset_name: str = None
+    selected_agents: list[str],
+    workspace_path: Path,
+    preset_name: str = None,
+    *,
+    global_config: bool = False,
 ) -> None:
-    """Save selected agents to WorkspaceAgentConfig."""
+    """Save selected agents to WorkspaceAgentConfig.
+
+    ``--global`` saves no list: it changes no folder, and the packages it
+    installed already serve every folder that has no experts of its own.
+    """
     from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+
+    if global_config:
+        console.print(
+            h(
+                "[dim]Every installed package is available in every folder, also one you left unticked. To choose the experts of one project, run `lobster init` in its folder.[/dim]"
+            ),
+            soft_wrap=True,
+        )
+        return
 
     config = WorkspaceAgentConfig(
         enabled_agents=selected_agents,
@@ -3251,7 +3268,9 @@ def init_impl(
 
         # === AGENT SELECTION (BEFORE PROVIDER SETUP) ===
         # Resolve workspace path for agent config
-        workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
+        workspace_path = _resolve_workspace_or_exit(
+            create=not global_config, workspace=init_ws
+        )
 
         # Handle agent selection via flags (CLI-01, CLI-02)
         if agents or preset or auto_agents:
@@ -3279,7 +3298,12 @@ def init_impl(
                 preset_name = None
 
             # Save agent config BEFORE provider setup
-            _save_agent_config(installed_agents, workspace_path, preset_name)
+            _save_agent_config(
+                installed_agents,
+                workspace_path,
+                preset_name,
+                global_config=global_config,
+            )
         # === END AGENT SELECTION ===
 
         env_lines = []
@@ -4088,7 +4112,9 @@ def init_impl(
             )
         )
 
-    workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
+    workspace_path = _resolve_workspace_or_exit(
+        create=not global_config, workspace=init_ws
+    )
 
     try:
         env_lines = []
@@ -4500,7 +4526,12 @@ def init_impl(
             workspace_path, skip_extras=skip_extras, preset=preset, agents=agents
         )
         if selected_agents:
-            _save_agent_config(selected_agents, workspace_path, preset_name)
+            _save_agent_config(
+                selected_agents,
+                workspace_path,
+                preset_name,
+                global_config=global_config,
+            )
         console.print()
 
         # ================================================================== #

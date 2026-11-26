@@ -222,11 +222,10 @@ def apply_tui_init_result(
     # ------------------------------------------------------------------
     # Write files
     # ------------------------------------------------------------------
-    workspace_path.mkdir(parents=True, exist_ok=True)
-
     if global_config:
         _write_global(config_dict, env_lines)
     else:
+        workspace_path.mkdir(parents=True, exist_ok=True)
         from lobster.cli_internal.commands.light.lamin_commands import (
             apply_init_choice,
             saved_settings,
@@ -238,7 +237,9 @@ def apply_tui_init_result(
         apply_init_choice(lamin_enabled, workspace_path, previous=previous)
 
     if agents:
-        _write_agent_config(agents, workspace_path, result.get("preset"))
+        _write_agent_config(
+            agents, workspace_path, result.get("preset"), global_config=global_config
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -314,12 +315,18 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
 
 
 def _write_agent_config(
-    agents: list[str], workspace_path: Path, preset: Optional[str] = None
+    agents: list[str],
+    workspace_path: Path,
+    preset: Optional[str] = None,
+    *,
+    global_config: bool = False,
 ) -> None:
     """Write .lobster_workspace/agent_config.json via the shared helper."""
     from lobster.cli_internal.commands.heavy.init_commands import _save_agent_config
 
-    _save_agent_config(agents, workspace_path, preset)
+    _save_agent_config(agents, workspace_path, preset, global_config=global_config)
+    if global_config:
+        return
     logger.info(
         "Wrote agent_config.json in %s (%d agents)", workspace_path, len(agents)
     )
