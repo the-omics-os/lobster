@@ -3432,8 +3432,8 @@ class AgentClient(BaseClient):
         across separate process invocations (e.g., for `lobster query` continuity).
 
         Note: A file saved with LOBSTER_SESSION_TOOL_HISTORY=1 holds the graph
-        thread as the model received it (tool calls and results included), and
-        the thread is restored from it. Otherwise only the conversation (questions
+        thread (tool calls and results included), and the thread is restored
+        from it. Otherwise only the conversation (questions
         and final answers) is restored, without the earlier tool calls and results.
 
         Args:
@@ -3591,15 +3591,23 @@ class AgentClient(BaseClient):
                     thread = self.graph.get_state(
                         {"configurable": {"thread_id": self.session_id}}
                     )
-                    session_data["messages"] = messages_to_dict(
-                        thread.values.get("messages") or []
-                    )
+                    messages = messages_to_dict(thread.values.get("messages") or [])
+                    # No str() fallback here: a value JSON cannot hold (bytes of
+                    # a redacted reasoning block) would come back as other text
+                    # and change what the provider is sent.
+                    json.dumps(messages)
+                    session_data["messages"] = messages
                 except Exception as exc:
                     # The conversation is still saved; the next turn falls back to it.
                     logger.warning(f"Could not save the tool history: {exc}")
 
+            # Serialized before the file is opened, so a failure leaves the
+            # earlier file whole.
+            text = json.dumps(session_data, indent=2, default=str)
             with open(session_path, "w") as f:
-                json.dump(session_data, f, indent=2, default=str)
+                f.write(text)
+            if "messages" in session_data:
+                os.chmod(session_path, 0o600)  # tool results can hold data values
 
             logger.debug(f"Session saved to {session_path}")
             return session_path

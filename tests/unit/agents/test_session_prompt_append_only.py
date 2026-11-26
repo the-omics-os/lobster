@@ -707,3 +707,35 @@ def test_unreadable_tool_history_falls_back_to_the_conversation(
         for r in caplog.records
         if r.levelno == logging.WARNING
     ), caplog.text
+
+
+def test_tool_history_json_cannot_hold_is_left_out_whole(new_process, monkeypatch):
+    """Bytes (a redacted reasoning block) would come back as other text, so the
+    tool history is left out and the next process uses the conversation."""
+    import stat
+
+    from langchain_core.messages import HumanMessage
+
+    make, workspace, _requests, _script = new_process
+    monkeypatch.setenv("LOBSTER_SESSION_TOOL_HISTORY", "1")
+    client = make()
+    client._replace_thread_messages(
+        [
+            HumanMessage("q", id="h1"),
+            AIMessage("a", id="a1", additional_kwargs={"blob": b"\x00\xff"}),
+        ]
+    )
+    client.messages = [HumanMessage("q"), AIMessage("a")]
+
+    saved = client._save_session_json()
+    data = json.loads(saved.read_text())
+    assert "messages" not in data
+    assert [m["content"] for m in data["conversation"]] == ["q", "a"]
+
+    client._replace_thread_messages(
+        [HumanMessage("q", id="h1"), AIMessage("a", id="a1")]
+    )
+    saved = client._save_session_json()
+    assert "messages" in json.loads(saved.read_text())
+    if sys.platform != "win32":
+        assert stat.S_IMODE(saved.stat().st_mode) == 0o600
