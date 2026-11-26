@@ -75,3 +75,25 @@ def test_config_test_reads_the_workspace_chat_reads(workspace, capsys, monkeypat
     config_test_impl(output_json=True)
     result = json.loads(capsys.readouterr().out)
     assert result["checks"]["llm_provider"]["model"] == USER_MODEL
+
+
+def test_config_test_subcommand_tests_the_workspace_model(workspace):
+    """`lobster config test` checks the same model as `lobster config-test`."""
+    from lobster.cli_internal.commands.light.config_commands import test_impl
+
+    assert test_impl() is True
+    assert workspace == [USER_MODEL]
+
+
+def test_config_test_subcommand_tests_the_workspace_provider(workspace, monkeypatch):
+    """Another configured provider listed first does not replace the chat's one."""
+    from lobster.cli_internal.commands.light.config_commands import test_impl
+    from lobster.config.providers import ProviderRegistry, get_provider
+
+    anthropic = get_provider("anthropic")
+    other = type("Other", (), {"name": "openai"})()
+    monkeypatch.setattr(
+        ProviderRegistry, "get_configured_providers", lambda: [other, anthropic]
+    )
+    assert test_impl() is True
+    assert workspace == [USER_MODEL]

@@ -1443,13 +1443,7 @@ def config_test_impl(output_json: bool = False):
             # Test LLM connectivity
             if provider is not None:
                 try:
-                    # Test the model the chat's supervisor uses: workspace, then
-                    # global config, then the provider default.
-                    from lobster.core.config_resolver import ConfigResolver
-
-                    user_model, _source = ConfigResolver.get_instance(
-                        workspace_path
-                    ).resolve_model(agent_name="supervisor", provider=provider)
+                    user_model = _chat_model(provider, workspace_path)
                     test_results["checks"]["llm_provider"]["model"] = user_model
                     log(h("  Model: {model}").format(model=user_model), "yellow")
                     test_config = {
@@ -1983,10 +1977,19 @@ def show_config_impl(workspace=None, show_all: bool = False):
     console.print()
 
 
+def _chat_model(provider: str, workspace_path) -> Optional[str]:
+    """The model the chat's supervisor uses: workspace, then global config, then
+    the provider default."""
+    from lobster.core.config_resolver import ConfigResolver
+
+    model, _source = ConfigResolver.get_instance(workspace_path).resolve_model(
+        agent_name="supervisor", provider=provider
+    )
+    return model
+
+
 def test_impl(profile=None, agent=None):
     """Test LLM provider connectivity and configuration (extracted from cli.py)."""
-    import os
-
     import typer
     from rich.panel import Panel
 
@@ -2024,15 +2027,12 @@ def test_impl(profile=None, agent=None):
                 console.print(f"[yellow]💡 {t('light.config.run_init')}[/yellow]")
                 raise typer.Exit(1)
 
-            # Check environment variable first
-            import os
+            # The provider and workspace the chat uses.
+            from lobster.config.llm_factory import LLMFactory
+            from lobster.core.workspace import resolve_workspace
 
-            explicit_provider = os.getenv("LOBSTER_LLM_PROVIDER")
-            if explicit_provider and explicit_provider in [p.name for p in configured]:
-                provider = explicit_provider
-            else:
-                # Use first configured provider
-                provider = configured[0].name
+            workspace_path = resolve_workspace(explicit_path=None, create=False)
+            provider = LLMFactory.get_current_provider(workspace_path=workspace_path)
 
             if provider is None:
                 console.print(f"[red]❌ {t('light.config.no_provider')}[/red]")
@@ -2049,7 +2049,7 @@ def test_impl(profile=None, agent=None):
             console.print(h("[yellow]Testing API connectivity...[/yellow]"))
 
             try:
-                # Get provider object and create model directly (bypass ConfigResolver)
+                # Get the provider object; the model is the one the chat uses.
                 from lobster.config.providers import get_provider
 
                 provider_obj = get_provider(provider)
@@ -2057,12 +2057,10 @@ def test_impl(profile=None, agent=None):
                 if not provider_obj:
                     raise Exception(f"Provider '{provider}' not found in registry")
 
-                # Get default model for provider
-                default_model = provider_obj.get_default_model()
-
-                # Create test model directly via provider
+                model = _chat_model(provider, workspace_path)
+                console.print(h("  Model: {model}").format(model=model))
                 test_llm = provider_obj.create_chat_model(
-                    model_id=default_model, temperature=1.0, max_tokens=50
+                    model_id=model, temperature=1.0, max_tokens=50
                 )
 
                 test_llm.invoke("Reply with just 'ok'")
