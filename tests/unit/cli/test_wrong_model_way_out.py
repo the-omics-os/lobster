@@ -19,6 +19,10 @@ WRONG_MODEL_ERRORS = [
     'model "llama9" not found, try pulling it first (status code: 404)',
     "404 models/gemini-9 is not found for API version v1beta, or is not supported "
     "for generateContent.",
+    "An error occurred (ValidationException) when calling the ConverseStream "
+    "operation: Omics-OS Cloud: Invalid model ID: claude-sonnet-9",
+    "Error code: 400 - {'error': {'message': 'openai/gpt-9 is not a valid model ID', "
+    "'code': 400}}",
 ]
 
 

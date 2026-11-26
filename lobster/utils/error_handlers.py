@@ -1278,9 +1278,10 @@ class NetworkErrorHandler(ErrorHandler):
 
 
 # How each provider SDK says that it has no model by the configured name:
-# Bedrock, Anthropic, OpenAI, Ollama, Gemini.
+# Bedrock, Anthropic, OpenAI, Ollama, Gemini, Omics-OS Cloud, OpenRouter.
 UNKNOWN_MODEL = re.compile(
     r"model identifier is invalid|not_found_error.{0,80}model|model_not_found"
+    r"|invalid model id|not a valid model id"
     r'|model "[^"]+" not found|models/\S+ is not found',
     re.IGNORECASE,
 )

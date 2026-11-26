@@ -394,12 +394,10 @@ def _friendly_error(raw: str) -> tuple:
     cloud_auth = "Omics-OS Cloud API key rejected or expired"
     if cloud_auth in msg:
         return ("Omics-OS Cloud", msg[msg.index(cloud_auth) :])
-    cloud_refusal = "Omics-OS Cloud:"
-    if cloud_refusal in msg:
-        return ("Omics-OS Cloud", msg[msg.index(cloud_refusal) :])
     from lobster.utils.error_handlers import UNKNOWN_MODEL
 
-    # Before the AWS checks: Bedrock names the operation in this error too.
+    # Before the Cloud refusal and the AWS checks: the gateway and Bedrock
+    # word this error in their own way too.
     if UNKNOWN_MODEL.search(msg):
         return (
             h("Model Not Available"),
@@ -407,6 +405,9 @@ def _friendly_error(raw: str) -> tuple:
                 "The provider has no model by the name in your settings. List the models with /config model, then switch with /config model <name> --save."
             ),
         )
+    cloud_refusal = "Omics-OS Cloud:"
+    if cloud_refusal in msg:
+        return ("Omics-OS Cloud", msg[msg.index(cloud_refusal) :])
     if "security token" in msg or "UnrecognizedClientException" in msg:
         return (
             h("Provider Error"),
