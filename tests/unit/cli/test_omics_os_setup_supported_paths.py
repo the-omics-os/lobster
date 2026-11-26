@@ -1073,7 +1073,6 @@ def test_classic_prompts_pass_only_what_the_prompt_takes():
 
 @pytest.mark.parametrize("display", [None, "DISPLAY", "WAYLAND_DISPLAY"])
 def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display):
-    import subprocess
     import webbrowser
 
     from lobster.config.cloud_setup import request_access
@@ -1082,10 +1081,12 @@ def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display)
         raise AssertionError("webbrowser may pick a console browser on Linux")
 
     started = []
+    devnull = object()
     monkeypatch.setattr(webbrowser, "open", forbidden)
     monkeypatch.setattr(
-        subprocess, "Popen", lambda argv, **kw: started.append((argv, kw))
+        "subprocess.Popen", lambda argv, **kw: started.append((argv, kw))
     )
+    monkeypatch.setattr("subprocess.DEVNULL", devnull)
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
@@ -1106,7 +1107,7 @@ def test_access_request_starts_no_console_browser_on_linux(monkeypatch, display)
     [(argv, kw)] = started
     assert argv == ["xdg-open", ACCESS_URL]
     # Detached from the wizard's terminal, so no browser can read or draw on it.
-    assert kw["stdin"] is kw["stdout"] is kw["stderr"] is subprocess.DEVNULL
+    assert kw["stdin"] is kw["stdout"] is kw["stderr"] is devnull
     assert kw["start_new_session"] is True
 
 
