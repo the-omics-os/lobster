@@ -2262,5 +2262,5 @@
   "[red]Name a provider. Valid providers: {valid}. Nothing was changed.[/red]": "[red]请指定一个提供方。可用的提供方：{valid}。未做任何更改。[/red]",
   "Not replayed: this step reads {n} modalities, and a replay starts from one input.": "未重放：此步骤读取 {n} 个模态，而重放只从一个输入开始。",
   "This notebook has steps that read two or more modalities ({steps}), and a replay starts from one input; it was not run.": "此 notebook 含有读取两个或更多模态的步骤（{steps}），而 replay 只从一个输入开始；notebook 未运行。",
-  "[dim]Every installed package is available in every folder, also one you left unticked. To choose the experts of one project, run `lobster init` in its folder.[/dim]": "[dim]每个已安装的软件包在所有文件夹中都可用，未勾选的也一样。要为某个项目选择专家，请在该项目的文件夹中运行 `lobster init`。[/dim]"
+  "[dim]Installed packages, also ones left unticked, serve every folder that has no experts of its own. To choose the experts of one project, run `lobster init` in its folder.[/dim]": "[dim]已安装的软件包（包括未勾选的）适用于所有没有自己专家设置的文件夹。要为某个项目选择专家，请在该项目的文件夹中运行 `lobster init`。[/dim]"
 }

@@ -655,7 +655,7 @@ def _save_agent_config(
     if global_config:
         console.print(
             h(
-                "[dim]Every installed package is available in every folder, also one you left unticked. To choose the experts of one project, run `lobster init` in its folder.[/dim]"
+                "[dim]Installed packages, also ones left unticked, serve every folder that has no experts of its own. To choose the experts of one project, run `lobster init` in its folder.[/dim]"
             ),
             soft_wrap=True,
         )
@@ -1947,7 +1947,7 @@ def _resolve_workspace_or_exit(
 
 def _print_init_summary(
     result: Dict[str, Any],
-    workspace_path: Path,
+    workspace_path: Optional[Path],
     extra_lines: Optional[List[str]] = None,
     next_step: bool = True,
 ) -> None:
@@ -1967,7 +1967,10 @@ def _print_init_summary(
     mark = "[bold yellow]⚠[/bold yellow]" if failed else "[bold green]✓[/bold green]"
     console.print(f"{mark} {esc(t('cli.init.done'))}")
     console.print(f"  {esc(t('cli.init.done_provider', provider=provider_text))}")
-    console.print(f"  {esc(t('cli.init.done_workspace', path=str(workspace_path)))}")
+    if workspace_path is not None:  # --global uses no folder
+        console.print(
+            f"  {esc(t('cli.init.done_workspace', path=str(workspace_path)))}"
+        )
     for line in extra_lines or []:
         console.print(f"  {esc(line)}")
     for line in failed:
@@ -3859,7 +3862,7 @@ def init_impl(
         from lobster.core.uv_tool_env import is_uv_tool_env
 
         _tui_handled = False
-        # Agents are saved in the workspace even with --global.
+        # The picker starts from the experts this folder saved, if any.
         _flag_agents = _agents_flag_list(agents)
         _saved_packages = _starting_packages(
             _resolve_workspace_or_exit(create=False, workspace=init_ws),
@@ -3895,7 +3898,9 @@ def init_impl(
                         if lamin is not None:
                             _tui_result["lamin_enabled"] = lamin
 
-                        _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
+                        _ws_path = _resolve_workspace_or_exit(
+                            create=not global_config, workspace=init_ws
+                        )
                         _ev_path = init_root / ".env"
                         # The wizard worked; a failure from here on is a save
                         # error, not "Go TUI unavailable". Keep the answers for a
@@ -3932,7 +3937,7 @@ def init_impl(
 
                         _print_init_summary(
                             _tui_result,
-                            _ws_path,
+                            None if global_config else _ws_path,
                             next_step=not _tool_install_follows(),
                         )
                         if lamin_skipped:
@@ -4012,7 +4017,9 @@ def init_impl(
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                     raise _Cancelled(0)
 
-                _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
+                _ws_path = _resolve_workspace_or_exit(
+                    create=not global_config, workspace=init_ws
+                )
                 _ev_path = init_root / ".env"
                 _q_result = _postprocess_tui_init_result(
                     _q_result,
@@ -4026,7 +4033,7 @@ def init_impl(
 
                 _print_init_summary(
                     _q_result,
-                    _ws_path,
+                    None if global_config else _ws_path,
                     next_step=not _tool_install_follows(),
                 )
                 if is_uv_tool_env():
