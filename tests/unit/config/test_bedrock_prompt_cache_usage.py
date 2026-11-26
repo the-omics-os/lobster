@@ -259,3 +259,44 @@ def test_real_usage_actual_cache_rate_ledger_engages_both_paths(
         assert not any(
             key.startswith("cache_cost_") for key in summary["invocations"][0]
         )
+
+
+# A recorded Converse usage block (Sonnet 4.5, prompt cache on, first request).
+# LangChain reports this write as cache_creation 0 plus ephemeral_5m_input_tokens.
+RECORDED_WRITE = {
+    "model_id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "usage": {
+        "cacheDetails": [{"inputTokens": 5299, "ttl": "5m"}],
+        "cacheReadInputTokenCount": 0,
+        "cacheReadInputTokens": 0,
+        "cacheWriteInputTokenCount": 5299,
+        "cacheWriteInputTokens": 5299,
+        "inputTokens": 3,
+        "outputTokens": 5,
+        "serverToolUsage": {},
+        "totalTokens": 5307,
+    },
+}
+
+
+@pytest.mark.parametrize("api_type", ["converse", "converse_stream"])
+def test_recorded_cache_write_is_priced_at_the_write_rate(
+    monkeypatch, transport, api_type
+):
+    call = {**RECORDED_WRITE, "api_type": api_type}
+    message, callback = invoke_capture(monkeypatch, transport, call)
+    details = message.usage_metadata["input_token_details"]
+    assert details["cache_creation"] == 0
+    assert details["ephemeral_5m_input_tokens"] == 5299
+    rates = for_context(get_rates("bedrock", call["model_id"]), 5302)
+    assert rates.cache_write > rates.input
+    expected = float(
+        (3 * rates.input + 5 * rates.output + 5299 * rates.cache_write)
+        / Decimal(1_000_000)
+    )
+    invocation = callback.invocations[0]
+    assert invocation.cache_write_tokens == 5299
+    assert invocation.cost_usd == expected
+    assert callback.get_usage_summary()["invocations"][0]["cache_cost_status"] == (
+        "catalog"
+    )
