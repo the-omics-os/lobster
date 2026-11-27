@@ -504,16 +504,18 @@ func (m confirmModel) Update(msg tea.Msg) (confirmModel, bool, bool) {
 	return m, false, false
 }
 
-func (m confirmModel) View(th *lobsterTheme.Theme) string {
+// View wraps the title and the description to width: the renderer cuts a
+// line wider than the window.
+func (m confirmModel) View(th *lobsterTheme.Theme, width int) string {
 	titleStyle := lipgloss.NewStyle().Foreground(th.Colors.Primary).Bold(true)
 	descStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
 	activeStyle := lipgloss.NewStyle().Foreground(th.Colors.Success).Bold(true)
 	inactiveStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(i18n.P(m.title)) + "\n")
+	sb.WriteString(titleStyle.Width(width).Render(i18n.P(m.title)) + "\n")
 	if m.description != "" {
-		sb.WriteString(descStyle.Render(i18n.P(m.description)) + "\n")
+		sb.WriteString(descStyle.Width(width).Render(i18n.P(m.description)) + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -543,6 +545,8 @@ type WizardModel struct {
 	done       bool
 	err        error
 	resultPath string
+	// width is the window's width from the last tea.WindowSizeMsg; 0 before the first.
+	width int
 
 	// Step 1: Agent packages
 	agentSelect multiSelectModel
@@ -693,6 +697,9 @@ func (m WizardModel) Init() tea.Cmd {
 }
 
 func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+	}
 	switch m.step {
 	case stepLanguage:
 		return m.updateLanguage(msg)
@@ -843,15 +850,24 @@ func (m WizardModel) chooseProvider(value string) (tea.Model, tea.Cmd) {
 	return m, textinput.Blink
 }
 
+// wrapWidth is the column width long text wraps to: the window's width less
+// one column, at most accessNoticeWidth; accessNoticeWidth before the first
+// window size message.
+func (m WizardModel) wrapWidth() int {
+	if m.width <= 1 || m.width-1 > accessNoticeWidth {
+		return accessNoticeWidth
+	}
+	return m.width - 1
+}
+
 func (m WizardModel) viewProvider() string {
 	list := m.providerSelect.View(m.theme)
 	if m.accessNotice == "" {
 		return list
 	}
-	// shortcut: fixed 72-column wrap; the wizard has no window width yet (1.3.1 L17 adds it).
 	// The renderer cuts a line wider than the window, and this one holds the instruction
 	// to choose another provider.
-	notice := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2).Width(accessNoticeWidth).
+	notice := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2).Width(m.wrapWidth()).
 		Render(i18n.P(m.accessNotice))
 	return notice + "\n\n" + list
 }
@@ -1502,15 +1518,15 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m WizardModel) viewOptionalKeys() string {
 	switch m.optionalSub {
 	case subStepNCBIConfirm:
-		return m.ncbiConfirm.View(m.theme)
+		return m.ncbiConfirm.View(m.theme, m.wrapWidth())
 	case subStepNCBIKey:
 		return m.viewTextInput("NCBI API Key", "Your NCBI API key. Find it at ncbi.nlm.nih.gov/account/settings.", m.ncbiInput)
 	case subStepSmartStdConfirm:
-		return m.smartStdConfirm.View(m.theme)
+		return m.smartStdConfirm.View(m.theme, m.wrapWidth())
 	case subStepSmartStdKey:
 		return m.viewTextInput("OpenAI API Key for Embeddings", "Required for Smart Standardization / vector search.", m.smartStdInput)
 	case subStepLaminConfirm:
-		return m.laminConfirm.View(m.theme)
+		return m.laminConfirm.View(m.theme, m.wrapWidth())
 	}
 	return ""
 }
