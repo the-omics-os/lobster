@@ -344,12 +344,14 @@ def test_descriptions_are_the_skill_contract():
         "lobster_status",
         "decision_id",
         "request_version",
-        "source human if the user gave the answer in this conversation",
-        "source model if you decided",
-        "ask them",
+        mcp_contract.ASK_THE_USER,
         "result.json",
     ):
         assert needle in answer
+    # The model decides only when the user said so; otherwise it asks the user.
+    assert "Show the question to the user" in mcp_contract.ASK_THE_USER
+    assert "only when the user told you to decide" in mcp_contract.ASK_THE_USER
+    assert "source model if you decided" not in json.dumps(mcp_contract.list_tools())
     for name in ("lobster_run", "lobster_status"):
         assert mcp_contract.DECISIONS in by_name[name]["description"]
     assert "needs_decision" in by_name["lobster_status"]["description"]
@@ -609,6 +611,15 @@ def test_instructions_are_sentences_of_the_connector_description():
     assert "lobster_overview first" in instructions
     connector = mcp_contract.CONNECTOR_DESCRIPTION
     assert "lobster_continue" in connector and "lobster_inspect" in connector
+
+
+def test_instructions_are_unchanged_since_1_3_2_headline():
+    """A host sends INSTRUCTIONS with every prompt: a change costs every
+    session's prompt cache, so it changes only on purpose, with this hash."""
+    import hashlib
+
+    digest = hashlib.sha256(mcp_contract.INSTRUCTIONS.encode()).hexdigest()
+    assert digest == "06ded60a0af1ca5ebbba4194f3d8ddffe0fddd3858f1b42b38a92666286e5ce3"
 
 
 def test_lobster_mcp_stdio_command_answers_initialize():

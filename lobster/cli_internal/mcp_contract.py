@@ -88,11 +88,13 @@ READ_FILES = (
     "result.json also holds the steps and the request. The notebook is "
     "exported from the recorded analysis steps; it has not been executed."
 )
+ASK_THE_USER = (
+    "Show the question to the user and pass their answer with source human; "
+    "use source model only when the user told you to decide for them."
+)
 DECISIONS = (
     "If Lobster needs a decision, lobster_status returns needs_decision with "
-    "the question. Answer it with lobster_answer: source human if the user "
-    "gave the answer in this conversation, source model if you decided. If "
-    "you are not sure what the user wants, ask them."
+    f"the question. Answer it with lobster_answer. {ASK_THE_USER}"
 )
 WAITING = (
     "A needs_decision status carries elapsed_s, phase waiting and the "
@@ -278,9 +280,7 @@ _ANSWER = {
             "answer follows answer_shapes (the option text for a select, a "
             "number for a threshold_slider, true or false for a confirm, text "
             "for a text_input).",
-            "source is required: source human if the user gave the answer in "
-            "this conversation, source model if you decided. If you are not "
-            "sure what the user wants, ask them.",
+            f"source is required. {ASK_THE_USER}",
             "A refused answer changes nothing and the run keeps waiting. After "
             "an accepted answer the run continues under the same run_id: wait "
             "with lobster_wait as before; result.json keeps the run id the "
@@ -312,7 +312,8 @@ _ANSWER = {
                 "type": "string",
                 "enum": list(ANSWER_SOURCES),
                 "description": "human: the user gave this answer in this "
-                "conversation. model: you decided it.",
+                "conversation. model: you decided it, because the user told "
+                "you to decide for them.",
             },
             "comment": {
                 "type": "string",
