@@ -239,6 +239,9 @@ class TestWaitForSlot:
         # Fill up rate limit
         for _ in range(rate_limiter.rate_limit):
             rate_limiter.check_rate_limit("ncbi_esearch", "user1")
+        # Outlive the 1 s window, so only the delete below frees the slot even
+        # when a slow runner takes most of a second to get here.
+        fake_redis.expire("ratelimit:ncbi_esearch:user1", 30)
 
         # Simulate TTL expiry after 0.5 seconds
         def delayed_delete():
