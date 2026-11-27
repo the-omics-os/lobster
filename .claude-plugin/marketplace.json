@@ -1,0 +1,15 @@
+{
+  "name": "omics-os",
+  "description": "Lobster AI for Claude Code, from Omics-OS",
+  "owner": {
+    "name": "Omics-OS",
+    "email": "info@omics-os.com"
+  },
+  "plugins": [
+    {
+      "name": "lobster",
+      "source": "./",
+      "description": "Lobster AI's MCP server and skills for bioinformatics analysis"
+    }
+  ]
+}

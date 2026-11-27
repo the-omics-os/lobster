@@ -1,0 +1,21 @@
+{
+  "name": "lobster",
+  "displayName": "Lobster AI",
+  "version": "1.3.1",
+  "description": "Lobster AI's MCP server (lobster mcp --stdio) and the lobster-use and lobster-dev skills. Needs Lobster AI installed (install.lobsterbio.com) and a project made with lobster init.",
+  "author": {
+    "name": "Omics-OS",
+    "email": "info@omics-os.com",
+    "url": "https://omics-os.com"
+  },
+  "homepage": "https://docs.omics-os.com/docs/guides/lobster-mcp",
+  "repository": "https://github.com/the-omics-os/lobster",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["bioinformatics", "single-cell", "rna-seq", "proteomics", "mcp"],
+  "mcpServers": {
+    "lobster": {
+      "command": "lobster",
+      "args": ["mcp", "--stdio"]
+    }
+  }
+}

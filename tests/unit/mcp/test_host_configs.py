@@ -171,3 +171,21 @@ def test_the_readme_names_every_tool_the_server_lists():
     )
     for name in tools:
         assert f"`{name}`" in readme
+
+
+def test_the_registry_entry_follows_the_release_and_the_pypi_readme():
+    """The MCP Registry checks ``mcp-name`` in the PyPI page (README.md) of the
+    version server.json names, so both follow the package version; so does the
+    Claude Code plugin, whose users update when its version changes."""
+    from lobster.version import __version__
+
+    root = INTEGRATIONS.parents[1]
+    server = json.loads((root / "server.json").read_text(encoding="utf-8"))
+    (package,) = server["packages"]
+    assert server["version"] == package["version"] == __version__
+    plugin = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
+    assert plugin["version"] == __version__
+    assert (package["registryType"], package["identifier"]) == ("pypi", "lobster-ai")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert f"<!-- mcp-name: {server['name']} -->" in readme
+    assert len(server["description"]) <= 100

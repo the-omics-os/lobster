@@ -69,6 +69,8 @@ claude mcp add --transport stdio lobster -- lobster mcp --stdio
 ```
 The configuration for the other hosts, the nine tools and how you approve Lobster's plan are in the [MCP guide](https://docs.omics-os.com/docs/guides/lobster-mcp).
 
+<!-- mcp-name: io.github.the-omics-os/lobster -->
+
 <div align="center">
   <img alt="Claude Code asks Lobster for public PBMC single-cell datasets on GEO" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/recordings/claude-code-mcp.gif" width="720">
   <br/>
