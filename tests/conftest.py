@@ -1188,6 +1188,11 @@ def cleanup_test_artifacts() -> Generator[None, None, None]:
     """
     yield
 
+    # Under xdist another worker may still be using its lobster_test_* folder;
+    # temp_workspace removes its own.
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        return
+
     # Cleanup any remaining temporary files
     temp_dir = Path(tempfile.gettempdir())
     for path in temp_dir.glob(f"{TEST_WORKSPACE_PREFIX}*"):

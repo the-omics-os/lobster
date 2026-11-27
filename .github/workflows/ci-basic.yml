@@ -8,7 +8,9 @@ on:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  PYTEST_ADDOPTS: "--color=yes --tb=short"
+  # pyproject's addopts always add --cov=lobster with three reports (~45 s per
+  # pytest call); no job reads them, so CI runs without coverage.
+  PYTEST_ADDOPTS: "--color=yes --tb=short --no-cov"
   # Fresh resolves stay on the uv.lock versions listed there (pytest 9.2.0 vs
   # pytest-benchmark 5.3.0).
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
@@ -118,6 +120,9 @@ jobs:
     - name: Run release publication contract tests
       id: release-contracts
       if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      env:
+        # This venv has no pytest-cov, so it cannot take the job's --no-cov.
+        PYTEST_ADDOPTS: "--color=yes --tb=short"
       run: |
         uv venv --python 3.12 .venv
         uv pip install --python .venv/bin/python pytest pytest-timeout pyyaml
@@ -184,6 +189,7 @@ jobs:
           -m "not slow and not real_api" \
           --import-mode=importlib \
           --maxfail=10 \
+          -n auto --dist worksteal \
           --durations=10 \
           -v
 
