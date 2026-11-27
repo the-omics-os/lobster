@@ -41,7 +41,6 @@ _EMPTY_RESULT: dict = {
     "profile": "",
     "agents": [],
     "ncbi_key": "",
-    "cloud_key": "",
     "ollama_model": "",
     "model_id": "",
     "smart_standardization_enabled": False,
@@ -313,27 +312,7 @@ def run_questionary_init(
             result["ncbi_key"] = ncbi.strip()
 
         # ================================================================== #
-        # Step 7 — Optional Cloud key (skip when already via Omics-OS Cloud) #
-        # ================================================================== #
-        if provider != "omics-os":
-            add_cloud = questionary.confirm(
-                h("Add an Omics-OS Cloud API key? (enables premium tier, optional)"),
-                default=False,
-            ).ask()
-
-            if add_cloud is None:
-                return _cancelled(result)
-
-            if add_cloud:
-                ckey = questionary.password(
-                    h("Enter your Omics-OS Cloud API key:")
-                ).ask()
-                if ckey is None:
-                    return _cancelled(result)
-                result["cloud_key"] = ckey.strip()
-
-        # ================================================================== #
-        # Step 8 — Smart Standardization / vector search                     #
+        # Step 7 — Smart Standardization / vector search                     #
         # ================================================================== #
         beneficiaries = _get_smart_standardization_beneficiaries(result["agents"])
         smart_std_prompt = h(
@@ -369,7 +348,7 @@ def run_questionary_init(
                 result["smart_standardization_openai_key"] = embedding_key.strip()
 
         # ================================================================== #
-        # Step 9 — LaminDB catalog                                           #
+        # Step 8 — LaminDB catalog                                           #
         # ================================================================== #
         if lamin_default is not None:
             from lobster.cli_internal.commands.light.lamin_commands import (

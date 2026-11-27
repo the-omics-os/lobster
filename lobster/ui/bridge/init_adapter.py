@@ -11,7 +11,6 @@ contract::
         "agents":             list[str],  # selected agent names
         "preset":             str | None,  # set by init: --preset, kept as picked
         "ncbi_key":           str,   # optional NCBI API key
-        "cloud_key":          str,   # optional Omics-OS Cloud key
         "ollama_model":       str,   # Ollama model name (empty for non-Ollama)
         "smart_standardization_enabled": bool,  # enable vector-search setup
         "smart_standardization_openai_key": str,  # OpenAI key for embeddings
@@ -95,7 +94,6 @@ def apply_tui_init_result(
     profile = (result.get("profile") or "").strip()
     agents = result.get("agents") or []
     ncbi_key = (result.get("ncbi_key") or "").strip()
-    cloud_key = (result.get("cloud_key") or "").strip()
     ollama_model = (result.get("ollama_model") or "").strip()
     smart_std_enabled = bool(result.get("smart_standardization_enabled"))
     smart_std_openai_key = (
@@ -183,10 +181,6 @@ def apply_tui_init_result(
     if ncbi_key:
         env_lines.append("\n# Optional: Enhanced literature search")
         env_lines.append(f"NCBI_API_KEY={ncbi_key}")
-
-    if cloud_key:
-        env_lines.append("\n# Omics-OS Cloud configuration (enables premium tier)")
-        env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key}")
 
     if smart_std_enabled:
         embedding_key = smart_std_openai_key

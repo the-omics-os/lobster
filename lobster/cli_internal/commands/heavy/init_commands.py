@@ -4476,25 +4476,7 @@ def init_impl(
                 console.print(h("[green]✓ NCBI API key configured[/green]"))
 
         # ================================================================== #
-        # Step 6 — Optional Cloud key (skip if Omics-OS)                      #
-        # ================================================================== #
-        if provider_name != "omics-os":
-            add_cloud = Confirm.ask(
-                h("Add an Omics-OS Cloud API key? (enables premium tier, optional)"),
-                default=False,
-            )
-            if add_cloud:
-                cloud_key_val = Prompt.ask(
-                    h("[bold white]Enter your Omics-OS Cloud API key[/bold white]"),
-                    password=True,
-                )
-                if cloud_key_val.strip():
-                    env_lines.append("\n# Omics-OS Cloud configuration")
-                    env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key_val.strip()}")
-                    console.print(h("[green]✓ Cloud API key configured[/green]"))
-
-        # ================================================================== #
-        # Step 7 — Smart Standardization (if not uv tool env)                 #
+        # Step 6 — Smart Standardization (if not uv tool env)                 #
         # ================================================================== #
         if not skip_extras and not _in_uv_tool:
             smart_std_lines = _prompt_smart_standardization(
@@ -4502,7 +4484,7 @@ def init_impl(
             )
             env_lines.extend(smart_std_lines)
 
-        # Step 8 — LaminDB catalog (default No)
+        # Step 7 — LaminDB catalog (default No)
         if lamin is None:
             lamin = _ask_lamin(global_config)
         if global_config and lamin is not None:

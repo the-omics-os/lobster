@@ -3,6 +3,7 @@ package initwizard
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -645,21 +646,39 @@ func TestOAuthSurvivesBackNavFromOptionalKeys(t *testing.T) {
 	}
 }
 
-func TestCloudKeyShownForOtherProviders(t *testing.T) {
+// No provider is asked for a separate Omics-OS Cloud key: NCBI leads straight
+// to Smart Standardization, and back again.
+func TestNoCloudKeyQuestionForOtherProviders(t *testing.T) {
 	m := NewWizardModel("", "")
-
-	// Navigate to optional keys with anthropic provider.
 	m.result.Provider = providerAnthropic
 	m.initOptionalKeys()
 	m.step = stepOptionalKeys
 
-	// We're at NCBI confirm. Say no (n = done immediately).
 	result, _ := m.Update(makeKeyPress("n"))
 	m = result.(WizardModel)
+	if m.optionalSub != subStepSmartStdConfirm {
+		t.Fatalf("expected subStepSmartStdConfirm after NCBI no, got %d", m.optionalSub)
+	}
+	if strings.Contains(render(m), "Omics-OS Cloud API Key") {
+		t.Fatal("the wizard still shows the Omics-OS Cloud key question")
+	}
 
-	// Should go to cloud confirm for non-omics-os.
-	if m.optionalSub != subStepCloudConfirm {
-		t.Fatalf("expected subStepCloudConfirm for anthropic, got %d", m.optionalSub)
+	result, _ = m.Update(makeKeyPress("esc"))
+	m = result.(WizardModel)
+	if m.optionalSub != subStepNCBIConfirm {
+		t.Fatalf("expected subStepNCBIConfirm after esc, got %d", m.optionalSub)
+	}
+
+	result, _ = m.Update(makeKeyPress("y"))
+	m = result.(WizardModel)
+	for _, ch := range "test-ncbi-key" {
+		result, _ = m.Update(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+		m = result.(WizardModel)
+	}
+	result, _ = m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+	if m.optionalSub != subStepSmartStdConfirm {
+		t.Fatalf("expected subStepSmartStdConfirm after the NCBI key, got %d", m.optionalSub)
 	}
 }
 

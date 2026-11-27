@@ -47,7 +47,7 @@ func TestVectorDefaultNoEnterDeclines(t *testing.T) {
 			if m.result.SmartStandardizationEnabled || m.result.SmartStandardizationOpenAIKey != "" {
 				t.Fatal("default decline enabled vector search or returned a key")
 			}
-			if m.result.NCBIKey != "" || m.result.CloudKey != "" {
+			if m.result.NCBIKey != "" {
 				t.Fatal("decline changed unrelated optional keys")
 			}
 			if _, err := os.Stat(m.resultPath); !os.IsNotExist(err) {

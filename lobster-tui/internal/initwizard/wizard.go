@@ -7,7 +7,7 @@
 //  2. API key entry (Input, provider-specific)
 //  3. Model selection — cloud providers only (Select + custom input)
 //  4. Agent package selection (MultiSelect)
-//  5. Optional keys — NCBI and Omics-OS Cloud (Confirm + Input)
+//  5. Optional keys — NCBI and Smart Standardization (Confirm + Input)
 //
 // There is no profile step: a profile chooses no model, so asking for one
 // after the model step only offered other models by name.
@@ -44,7 +44,6 @@ type WizardResult struct {
 	APIKeySecondary               string   `json:"api_key_secondary"`
 	Agents                        []string `json:"agents"`
 	NCBIKey                       string   `json:"ncbi_key"`
-	CloudKey                      string   `json:"cloud_key"`
 	OllamaModel                   string   `json:"ollama_model"`
 	ModelID                       string   `json:"model_id"`
 	SmartStandardizationEnabled   bool     `json:"smart_standardization_enabled"`
@@ -301,8 +300,6 @@ type optionalKeySubStep int
 const (
 	subStepNCBIConfirm optionalKeySubStep = iota
 	subStepNCBIKey
-	subStepCloudConfirm
-	subStepCloudKey
 	subStepSmartStdConfirm
 	subStepSmartStdKey
 	subStepLaminConfirm
@@ -586,8 +583,6 @@ type WizardModel struct {
 	optionalSub     optionalKeySubStep
 	ncbiConfirm     confirmModel
 	ncbiInput       textinput.Model
-	cloudConfirm    confirmModel
-	cloudInput      textinput.Model
 	smartStdConfirm confirmModel
 	smartStdInput   textinput.Model
 	askLamin        bool
@@ -1367,16 +1362,6 @@ func (m *WizardModel) initOptionalKeys() {
 	ti.EchoMode = textinput.EchoPassword
 	m.ncbiInput = ti
 
-	m.cloudConfirm = confirmModel{
-		title:       "Omics-OS Cloud API Key",
-		description: "Add an Omics-OS Cloud API key to unlock premium features?",
-		value:       false,
-	}
-	ti2 := textinput.New()
-	ti2.Placeholder = "omics-..."
-	ti2.EchoMode = textinput.EchoPassword
-	m.cloudInput = ti2
-
 	// Smart standardization default depends on selected agents.
 	selectedPackages := m.agentSelect.Selected()
 	selectedAgents := expandSelectedPackages(selectedPackages)
@@ -1426,12 +1411,7 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ncbiInput.Focus()
 				return m, textinput.Blink
 			}
-			// Skip cloud key when already authenticated via Omics-OS Cloud.
-			if m.result.Provider == providerOmicsOS {
-				m.optionalSub = subStepSmartStdConfirm
-			} else {
-				m.optionalSub = subStepCloudConfirm
-			}
+			m.optionalSub = subStepSmartStdConfirm
 		}
 		return m, nil
 
@@ -1441,12 +1421,7 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch km.String() {
 			case "enter":
 				m.result.NCBIKey = m.ncbiInput.Value()
-				// Skip cloud key when already authenticated via Omics-OS Cloud.
-				if m.result.Provider == providerOmicsOS {
-					m.optionalSub = subStepSmartStdConfirm
-				} else {
-					m.optionalSub = subStepCloudConfirm
-				}
+				m.optionalSub = subStepSmartStdConfirm
 				return m, nil
 			case "esc":
 				m.optionalSub = subStepNCBIConfirm
@@ -1457,50 +1432,11 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ncbiInput, cmd = m.ncbiInput.Update(msg)
 		return m, cmd
 
-	case subStepCloudConfirm:
-		var done, cancelled bool
-		m.cloudConfirm, done, cancelled = m.cloudConfirm.Update(msg)
-		if cancelled {
-			m.optionalSub = subStepNCBIConfirm
-			return m, nil
-		}
-		if done {
-			if m.cloudConfirm.value {
-				m.optionalSub = subStepCloudKey
-				m.cloudInput.Focus()
-				return m, textinput.Blink
-			}
-			m.optionalSub = subStepSmartStdConfirm
-		}
-		return m, nil
-
-	case subStepCloudKey:
-		km, ok := msg.(tea.KeyPressMsg)
-		if ok {
-			switch km.String() {
-			case "enter":
-				m.result.CloudKey = m.cloudInput.Value()
-				m.optionalSub = subStepSmartStdConfirm
-				return m, nil
-			case "esc":
-				m.optionalSub = subStepCloudConfirm
-				return m, nil
-			}
-		}
-		var cmd tea.Cmd
-		m.cloudInput, cmd = m.cloudInput.Update(msg)
-		return m, cmd
-
 	case subStepSmartStdConfirm:
 		var done, cancelled bool
 		m.smartStdConfirm, done, cancelled = m.smartStdConfirm.Update(msg)
 		if cancelled {
-			// Go back to NCBI when omics-os (cloud step is skipped).
-			if m.result.Provider == providerOmicsOS {
-				m.optionalSub = subStepNCBIConfirm
-			} else {
-				m.optionalSub = subStepCloudConfirm
-			}
+			m.optionalSub = subStepNCBIConfirm
 			return m, nil
 		}
 		if done {
@@ -1568,10 +1504,6 @@ func (m WizardModel) viewOptionalKeys() string {
 		return m.ncbiConfirm.View(m.theme)
 	case subStepNCBIKey:
 		return m.viewTextInput("NCBI API Key", "Your NCBI API key. Find it at ncbi.nlm.nih.gov/account/settings.", m.ncbiInput)
-	case subStepCloudConfirm:
-		return m.cloudConfirm.View(m.theme)
-	case subStepCloudKey:
-		return m.viewTextInput("Omics-OS Cloud API Key", "Your Omics-OS Cloud key. Find it at app.omics-os.com/settings.", m.cloudInput)
 	case subStepSmartStdConfirm:
 		return m.smartStdConfirm.View(m.theme)
 	case subStepSmartStdKey:
