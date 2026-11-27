@@ -175,6 +175,22 @@ def test_the_readme_names_every_tool_the_server_lists():
         assert f"`{name}`" in readme
 
 
+def test_the_one_line_commands_start_what_the_files_start():
+    """Both READMEs give `codex mcp add` and `pi mcp add` one-liners; they must
+    start the server the files start, and pi's with the files' exposure."""
+    pi = json.loads((INTEGRATIONS / "pi.mcp.json").read_text())["mcpServers"]["lobster"]
+    codex = tomllib.loads((INTEGRATIONS / "codex.config.toml").read_text())
+    codex = codex["mcp_servers"]["lobster"]
+    pi_line = (
+        f"pi mcp add lobster --exposure {pi['exposure']} -- "
+        f"{pi['command']} {' '.join(pi['args'])}"
+    )
+    codex_line = f"codex mcp add lobster -- {codex['command']} {' '.join(codex['args'])}"
+    for readme in (INTEGRATIONS / "README.md", INTEGRATIONS.parents[1] / "README.md"):
+        text = readme.read_text(encoding="utf-8")
+        assert pi_line in text and codex_line in text, readme
+
+
 def test_the_registry_entry_follows_the_release_and_the_pypi_readme():
     """The MCP Registry checks ``mcp-name`` in the PyPI page (README.md) of the
     version server.json names, so both follow the package version; so does the

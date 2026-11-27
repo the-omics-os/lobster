@@ -63,11 +63,23 @@ lobster chat
 
 # Use Lobster from your coding agent (MCP)
 
-`lobster mcp --stdio` runs Lobster as an [MCP](https://modelcontextprotocol.io) server. Claude Code, Claude Desktop, Codex, Cursor or OpenCode hands it an experimental question and gets back the result, a notebook and the files. In Claude Code, inside your project folder:
+`lobster mcp --stdio` runs Lobster as an [MCP](https://modelcontextprotocol.io) server. Claude Code, Codex, pi, OpenCode, Cursor or Claude Desktop hands it an experimental question and gets back the result, a notebook and the files. Add it with one command, inside your project folder:
 ```bash
+# Claude Code
 claude mcp add --transport stdio lobster -- lobster mcp --stdio
+
+# Codex
+codex mcp add lobster -- lobster mcp --stdio
+
+# pi, plus short readable rows for Lobster's tools
+pi mcp add lobster --exposure direct -- lobster mcp --stdio
+pi install npm:@omicsos/pi-lobster
 ```
-The configuration for the other hosts, the nine tools and how you approve Lobster's plan are in the [MCP guide](https://docs.omics-os.com/docs/guides/lobster-mcp).
+In Claude Code you can install Lobster as a plugin instead, which also adds Lobster AI's skills: `claude plugin marketplace add the-omics-os/lobster`, then `claude plugin install lobster@omics-os`.
+
+A Lobster run often takes longer than a minute. Codex and pi stop a tool call after 60 seconds unless you raise the limit, and their `mcp add` commands cannot raise it. The agent then has to ask again every minute. To let it wait for a whole run in one call, add `tool_timeout_sec = 3600` to the `lobster` entry in `~/.codex/config.toml`, or `"timeout": 3600` to the `lobster` entry in `~/.pi/agent/mcp.json`.
+
+The configuration for OpenCode, Cursor and Claude Desktop, the nine tools and how you approve Lobster's plan are in the [MCP guide](https://docs.omics-os.com/docs/guides/lobster-mcp) and in [`lobster/integrations/`](lobster/integrations/).
 
 <!-- mcp-name: io.github.the-omics-os/lobster -->
 

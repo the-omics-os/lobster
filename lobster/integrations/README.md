@@ -1,5 +1,17 @@
 # MCP host configurations for `lobster mcp --stdio`
 
+Three hosts add the server with one command, run in your project folder:
+
+```bash
+claude mcp add --transport stdio lobster -- lobster mcp --stdio   # Claude Code
+codex mcp add lobster -- lobster mcp --stdio                      # Codex
+pi mcp add lobster --exposure direct -- lobster mcp --stdio       # pi
+pi install npm:@omicsos/pi-lobster                                # pi: short rows for Lobster's tools
+```
+
+The files below are the full configurations, including the longer time limit
+per tool call described further down:
+
 | File | Host | Where it goes |
 |---|---|---|
 | `claude-code.mcp.json` | Claude Code | `<project>/.mcp.json`, or `claude mcp add --transport stdio lobster -- lobster mcp --stdio` |
@@ -25,9 +37,13 @@ the project's provider, model and experts, even when a global provider setup or
 `.env`, the server's environment or the global setup.
 
 `lobster_wait` without `timeout_s` returns only when the run ends or needs a
-decision, which can take longer than a host allows a tool call. The Codex and
-pi files raise that limit to an hour; in a host with a short limit the model
-passes `timeout_s` under it. The pi file registers the tools directly under
+decision, which can take longer than a host allows a tool call. Codex and pi
+stop a tool call after 60 seconds by default, and `codex mcp add` and
+`pi mcp add` cannot change that: a longer wait is cut off and the model has to
+call again. The Codex and pi files raise that limit to an hour
+(`tool_timeout_sec = 3600`, `"timeout": 3600`); add the same key to an entry
+made with `mcp add` to get it. In a host with a short limit the model passes
+`timeout_s` under it. The pi file registers the tools directly under
 their own names (`directTools`, `toolPrefix: "none"`), so the model calls
 `lobster_run` rather than going through the `mcp` proxy tool; `timeout` is pi's
 built-in MCP limit in seconds and `requestTimeoutMs` the adapter's;
