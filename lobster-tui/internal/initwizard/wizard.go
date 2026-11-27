@@ -7,7 +7,8 @@
 //  2. API key entry (Input, provider-specific)
 //  3. Model selection — cloud providers only (Select + custom input)
 //  4. Agent package selection (MultiSelect)
-//  5. Optional keys — NCBI and Smart Standardization (Confirm + Input)
+//  5. Optional keys — NCBI, Smart Standardization and, when asked, the
+//     LaminDB catalog (Confirm + Input)
 //
 // There is no profile step: a profile chooses no model, so asking for one
 // after the model step only offered other models by name.

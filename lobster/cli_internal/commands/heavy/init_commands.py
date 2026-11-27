@@ -2679,7 +2679,7 @@ def init_impl(
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help=h("NCBI API key (optional, non-interactive mode)")
     ),
-    # Accepted and ignored: see init_impl.
+    # Accepted and ignored: see the check at the top of the body.
     cloud_key: Optional[str] = typer.Option(None, "--cloud-key", hidden=True),
     cloud_endpoint: Optional[str] = typer.Option(None, "--cloud-endpoint", hidden=True),
     skip_ssl_test: bool = typer.Option(

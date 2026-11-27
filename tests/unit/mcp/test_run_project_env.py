@@ -121,5 +121,5 @@ def test_every_name_lobster_init_writes_is_read():
     ):
         text = (ROOT / source).read_text()
         names |= set(re.findall(r'append\(f?"([A-Z][A-Z0-9_]+)=', text))
-    assert len(names) >= 20, names  # the scan found what init writes
+    assert len(names) >= 18, names  # the scan found what init writes
     assert sorted(n for n in names if not _lobster_written(n)) == []

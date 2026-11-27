@@ -936,6 +936,25 @@ def test_an_option_the_key_free_path_cannot_apply_is_refused(dirs, installed, ex
     assert sorted(p.name for p in dirs.iterdir()) == before
 
 
+def test_the_key_free_path_ignores_a_legacy_cloud_key(dirs, installed):
+    global_setup()
+    result = run_plain(
+        str(dirs / "study"),
+        "--provider",
+        "openai",
+        "--cloud-key",
+        "legacy_cloud_key",
+        "--cloud-endpoint",
+        "https://x.example",
+    )
+    assert result.exit_code == 0, result.output
+    text = " ".join(result.output.split())
+    assert "--cloud-key is no longer used" in text
+    assert "--cloud-endpoint is no longer used" in text
+    saved = "".join(p.read_text() for p in (dirs / "study").rglob("*") if p.is_file())
+    assert "legacy_cloud_key" not in saved and "x.example" not in saved
+
+
 def test_a_provider_without_a_model_setting_refuses_a_model_before_writing(dirs):
     result = run_plain(str(dirs / "study"), "--provider", "omics-os", "--model", "m")
     assert result.exit_code == 2, result.output
