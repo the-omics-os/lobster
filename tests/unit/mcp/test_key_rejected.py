@@ -17,7 +17,7 @@ from tests.unit.mcp.test_run import (  # noqa: F401  (fixtures)
     wait_terminal,
 )
 
-SECRET = "sk-0123456789abcdef"
+SECRET = "sk-0123456789abcdef"  # nosec B105 # fake test key
 
 
 def rejected(
