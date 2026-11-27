@@ -104,12 +104,14 @@ def _create_figure(
     plot_type: str, df, x: str, y: str, z: str, color: str, size: str, title: str
 ):
     """Dispatch to Plotly Express. Returns Figure or error string."""
-    import numpy as np
     import plotly.express as px
     import plotly.graph_objects as go
-    from pandas.api.types import is_numeric_dtype as pd_numeric
 
-    from lobster.figure_templates._style import DIVERGING
+    from lobster.figure_templates._style import (
+        DIVERGING,
+        SEQUENTIAL_EXPRESSION,
+        value_scale,
+    )
 
     required = REQUIRED_COLUMNS[plot_type]
     missing = []
@@ -123,13 +125,20 @@ def _create_figure(
     kwargs = {"title": title}
     if color and color in df.columns:
         kwargs["color"] = color
-        # px pins every trace to circle/solid; mapping the same column makes it
-        # cycle the template's symbols and dashes in step with the colours.
-        if not pd_numeric(df[color]):
+        if plot_type == "line" or df[color].dtype.kind not in "iufc":
+            # px pins every trace to circle/solid; mapping the same column makes
+            # it cycle the template's symbols and dashes in step with the colours.
+            # px.line draws one line per colour value, numeric ones included.
             if plot_type == "scatter":
                 kwargs["symbol"] = color
             elif plot_type == "line":
                 kwargs["line_dash"] = color
+        elif plot_type in ("scatter", "bar"):
+            # Continuous colour on marks: grey start, or diverging when signed
+            scale, limit = value_scale(df[color], unsigned=SEQUENTIAL_EXPRESSION)
+            kwargs["color_continuous_scale"] = scale
+            if limit:
+                kwargs.update(range_color=[-limit, limit], color_continuous_midpoint=0)
 
     try:
         if plot_type == "scatter":
@@ -155,13 +164,11 @@ def _create_figure(
                 if x not in df.columns or y not in df.columns:
                     return f"ERROR: x='{x}' or y='{y}' not found in columns."
                 pivot = df.pivot_table(index=y, columns=x, values=z)
-                values = pivot.to_numpy(dtype=float)
-                finite = values[np.isfinite(values)]
-                scale = {}  # unsigned: the template's sequential scale
-                if finite.size and finite.min() < 0:
-                    # A signed matrix diverges around 0 over a symmetric range.
-                    limit = float(np.abs(finite).max())
-                    scale = dict(colorscale=DIVERGING, zmid=0, zmin=-limit, zmax=limit)
+                # A signed matrix diverges around 0 over a symmetric range.
+                chosen, limit = value_scale(pivot.to_numpy(dtype=float))
+                scale = dict(colorscale=chosen)
+                if limit:
+                    scale.update(zmid=0, zmin=-limit, zmax=limit)
                 fig = go.Figure(
                     data=go.Heatmap(
                         z=pivot.values,

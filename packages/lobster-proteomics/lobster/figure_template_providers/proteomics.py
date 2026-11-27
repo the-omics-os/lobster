@@ -1,7 +1,14 @@
 """Pure drawings of retained proteomics results; no statistical testing or I/O."""
 
 from lobster.figure_templates import figure_template, set_trace_identity
-from lobster.figure_templates._style import DOWN, INK, KEY, NO_CALL, SEQUENTIAL, UP
+from lobster.figure_templates._style import (
+    DOWN,
+    INK,
+    KEY,
+    NO_CALL,
+    SEQUENTIAL_EXPRESSION,
+    UP,
+)
 
 TEMPLATE_MANIFEST = [
     {
@@ -169,7 +176,7 @@ def pathway_bubble(
                 "size": np.maximum(overlap, 1) * 4,
                 "sizemode": "area",
                 "color": scores,
-                "colorscale": SEQUENTIAL,
+                "colorscale": SEQUENTIAL_EXPRESSION,  # grey start: visible on white
                 "showscale": True,
                 "colorbar": {"outlinewidth": 0},
             },

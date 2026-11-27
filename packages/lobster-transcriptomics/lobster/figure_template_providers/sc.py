@@ -6,10 +6,9 @@ Means, fractions expressing, scaling and counts are descriptive transforms.
 
 from lobster.figure_templates import figure_template, set_trace_identity
 from lobster.figure_templates._style import (
-    DIVERGING,
     INK,
-    SEQUENTIAL,
     SEQUENTIAL_EXPRESSION,
+    value_scale,
 )
 
 TEMPLATE_MANIFEST = [
@@ -73,16 +72,13 @@ def _embedding(data, basis):
     return coordinates
 
 
-def _signed_scale(values, key):
-    """DIVERGING around 0 over a symmetric range when values go negative."""
-    import numpy as np
-
-    values = np.asarray(values, dtype=float)
-    if not values.size or values.min() >= 0:
-        return None
-    limit = float(np.abs(values).max())
+def _scale(values, key):
+    """Colour scale keywords by the values' sign; key "c" (markers) or "z"."""
+    scale, limit = value_scale(values, unsigned=SEQUENTIAL_EXPRESSION)
+    if limit is None:
+        return {"colorscale": scale}
     return {
-        "colorscale": DIVERGING,
+        "colorscale": scale,
         f"{key}mid": 0,
         f"{key}min": -limit,
         f"{key}max": limit,
@@ -109,7 +105,7 @@ def umap(data, *, color="leiden", basis="X_umap", title="UMAP", marker_size=5):
             marker={
                 "size": marker_size,
                 "color": labels.to_numpy(),
-                "colorscale": SEQUENTIAL,
+                **_scale(labels.to_numpy(), "c"),
                 "showscale": True,
                 "colorbar": {"outlinewidth": 0},
             },
@@ -131,9 +127,9 @@ def umap(data, *, color="leiden", basis="X_umap", title="UMAP", marker_size=5):
             )
             set_trace_identity(trace, data.obs_names[mask].tolist(), entity_kind="cell")
             figure.add_trace(trace)
-        if len(figure.data) >= 3:
+        if 3 <= len(figure.data) <= 30:
             # Label each category at its median, so a split cluster's label
-            # still sits inside its own points.
+            # still sits inside its own points; above 30 labels cover them.
             for trace in figure.data:
                 figure.add_annotation(
                     x=float(np.median(trace.x)),
@@ -174,7 +170,7 @@ def feature(
             mode="markers",
             marker={
                 "color": expression[:, index],
-                "colorscale": SEQUENTIAL_EXPRESSION,
+                **_scale(expression[:, index], "c"),
                 "size": marker_size,
                 # Panels are one gene each, not series: no symbol cycle
                 "symbol": "circle",
@@ -268,7 +264,7 @@ def dot(
                 "symbol": "circle",
                 "showscale": True,
                 "colorbar": {"outlinewidth": 0},
-                **(_signed_scale(means, "c") or {"colorscale": SEQUENTIAL_EXPRESSION}),
+                **_scale(means, "c"),
             },
             customdata=np.column_stack([means.ravel(), fractions.ravel()]),
             hovertemplate="%{x} / %{y}<br>mean=%{customdata[0]:.3f}<br>% expressing=%{customdata[1]:.1f}<extra></extra>",
@@ -289,7 +285,7 @@ def heatmap(data, *, genes, groupby="leiden", layer=None, title="Mean gene expre
             x=gene_names,
             y=groups,
             uid="matrix:group_expression",
-            **(_signed_scale(means, "z") or {"colorscale": SEQUENTIAL_EXPRESSION}),
+            **_scale(means, "z"),
         )
     )
     figure.update_layout(title=title, xaxis_title="Gene", yaxis_title=groupby)
@@ -410,6 +406,8 @@ def qc(data, *, nbins=30, title="Single-cell QC"):
             mode="markers",
             uid=uid,
             name=y,
+            # Each panel is one series: no symbol cycle across panels
+            marker={"symbol": "circle"},
         )
         set_trace_identity(trace, data.obs_names.tolist(), entity_kind="cell")
         figure.add_trace(trace, row=row, col=col)

@@ -34,6 +34,7 @@ def house_style_session():
         pio.templates[HOUSE_STYLE_NAME] if HOUSE_STYLE_NAME in pio.templates else None
     )
     try:
+        pio.templates.default = "plotly"  # a session replaces only the stock default
         initialize_house_style()
         yield
     finally:
@@ -240,3 +241,49 @@ def test_categories_follow_house_order_and_expression_starts_grey(cells):
     colors = [trace.marker.color for trace in bars.data]
     assert colors[:14] == HOUSE_COLORS and colors[14] == HOUSE_COLORS[0]
     assert all(trace.texttemplate for trace in bars.data)
+
+
+def test_marker_scales_start_grey_or_diverge(cells):
+    """No marker colour scale starts at white: its lowest points would vanish."""
+    figures = _figures(cells)
+    # n_counts has under 50 values here, so it draws as categories
+    figures["umap_score"] = SingleCellVisualizationService().create_umap_plot(
+        cells, color_by="doublet_score"
+    )
+    starts = {}
+    for name, figure in figures.items():
+        for trace in figure.data:
+            marker = getattr(trace, "marker", None)
+            scale = getattr(marker, "colorscale", None)
+            if getattr(marker, "coloraxis", None):
+                scale = figure.layout[marker.coloraxis].colorscale
+            if scale is None:
+                continue
+            starts.setdefault(name, set()).add(scale[0][1])
+    assert {"qc_batch_doublet", "umap_score", "feature"} <= set(starts)
+    assert {name: s for name, s in starts.items() if "#FFFFFF" in s} == {}
+
+    scaled = cells.copy()
+    scaled.X = scaled.X - scaled.X.mean(axis=0)  # scaled expression is signed
+    service = SingleCellVisualizationService()
+    marker = service.create_feature_plot(scaled, ["gene-a"], use_raw=False).data[0]
+    assert marker.marker.colorscale[3][1] == "#FFFFFF"  # DIVERGING, white at 0
+    assert marker.marker.cmin == -marker.marker.cmax
+
+
+def test_single_series_panels_do_not_cycle_symbols_or_dashes(cells):
+    figure = _figures(cells)["qc_batch_doublet"]
+    gl = [trace for trace in figure.data if trace.type == "scattergl"]
+    assert len(gl) >= 4
+    assert {(trace.marker.symbol, trace.line.dash) for trace in gl} == {
+        ("circle", "solid")
+    }
+    (kept,) = [shape for shape in figure.layout.shapes if shape.type == "rect"]
+    assert kept.line.dash == "solid"
+
+
+def test_centroid_labels_stop_above_30_categories(cells):
+    many = cells.copy()
+    many.obs["leiden"] = pd.Categorical([str(i % 31) for i in range(many.n_obs)])
+    figure = SingleCellVisualizationService().create_umap_plot(many, color_by="leiden")
+    assert len(figure.data) == 31 and not figure.layout.annotations

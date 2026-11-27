@@ -54,3 +54,10 @@ def test_session_works_without_templates(
     manager = DataManagerV2(workspace_path=tmp_path)
     assert manager.workspace_path.exists()
     assert pio.templates.default == "plotly"
+
+
+def test_session_keeps_a_default_someone_chose(tmp_path, restore_plotly_templates):
+    pio.templates.default = "plotly_white"
+    DataManagerV2(workspace_path=tmp_path)
+    assert pio.templates.default == "plotly_white"
+    assert HOUSE_STYLE_NAME in pio.templates  # still registered for templates

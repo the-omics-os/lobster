@@ -2,6 +2,7 @@
 
 import copy
 import json
+import numbers
 import subprocess
 import sys
 from importlib.util import find_spec
@@ -221,6 +222,10 @@ def test_house_style_values():
         assert axis.tickfont.color == _style.TICK
     assert layout.legend.bgcolor == "rgba(0,0,0,0)"
     assert layout.coloraxis.colorbar.outlinewidth == 0
+    # Markers on a coloraxis start grey; heatmap-type defaults stay white-start.
+    assert [list(stop) for stop in layout.coloraxis.colorscale] == (
+        _style.SEQUENTIAL_EXPRESSION
+    )
     assert layout.shapedefaults.line.color == _style.INK
     assert layout.shapedefaults.line.dash == "dash"
     scales = layout.colorscale
@@ -231,24 +236,54 @@ def test_house_style_values():
     assert as_lists(scales.sequential) == _style.SEQUENTIAL
     assert as_lists(scales.sequentialminus) == _style.SEQUENTIAL
     assert as_lists(scales.diverging) == _style.DIVERGING
-    for kind in ("heatmap", "contour"):
+    for kind in ("heatmap", "contour", "histogram2d", "histogram2dcontour"):
         (trace,) = getattr(template.data, kind)
         assert as_lists(trace.colorscale) == _style.SEQUENTIAL
         assert trace.colorbar.outlinewidth == 0
+    for kind in ("scatter", "scattergl"):
+        for trace in getattr(template.data, kind):
+            assert trace.marker.colorbar.outlinewidth == 0
+
+
+def test_value_scale_decides_by_the_sign_of_finite_values():
+    from lobster.figure_templates._style import (
+        DIVERGING,
+        SEQUENTIAL,
+        SEQUENTIAL_EXPRESSION,
+        value_scale,
+    )
+
+    assert value_scale([[-1.0, 3.0], [np.nan, 2.0]]) == (DIVERGING, 3.0)
+    assert value_scale([-np.inf, 0.0, 2.0]) == (SEQUENTIAL, None)
+    assert value_scale([0, 0, 0]) == (SEQUENTIAL, None)  # all-zero: unsigned
+    assert value_scale([], unsigned=SEQUENTIAL_EXPRESSION) == (
+        SEQUENTIAL_EXPRESSION,
+        None,
+    )
 
 
 def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
-    from lobster.figure_templates._style import HOUSE_COLORS, _house_template
+    from lobster.figure_templates._style import (
+        GL_LINE_DASHES,
+        HOUSE_COLORS,
+        _house_template,
+    )
 
+    template = _house_template()
     for kind in ("scatter", "scattergl"):
-        cycle = getattr(_house_template().data, kind)
-        assert len(cycle) == len(HOUSE_COLORS)
+        cycle = getattr(template.data, kind)
+        assert len(cycle) == len(template.layout.colorway) == len(HOUSE_COLORS)
         symbols = [trace.marker.symbol for trace in cycle]
         dashes = [trace.line.dash for trace in cycle]
         assert len(set(symbols)) == len(symbols)
         red, green = HOUSE_COLORS.index("#CC2C18"), HOUSE_COLORS.index("#0BAA6B")
+        assert (red, green) == (1, 2)
         assert symbols[red] != symbols[green]
         assert dashes[red] != dashes[green]
+    scatter_dashes = [trace.line.dash for trace in template.data.scatter]
+    assert len(set(scatter_dashes)) == len(HOUSE_COLORS)
+    # Scattergl accepts only the named dashes: they repeat after 6.
+    assert {trace.line.dash for trace in template.data.scattergl} == set(GL_LINE_DASHES)
 
     # Plotly gives go trace n colorway n and template entry n together, so the
     # embedded template carries both cycles in step (no kaleido needed).
@@ -503,6 +538,7 @@ def house_session():
         pio.templates[HOUSE_STYLE_NAME] if HOUSE_STYLE_NAME in pio.templates else None
     )
     try:
+        pio.templates.default = "plotly"  # a session replaces only the stock default
         initialize_house_style()
         yield
     finally:
@@ -660,7 +696,7 @@ def test_volcano_uses_palette_roles_and_template_thresholds(cells):
 
 
 def test_signed_matrices_diverge_around_zero_over_a_symmetric_range(cells):
-    from lobster.figure_templates._style import DIVERGING
+    from lobster.figure_templates._style import DIVERGING, SEQUENTIAL
 
     def as_lists(scale):
         return [list(stop) for stop in scale]
@@ -669,7 +705,7 @@ def test_signed_matrices_diverge_around_zero_over_a_symmetric_range(cells):
     assert as_lists(signed.colorscale) == DIVERGING
     assert (signed.zmid, signed.zmin, signed.zmax) == (0, -3.0, 3.0)
     unsigned = get_template("generic.heatmap")([[1, 2], [3, 4]]).data[0]
-    assert unsigned.colorscale is None  # the template's sequential scale
+    assert as_lists(unsigned.colorscale) == SEQUENTIAL and unsigned.zmid is None
 
     data, args = _fixture("generic.correlation", cells)
     corr = get_template("generic.correlation")(data, **args).data[0]
@@ -701,6 +737,10 @@ def test_sc_embedding_labels_each_category_at_its_median(cells):
     labels = {item.text: (item.x, item.y) for item in figure.layout.annotations}
     assert labels == {"a": (0.0, 1.0), "b": (1.0, 2.0), "c": (2.5, 3.5)}
     assert not get_template("sc.umap")(cells).layout.annotations  # two categories
+    many = ad.AnnData(np.ones((31, 1)))
+    many.obs["leiden"] = [f"c{i}" for i in range(31)]
+    many.obsm["X_umap"] = np.column_stack([np.arange(31), np.arange(31)])
+    assert not get_template("sc.umap")(many).layout.annotations  # above 30
 
 
 def test_px_figures_cycle_symbols_and_dashes_with_the_colours(house_session):
@@ -743,7 +783,71 @@ def test_px_figures_cycle_symbols_and_dashes_with_the_colours(house_session):
         assert values[1] != values[2], (name, values)
         assert [trace.name for trace in figure.data] == ["a", "b", "c"], name
         assert figure.layout.legend.title.text == "group", name
-    # Continuous colour gets no symbol mapping.
+    # Continuous colour gets no symbol mapping; booleans are categories.
     numeric = table.assign(group=[1.0, 2, 3, 4, 5, 6, 7, 8, 9])
     figure = get_template("generic.scatter")(numeric, **args)
     assert len(figure.data) == 1 and figure.data[0].marker.symbol == "circle"
+    flags = table.assign(group=[True] * 3 + [False] * 6)
+    for figure in (
+        get_template("generic.scatter")(flags, **args),
+        _create_figure("scatter", flags, "x", "y", "", "group", "", "S"),
+    ):
+        symbols = [trace.marker.symbol for trace in figure.data]
+        assert len(symbols) == 2 and symbols[0] != symbols[1]
+
+
+def _marker_scales(figure):
+    """(trace, first colour) of every colour scale a marker of the figure uses."""
+    from lobster.figure_templates._style import SEQUENTIAL
+
+    for trace in figure.data:
+        marker = getattr(trace, "marker", None)
+        if marker is None or not isinstance(marker.color, (tuple, list, np.ndarray)):
+            continue
+        if not all(isinstance(value, numbers.Number) for value in marker.color):
+            continue  # per-point colour names, not a scale
+        scale = marker.colorscale
+        if marker.coloraxis:
+            scale = figure.layout[marker.coloraxis].colorscale
+        scale = scale or SEQUENTIAL  # the template's sequential default
+        yield trace.type, scale[0][1]
+
+
+def test_marker_colour_scales_never_start_at_the_background(cells, house_session):
+    from lobster.tools.plot_tools import _create_figure
+
+    cells.obs["score"] = [0.0, 0.2, 0.4, 1.0]
+    table = pd.DataFrame({"x": [1, 2, 3], "y": [3, 1, 2], "v": [0.0, 1.0, 2.0]})
+    figures = {
+        "generic.scatter": get_template("generic.scatter")(
+            table, x="x", y="y", color="v"
+        ),
+        "generic.bar": get_template("generic.bar")(table, x="x", y="y", color="v"),
+        "plot_tools.scatter": _create_figure(
+            "scatter", table, "x", "y", "", "v", "", "S"
+        ),
+        "plot_tools.bar": _create_figure("bar", table, "x", "y", "", "v", "", "B"),
+    }
+    for name in TEMPLATES:
+        if name.startswith(("sc.", "proteomics.")):
+            data, args = _fixture(name, cells)
+            figures[name] = get_template(name)(data, **args)
+    if "sc.umap" in TEMPLATES:
+        figures["sc.umap numeric"] = get_template("sc.umap")(cells, color="score")
+    scales = {name: list(_marker_scales(fig)) for name, fig in figures.items()}
+    assert len([name for name, found in scales.items() if found]) >= 4
+    background = figures["generic.scatter"].layout.template.layout.plot_bgcolor
+    assert {
+        name: found
+        for name, found in scales.items()
+        if any(first.upper() == background.upper() for _, first in found)
+    } == {}
+
+
+@pytest.mark.skipif(
+    find_spec("lobster.figure_template_providers.sc") is None,
+    reason="single-cell templates not installed",
+)
+def test_single_series_qc_panels_do_not_cycle_symbols(cells):
+    figure = get_template("sc.qc")(cells)
+    assert {t.marker.symbol for t in figure.data if t.type == "scattergl"} == {"circle"}

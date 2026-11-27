@@ -60,7 +60,8 @@ when a regeneration source is needed.
 
 ## Style, identity and recipe
 
-`initialize_house_style()` sets the `omics_os` Plotly default for custom code;
+`initialize_house_style()` makes `omics_os` the Plotly default for custom code
+while the default is still Plotly's stock `plotly`;
 `apply_house_style(fig)` applies the same embedded style to an existing figure.
 Every template applies it by default. Users may subsequently change any Plotly
 property.
@@ -71,21 +72,33 @@ exposes the values:
 - `HOUSE_COLORS`: 14 category colours in order, graphite first; a second series
   is red. Above 14 categories they cycle. Never sample a value scale for
   categories.
-- `SEQUENTIAL` (white to dark red, the heatmap and contour default),
-  `SEQUENTIAL_EXPRESSION` (starts at grey `#E0E0E0`) and `DIVERGING` (green,
-  white at 0.5, magenta; use it with zmid 0 and a symmetric range).
+- `SEQUENTIAL` (white to dark red, the heatmap, contour and 2D histogram
+  default), `SEQUENTIAL_EXPRESSION` (starts at grey `#E0E0E0`; use it for
+  marker colours, whose lowest values would vanish on white) and `DIVERGING`
+  (green, white at 0.5, magenta; use it with zmid 0 and a symmetric range).
+  `value_scale(values, unsigned=...)` picks by sign: DIVERGING and its
+  half-range when any finite value is negative, else the unsigned scale.
 - Roles: `INK`, `TICK`, `GRID`, `AXIS`, `NO_CALL`, `UP`, `DOWN` and `KEY`.
 
 The template uses Manrope (falling back to Arial) at 14 in `INK`, a transparent
 legend, colorbars without an outline and dashed `INK` shapes for thresholds.
-Scatter traces cycle marker symbols and line dashes in step with the colours,
-so red and green series never differ by colour alone.
+Scatter traces cycle marker symbols and line dashes in step with the colours
+(scattergl repeats its 6 named dashes).
+
+Lobster's visualization tools, plot tools and templates apply these rules:
+series differ by symbol or dash as well as colour, signed values diverge around
+0, and marker colours start at grey. Hand-written figures get the template
+defaults (font, colours, colorway and scales) and nothing more. Plotly Express
+pins every trace to circle markers and solid lines, so pass `symbol=` (scatter)
+or `line_dash=` (line) on the same column as `color=`; for signed values pass
+`DIVERGING` with `zmid=0` and a symmetric range.
 
 Templates record their name, version and resolved data-free arguments in
 `layout.meta.lobster_template`. This is **declared** recipe metadata, not proof
 that the figure was produced by that template. Settings must be finite JSON and
 fit within 16 KiB; oversized settings are refused rather than truncated. Data
-belongs in the source, not template arguments.
+belongs in the source, not template arguments. A template version pins its
+arguments and data semantics, not its style.
 
 Trace `uid`s are stable by semantic class/gene/panel. Individual cell/protein
 labels are strings in `customdata[:, 0]`; their entity kind/comparison are in

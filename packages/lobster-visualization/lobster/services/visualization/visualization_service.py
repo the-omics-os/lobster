@@ -26,6 +26,7 @@ from lobster.figure_templates._style import (
     SEQUENTIAL,
     SEQUENTIAL_EXPRESSION,
     TICK,
+    value_scale,
 )
 from lobster.utils.logger import get_logger
 
@@ -39,13 +40,14 @@ class VisualizationError(Exception):
 
 
 def _add_centroid_labels(fig: go.Figure) -> None:
-    """Label each category of an embedding with 3 or more categories in place.
+    """Label each category of an embedding with 3 to 30 categories in place.
 
     One trace per category; the label sits at the median, not the mean, so a
-    split cluster still gets its label inside its own points.
+    split cluster still gets its label inside its own points. Above 30, labels
+    would cover the points.
     """
     traces = [trace for trace in fig.data if trace.x is not None and len(trace.x)]
-    if len(traces) < 3:
+    if not 3 <= len(traces) <= 30:
         return
     for trace in traces:
         fig.add_annotation(
@@ -56,14 +58,6 @@ def _add_centroid_labels(fig: go.Figure) -> None:
             font=dict(color=INK, size=12),
             bgcolor="rgba(255,255,255,0.7)",
         )
-
-
-def _symmetric_limit(values) -> float:
-    """Half-range for a signed matrix drawn on DIVERGING with its midpoint at 0."""
-    finite = np.asarray(values, dtype=float)
-    finite = finite[np.isfinite(finite)]
-    limit = float(np.abs(finite).max()) if finite.size else 0.0
-    return limit or 1.0
 
 
 class SingleCellVisualizationService:
@@ -275,8 +269,16 @@ class SingleCellVisualizationService:
                     color_discrete_sequence=self.cluster_colors,
                 )
             else:
-                # Continuous coloring: gene expression gets the expression
-                # scale, other values the template's sequential scale.
+                # Continuous coloring: grey-start scale (visible on white), or
+                # diverging around 0 when the values are signed.
+                scale, limit = value_scale(
+                    color_data, unsigned=self.expression_colorscale
+                )
+                signed = (
+                    dict(range_color=[-limit, limit], color_continuous_midpoint=0)
+                    if limit
+                    else {}
+                )
                 fig = px.scatter(
                     x=umap_coords[:, 0],
                     y=umap_coords[:, 1],
@@ -285,11 +287,8 @@ class SingleCellVisualizationService:
                     labels={"x": "UMAP 1", "y": "UMAP 2", "color": color_by},
                     width=width or self.default_width,
                     height=height or self.default_height,
-                    color_continuous_scale=(
-                        self.expression_colorscale
-                        if color_by not in adata.obs.columns
-                        else None
-                    ),
+                    color_continuous_scale=scale,
+                    **signed,
                 )
 
             # Update traces
@@ -733,6 +732,13 @@ class SingleCellVisualizationService:
                 if vmax is not None:
                     expr_data = np.minimum(expr_data, vmax)
 
+                # Scaled expression is signed: diverging around 0
+                scale, limit = value_scale(
+                    expr_data, unsigned=self.expression_colorscale
+                )
+                low = -limit if limit else expr_data.min()
+                high = limit if limit else expr_data.max()
+
                 # Create scatter plot
                 scatter = go.Scatter(
                     x=umap_coords[:, 0],
@@ -743,15 +749,15 @@ class SingleCellVisualizationService:
                         # Panels are one gene each, not series: no symbol cycle
                         symbol="circle",
                         color=expr_data,
-                        colorscale=self.expression_colorscale,
+                        colorscale=scale,
                         showscale=(idx == 0),  # Show colorbar only for first plot
                         colorbar=dict(
                             title="Expression",
                             x=1.15 if ncols == 1 else 1.05,
                             outlinewidth=0,
                         ),
-                        cmin=vmin if vmin is not None else expr_data.min(),
-                        cmax=vmax if vmax is not None else expr_data.max(),
+                        cmin=vmin if vmin is not None else low,
+                        cmax=vmax if vmax is not None else high,
                     ),
                     customdata=list(
                         zip(
@@ -900,14 +906,12 @@ class SingleCellVisualizationService:
                     )
 
             # Scaled means are signed z-scores: diverging around 0, symmetric range
-            if standard_scale in ("var", "group"):
-                limit = _symmetric_limit(colors)
-                color_range = dict(
-                    colorscale=DIVERGING, cmid=0, cmin=-limit, cmax=limit
-                )
+            scale, limit = value_scale(colors, unsigned=self.expression_colorscale)
+            if limit:
+                color_range = dict(colorscale=scale, cmid=0, cmin=-limit, cmax=limit)
             else:
                 color_range = dict(
-                    colorscale=self.expression_colorscale,
+                    colorscale=scale,
                     cmin=np.min(colors) if len(colors) > 0 else 0,
                     cmax=np.max(colors) if len(colors) > 0 else 1,
                 )
@@ -1063,13 +1067,10 @@ class SingleCellVisualizationService:
                         group_means[i] = (group_means[i] - mean_val) / std_val
 
             # z-scores are signed: diverging around 0 with a symmetric range
-            if standard_scale:
-                limit = _symmetric_limit(group_means)
-                color_range = dict(
-                    colorscale=DIVERGING, zmid=0, zmin=-limit, zmax=limit
-                )
-            else:
-                color_range = dict(colorscale=self.expression_colorscale)
+            scale, limit = value_scale(group_means, unsigned=self.expression_colorscale)
+            color_range = dict(colorscale=scale)
+            if limit:
+                color_range.update(zmid=0, zmin=-limit, zmax=limit)
 
             # Create heatmap
             fig = go.Figure(
@@ -1215,9 +1216,10 @@ class SingleCellVisualizationService:
                 row_heights=[0.25, 0.25, 0.25, 0.25],
             )
 
-            # House colour roles; threshold lines take dashed Ink from the template
-            color_quality = SEQUENTIAL
-            color_mito = SEQUENTIAL
+            # House colour roles; threshold lines take dashed Ink from the template.
+            # Markers use the grey-start scale so the lowest values stay visible.
+            color_quality = SEQUENTIAL_EXPRESSION
+            color_mito = SEQUENTIAL_EXPRESSION
             color_discrete = HOUSE_COLORS
             kept_color = HOUSE_COLORS[2]
 
@@ -1541,7 +1543,7 @@ class SingleCellVisualizationService:
                         marker=dict(
                             size=3,
                             color=adata.obs["doublet_score"],
-                            colorscale=SEQUENTIAL,
+                            colorscale=SEQUENTIAL_EXPRESSION,
                             showscale=False,
                             opacity=0.6,
                         ),
@@ -1584,7 +1586,7 @@ class SingleCellVisualizationService:
                 x1=genes_upper,
                 y0=0,
                 y1=mito_upper,
-                line=dict(color=kept_color, width=2),
+                line=dict(color=kept_color, width=2, dash="solid"),
                 fillcolor=kept_color,
                 opacity=0.1,
                 row=4,
@@ -1884,6 +1886,13 @@ class SingleCellVisualizationService:
                 xanchor="center",
                 showarrow=False,
                 font=dict(size=11, color=TICK),
+            )
+
+            # Each panel is one series: no symbol or dash cycle across panels
+            fig.update_traces(
+                marker_symbol="circle",
+                line_dash="solid",
+                selector=dict(type="scattergl"),
             )
 
             logger.debug(f"Created comprehensive QC plot with {adata.n_obs:,} cells")

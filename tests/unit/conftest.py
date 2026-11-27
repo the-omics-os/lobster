@@ -45,3 +45,14 @@ def no_omics_os_key_check_network(monkeypatch):
     from lobster.config import cloud_setup
 
     monkeypatch.setattr(cloud_setup, "_probe_key", lambda server, key: None)
+
+
+@pytest.fixture(autouse=True)
+def restore_plotly_default_template():
+    """A session sets Plotly's process-wide default template; undo it per test."""
+    pio = sys.modules.get("plotly.io")
+    saved = pio.templates.default if pio else None
+    yield
+    pio = sys.modules.get("plotly.io")
+    if pio is not None:
+        pio.templates.default = saved if saved is not None else "plotly"
