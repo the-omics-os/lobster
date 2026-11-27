@@ -539,7 +539,7 @@ class SingleCellVisualizationService:
                     mode="lines+markers",
                     name="Cumulative variance",
                     marker=dict(size=6),
-                    line=dict(width=2, dash="dash"),
+                    line=dict(width=2),  # the cycle gives it dot; dash is for green
                 ),
                 secondary_y=True,
             )
@@ -2220,7 +2220,7 @@ class SingleCellVisualizationService:
         Convert hex color to Rich terminal color format.
 
         Args:
-            hex_color: Hex color code (e.g., "#1f77b4")
+            hex_color: Hex color code (e.g., "#CC2C18")
 
         Returns:
             Rich-compatible color string

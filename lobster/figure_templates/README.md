@@ -91,8 +91,9 @@ dashes are the 6 named ones (WebGL accepts no others): the first 6 series
 differ by dash, and green lines have a dash no other colour uses.
 
 Lobster's visualization tools, plot tools and templates apply these rules:
-the symbol and dash cycles, signed values diverging around 0, and marker
-colours starting at grey. Hand-written
+the symbol and dash cycles (except the volcano template, which uses circles;
+the side of 0 separates the series), signed values diverging around 0, and
+marker colours starting at grey. Hand-written
 figures get the template defaults (font, colours, colorway, scales and, for
 `go.Scatter` traces, the symbol and dash cycles). Plotly Express pins every
 trace to circle markers and solid lines unless you pass `symbol=` (scatter) or
