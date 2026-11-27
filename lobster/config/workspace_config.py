@@ -176,6 +176,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
             logger.error(f"Failed to save workspace config: {e}")
             raise
 
+        # The shared resolver keeps the file it read; the next read must see this one.
+        from lobster.core.config_resolver import ConfigResolver
+
+        ConfigResolver.reset_instance()
+
     @classmethod
     def load(cls, workspace_path: Path) -> "WorkspaceProviderConfig":
         """

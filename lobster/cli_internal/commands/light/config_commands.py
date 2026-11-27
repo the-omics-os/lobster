@@ -1170,6 +1170,14 @@ def config_model_switch(
     from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.core.config_resolver import ConfigResolver
 
+    if not model_name:
+        output.print(
+            h(
+                "[red]Name a model. /config model lists the models. Nothing was changed.[/red]"
+            )
+        )
+        return None
+
     # Get current provider
     workspace_path = Path(client.workspace_path)
     resolver = ConfigResolver(workspace_path=workspace_path)
@@ -1221,52 +1229,44 @@ def config_model_switch(
         if hasattr(client, "switch_model"):
             client.switch_model(model_name)
 
-        # Always persist to workspace config — env vars are not read by
-        # ConfigResolver and would be lost on next session
-        try:
-            config = WorkspaceProviderConfig.load(workspace_path)
-            config.set_model_for_provider(current_provider, model_name)
-            config.save(workspace_path)
-        except Exception as e:
-            output.print(
-                h("[red]✗ Failed to save model config: {error}[/red]").format(
-                    error=escape(str(e))
+        # The running chat now uses the model; only --save keeps it for later
+        # sessions, as the help says.
+        if save:
+            try:
+                config = WorkspaceProviderConfig.load(workspace_path)
+                config.set_model_for_provider(current_provider, model_name)
+                config.save(workspace_path)
+            except Exception as e:
+                output.print(
+                    h("[red]✗ Failed to save model config: {error}[/red]").format(
+                        error=escape(str(e))
+                    )
                 )
-            )
-            return None
+                return None
 
         # Update client's model override so the live TUI footer reflects the change
         if hasattr(client, "model_override"):
             client.model_override = model_name
 
-        output.print(
-            h("[green]✓ Switched to model: {model}[/green]").format(model=model_name)
-        )
-        output.print(h("[dim]Provider: {name}[/dim]").format(name=current_provider))
-
         if not save:
             output.print(
-                h("[dim]Saved to workspace config ({name}_model)[/dim]").format(
-                    name=current_provider
-                )
+                h(
+                    "[green]✓ Using {model} for this session. Add --save to keep it.[/green]"
+                ).format(model=model_name)
             )
+            output.print(h("[dim]Provider: {name}[/dim]").format(name=current_provider))
             return f"Switched to model {model_name}"
 
-        # --save flag: already persisted above, just confirm
         output.print(
-            h("[green]✓ Saved to workspace config ({name}_model)[/green]").format(
-                name=current_provider
+            h("[green]✓ Saved {model} as your default.[/green]").format(
+                model=model_name
             )
         )
+        output.print(h("[dim]Provider: {name}[/dim]").format(name=current_provider))
         output.print(
             h("[dim]Config file: {path}/provider_config.json[/dim]").format(
                 path=workspace_path
             )
-        )
-        output.print(
-            h(
-                "\n[dim]This model will be used for {name} in this workspace[/dim]"
-            ).format(name=current_provider)
         )
 
         return f"Switched to model {model_name} and saved to workspace"

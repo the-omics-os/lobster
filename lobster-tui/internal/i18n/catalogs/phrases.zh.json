@@ -1057,11 +1057,8 @@
   "[red]✗ Ollama server not accessible[/red]": "[red]✗ 无法访问 Ollama 服务[/red]",
   "[dim]Make sure Ollama is running: 'ollama serve'[/dim]": "[dim]请确认 Ollama 正在运行：'ollama serve'[/dim]",
   "Available models: {models}": "可用模型：{models}",
-  "[green]✓ Switched to model: {model}[/green]": "[green]✓ 已切换到模型：{model}[/green]",
   "[dim]Provider: {name}[/dim]": "[dim]模型服务：{name}[/dim]",
-  "[green]✓ Saved to workspace config ({name}_model)[/green]": "[green]✓ 已保存到工作区配置（{name}_model）[/green]",
   "[dim]Config file: {path}/provider_config.json[/dim]": "[dim]配置文件：{path}/provider_config.json[/dim]",
-  "\n[dim]This model will be used for {name} in this workspace[/dim]": "\n[dim]此工作区中，{name} 将使用该模型[/dim]",
   "❌ Workspace: Permission denied": "❌ 工作区：权限不足",
   "(active)": "（当前）",
   "   Active Provider: [green]{name}[/green]": "   当前模型服务：[green]{name}[/green]",
@@ -1089,7 +1086,6 @@
   "[red]✗ Provider '{name}' not registered[/red]": "[red]✗ 模型服务 '{name}' 未注册[/red]",
   "\nInstall with: ollama pull {model}": "\n安装命令：ollama pull {model}",
   "[red]✗ Model '{model}' not valid for {name}[/red]": "[red]✗ 模型 '{model}' 不适用于 {name}[/red]",
-  "[dim]Saved to workspace config ({name}_model)[/dim]": "[dim]已保存到工作区配置（{name}_model）[/dim]",
   "[red]✗ Failed to switch model: {error}[/red]": "[red]✗ 切换模型失败：{error}[/red]",
   "🔍 Configuration Test": "🔍 配置测试",
   "[green]✅ Credentials source:[/green] {source}": "[green]✅ 凭据来源：[/green] {source}",
@@ -2251,5 +2247,8 @@
   "  Model: {model}": "  模型：{model}",
   "Model Not Available": "模型不可用",
   "The provider has no model by the name in your settings. List the models with /config model, then switch with /config model <name> --save.": "模型服务没有您设置中的这个模型名称。请用 /config model 列出模型，再用 /config model <name> --save 切换。",
-  "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init --force.": "请在 lobster chat 中输入这些 /config 命令。要在终端中更改模型服务或模型，请运行 lobster init --force。"
+  "Type these /config commands inside lobster chat. To change the provider or model from the shell, run lobster init --force.": "请在 lobster chat 中输入这些 /config 命令。要在终端中更改模型服务或模型，请运行 lobster init --force。",
+  "[red]Name a model. /config model lists the models. Nothing was changed.[/red]": "[red]请指定一个模型。/config model 会列出可用模型。未做任何更改。[/red]",
+  "[green]✓ Using {model} for this session. Add --save to keep it.[/green]": "[green]✓ 本次会话使用 {model}。加上 --save 可保留该设置。[/green]",
+  "[green]✓ Saved {model} as your default.[/green]": "[green]✓ 已将 {model} 保存为默认模型。[/green]"
 }

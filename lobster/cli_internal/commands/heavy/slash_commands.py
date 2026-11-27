@@ -2927,14 +2927,13 @@ when they are started by agents or analysis workflows.
         elif parts[1] == "model":
             if len(parts) == 2 or parts[2] == "list":
                 return config_model_list(client, output)
-            elif parts[2] == "switch":
-                model_name = parts[3] if len(parts) > 3 else None
-                save = "--save" in parts
-                return config_model_switch(client, output, model_name, save)
             else:
-                model_name = parts[2] if len(parts) > 2 else None
+                words = parts[3:] if parts[2] == "switch" else parts[2:]
+                names = [w for w in words if w != "--save"]
                 save = "--save" in parts
-                return config_model_switch(client, output, model_name, save)
+                return config_model_switch(
+                    client, output, names[0] if names else None, save
+                )
         else:
             output.print(
                 h("Unknown config subcommand: {value}").format(value=parts[1]),

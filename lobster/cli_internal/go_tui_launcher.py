@@ -564,6 +564,24 @@ def _emit_provider_status(bridge: _LightBridge, client: Any) -> None:
     model_name = str(
         getattr(client, "model_override", None) or getattr(client, "model", None) or ""
     ).strip()
+    # Without an override (after a provider switch, or no --model) name the model
+    # the supervisor resolves to; otherwise the footer keeps the previous one.
+    # shortcut: local Ollama is skipped, its default asks the server (up to 5 s)
+    # after every command; resolve it from a cache if its footer is reported stale.
+    if (
+        not model_name
+        and provider_name not in ("auto", "ollama")
+        and hasattr(client, "data_manager")
+    ):
+        try:
+            from lobster.cli_internal.commands.light.config_commands import _chat_model
+
+            model_name = (
+                _chat_model(provider_name, getattr(client, "workspace_path", None))
+                or ""
+            )
+        except Exception as swallowed:
+            _note_suppressed("model name lookup", swallowed)
     if model_name:
         bridge.send("status", {"text": f"Model: {model_name}"})
 
