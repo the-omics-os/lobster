@@ -3,6 +3,9 @@ import json
 import pytest
 import typer
 
+# Before any test here stubs lobster.core.workspace.resolve_workspace: a first
+# import of the client under that stub keeps it for every later test in the run.
+import lobster.core.client  # noqa: F401
 from lobster.cli_internal.commands.heavy import slash_commands
 
 
