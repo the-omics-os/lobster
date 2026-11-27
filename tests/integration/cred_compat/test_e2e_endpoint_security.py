@@ -85,9 +85,7 @@ def test_no_httpx_call_on_poisoned_endpoint_provider(monkeypatch):
     sentinel.assert_not_called()
 
 
-def test_no_httpx_call_on_poisoned_endpoint_validate(
-    tmp_path, monkeypatch, cred_factory
-):
+def test_no_httpx_call_on_poisoned_endpoint_validate():
     """In-process: login credential-validation sends nothing on poison."""
     from lobster.cli_internal.commands.light.cloud_commands import _validate_credentials
 

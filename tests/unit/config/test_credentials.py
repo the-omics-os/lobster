@@ -125,8 +125,9 @@ def test_logout_without_a_saved_key_changes_nothing(cloud):
     assert cloud.sign_in_untouched()
 
 
-def test_a_folder_env_with_the_same_key_is_still_named(cloud, monkeypatch, tmp_path):
-    # lobster init wrote the key both here and globally; the folder's .env wins.
+@pytest.fixture
+def same_key_here(cloud, monkeypatch, tmp_path):
+    """lobster init wrote one key both here and globally; the folder's .env wins."""
     from lobster.config.settings import get_settings
 
     settings = get_settings()
@@ -135,12 +136,19 @@ def test_a_folder_env_with_the_same_key_is_still_named(cloud, monkeypatch, tmp_p
     (tmp_path / ".env").write_text("OMICS_OS_API_KEY=omk_SAME\n")
     monkeypatch.setenv("OMICS_OS_API_KEY", "omk_SAME")  # restored after the test
     monkeypatch.setitem(settings.__dict__, "_start_applied", {})
+    monkeypatch.setitem(settings.__dict__, "_project_applied", {})
     settings._load_credentials()  # the load a command does at start in this folder
+    return cloud
 
-    login = cloud.run("login", "--api-key", "omk_NEW")
+
+def test_login_names_a_folder_env_with_the_same_key(same_key_here):
+    login = same_key_here.run("login", "--api-key", "omk_NEW")
     assert "used first" in login.text
-    logout = cloud.run("logout")
-    assert "OMICS_OS_API_KEY" not in cloud.saved.read_text()
+
+
+def test_logout_names_a_folder_env_with_the_same_key(same_key_here):
+    logout = same_key_here.run("logout")
+    assert "OMICS_OS_API_KEY" not in same_key_here.saved.read_text()
     assert "still set" in logout.text
 
 
