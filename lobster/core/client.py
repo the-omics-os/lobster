@@ -140,7 +140,7 @@ def _get_extraction_cache_manager():
 
 from lobster.core.interfaces.base_client import BaseClient
 from lobster.core.workspace import resolve_workspace
-from lobster.utils.callbacks import TokenTrackingCallback
+from lobster.utils.callbacks import TerminalCallbackHandler, TokenTrackingCallback
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -361,6 +361,9 @@ class AgentClient(BaseClient):
             self.callbacks.append(LangfuseCallback())
         if custom_callbacks:
             self.callbacks.extend(custom_callbacks)
+            for callback in custom_callbacks:
+                if isinstance(callback, TerminalCallbackHandler):
+                    callback.provider_in_use = _active_provider
 
         self.checkpointer = InMemorySaver()
         self.store = InMemoryStore()

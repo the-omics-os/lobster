@@ -62,6 +62,9 @@ class TerminalCallbackHandler(BaseCallbackHandler):
     Shows agent reasoning, tool usage, and execution flow in a clean format.
     """
 
+    # The client that runs this callback sets it: its provider, read per call.
+    provider_in_use: Optional[Callable[[], Optional[str]]] = None
+
     def __init__(
         self,
         console: Optional[Console] = None,
@@ -307,9 +310,13 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         """Called when an LLM errors - now with modular error handling."""
         if isinstance(error, SystemExit):
             return  # the process is exiting (a SIGTERM), not an agent error
-        # Get error guidance from registry
-        registry = get_error_registry()
-        guidance = registry.handle_error(error)
+        provider = None
+        if self.provider_in_use is not None:
+            try:
+                provider = self.provider_in_use()
+            except Exception:  # advice only; never mask the original error
+                provider = None
+        guidance = get_error_registry().handle_error(error, provider=provider)
 
         # Format and display based on guidance
         self._display_error_guidance(guidance)

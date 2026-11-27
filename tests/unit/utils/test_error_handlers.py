@@ -469,7 +469,7 @@ class TestAuthenticationGuidanceNamesTheProvider:
         monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path)
         (tmp_path / "providers.json").write_text('{"default_provider": "omics-os"}')
         text = self._text(monkeypatch, None)
-        assert "The Omics-OS Cloud API key" in text and "OMICS_OS_API_KEY" in text
+        assert "The Omics-OS Cloud key" in text and "OMICS_OS_API_KEY" in text
 
     def test_an_unknown_provider_gets_a_plain_sentence(self, monkeypatch, tmp_path):
         from lobster.config import global_config

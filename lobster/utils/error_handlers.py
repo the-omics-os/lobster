@@ -17,6 +17,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -1124,6 +1125,13 @@ class RateLimitErrorHandler(ErrorHandler):
         )
 
 
+# The provider of the caller's client, for one handle_error call: a --provider
+# override or a provider switch, which the environment and providers.json do not show.
+_PROVIDER_IN_USE: ContextVar[Optional[str]] = ContextVar(
+    "provider_in_use", default=None
+)
+
+
 class AuthenticationErrorHandler(ErrorHandler):
     """
     Handles API authentication errors (401, invalid keys).
@@ -1149,11 +1157,16 @@ class AuthenticationErrorHandler(ErrorHandler):
         from lobster.config.constants import PROVIDER_DISPLAY_NAMES
         from lobster.ui.bridge.init_adapter import _PROVIDER_ENV_KEYS
 
-        # Project setup puts LOBSTER_LLM_PROVIDER in .env; global setup (the
-        # installer route) keeps the provider in providers.json.
-        # shortcut: a provider set only in a workspace's provider_config.json
-        # gets the general advice; resolve it if that shows up.
-        provider = os.environ.get("LOBSTER_LLM_PROVIDER", "").strip().lower()
+        # The running client names its provider; without one, project setup puts
+        # LOBSTER_LLM_PROVIDER in .env and global setup (the installer route) keeps
+        # the provider in providers.json.
+        # shortcut: without a client, a provider set only in a workspace's
+        # provider_config.json gets the general advice; resolve it if that shows up.
+        provider = (
+            (_PROVIDER_IN_USE.get() or os.environ.get("LOBSTER_LLM_PROVIDER", ""))
+            .strip()
+            .lower()
+        )
         if not provider:
             try:
                 from lobster.config.global_config import GlobalProviderConfig
@@ -1161,13 +1174,14 @@ class AuthenticationErrorHandler(ErrorHandler):
                 provider = (GlobalProviderConfig.load().default_provider or "").lower()
             except Exception:  # advice only; never mask the original error
                 provider = ""
-        name = PROVIDER_DISPLAY_NAMES.get(provider)
         keys = " and ".join(_PROVIDER_ENV_KEYS.get(provider) or [])
+        # A provider without a key variable (local Ollama) gets the plain sentence.
+        name = PROVIDER_DISPLAY_NAMES.get(provider, "").split(" (")[0] if keys else ""
         return ErrorGuidance(
             error_type="authentication",
             title="🔑 Authentication Failed",
             description=(
-                f"The {name} API key was refused or is not set."
+                f"The {name} key was refused or is not set."
                 if name
                 else "The API key was refused or is not set."
             ),
@@ -1523,7 +1537,11 @@ class ErrorHandlerRegistry:
         self.handlers.append(handler)
         logger.debug("Registered error handler: %s", handler.__class__.__name__)
 
-    def handle_error(self, error: Union[Exception, KeyboardInterrupt]) -> ErrorGuidance:
+    def handle_error(
+        self,
+        error: Union[Exception, KeyboardInterrupt],
+        provider: Optional[str] = None,
+    ) -> ErrorGuidance:
         """
         Process error through registered handlers.
 
@@ -1532,6 +1550,7 @@ class ErrorHandlerRegistry:
 
         Args:
             error: The exception to handle
+            provider: The provider the caller's client runs, when it knows it
 
         Returns:
             ErrorGuidance with structured information
@@ -1558,7 +1577,11 @@ class ErrorHandlerRegistry:
                         handler.__class__.__name__,
                         error_str[:100],
                     )
-                    return handler.handle(error, error_str)
+                    token = _PROVIDER_IN_USE.set(provider)
+                    try:
+                        return handler.handle(error, error_str)
+                    finally:
+                        _PROVIDER_IN_USE.reset(token)
             except Exception as handler_error:
                 # Don't let handler errors break the system
                 logger.error(
