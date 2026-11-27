@@ -53,7 +53,7 @@ environment, the global credentials or the project's `.env`.
 
 Nine tools: `lobster_overview` (project, provider, model, whether a key is present,
 experts), `lobster_run` (a free-text question, optional local file), `lobster_status`,
-`lobster_wait` (returns at a question, the end or `timeout_s`; default 50),
+`lobster_wait` (returns at a question or the end, or after an optional `timeout_s`),
 `lobster_answer`, `lobster_cancel`, `lobster_continue` (one follow-up instruction on
 a completed run), `lobster_inspect` (structure of a saved `.h5ad`, no matrix load),
 `lobster_docs` (public docs search, read-only).

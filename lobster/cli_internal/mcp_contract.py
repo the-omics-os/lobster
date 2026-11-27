@@ -38,14 +38,14 @@ NO_REWRITE = (
 )
 # Seconds between two looks at a running run; sent as poll_after_s.
 POLL_AFTER_S = 5
-# Longest lobster_wait, and its default: under the 60 s at which one host ends
-# a tool call, since hosts keep defaults.
+# Longest lobster_wait timer. A wait without one returns only when the run
+# settles; a host that ends tool calls early passes a timer under its limit.
 WAIT_MAX_S = 300
-WAIT_DEFAULT_S = 50
 POLL = (
     "Wait with lobster_wait and the run_id: it returns when the run is "
-    "completed, failed, cancelled or needs_decision, or after timeout_s; then "
-    "call it again. Do not watch the output folder yourself."
+    "completed, failed, cancelled or needs_decision, or after timeout_s if "
+    "you passed one; then call it again. Do not watch the output folder "
+    "yourself."
 )
 PROGRESS = (
     "A running status carries elapsed_s (seconds since the run was accepted, "
@@ -506,11 +506,11 @@ _WAIT = {
             "Wait until a Lobster run needs you: it returns the status as "
             "lobster_status does when the run is completed, failed, cancelled "
             "or needs_decision.",
-            "Otherwise it returns after timeout_s with a short reply (status, "
-            "last step, elapsed_s, timed_out); then call it again.",
-            f"Leave timeout_s at its default {WAIT_DEFAULT_S}: many hosts end "
-            f"a tool call at 60 s. Pass up to {WAIT_MAX_S} only when your host "
-            "is known to allow longer tool calls.",
+            "Without timeout_s it returns only then, however long the turn " "takes.",
+            "If your host ends tool calls early (many end them at 60 s), pass "
+            "timeout_s under that limit, such as 50: the wait then also "
+            "returns when the timer runs out, with a short reply (status, last "
+            "step, elapsed_s, timed_out); then call it again.",
             "A second lobster_wait on the same run ends the first, which "
             "returns at once with superseded true.",
             "Use lobster_status for a one-off look.",
@@ -528,8 +528,8 @@ _WAIT = {
                 "type": "number",
                 "minimum": 0,
                 "maximum": WAIT_MAX_S,
-                "description": f"Seconds to wait at most (0 to {WAIT_MAX_S}, "
-                f"default {WAIT_DEFAULT_S}).",
+                "description": f"Seconds to wait at most (0 to {WAIT_MAX_S}). "
+                "Omit it to wait until the run ends or needs a decision.",
             },
         },
         "required": ["run_id"],

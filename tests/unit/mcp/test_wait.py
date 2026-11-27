@@ -47,9 +47,8 @@ def test_the_wait_tool_is_listed_after_status():
     assert wait["inputSchema"]["required"] == ["run_id"]
     assert wait["annotations"]["readOnlyHint"] is True
     assert mcp_contract.WAIT_MAX_S == 300
-    assert mcp_contract.WAIT_DEFAULT_S < 60  # Codex's default tool time limit
-    assert "Leave timeout_s at its default 50" in wait["description"]
-    assert "300 only when your host is known to allow" in wait["description"]
+    assert "default" not in timeout  # no timer unless the host passes one
+    assert "many end them at 60 s" in wait["description"]
     for name in ("lobster_run", "lobster_status"):
         assert "lobster_wait" in tools[name]["description"]
     assert "lobster_wait" in mcp_contract.INSTRUCTIONS
@@ -335,3 +334,75 @@ def test_an_abandoned_wait_is_harmless(held_run):
     hold.release.set()
     wire.tool(10, "lobster_wait", run_id=run_id, timeout_s=300)
     assert wire.result(10, timeout=10)["status"] == "completed"
+
+
+class FakeClock:
+    """``time`` for the server module, whose monotonic clock jumps 100 s at each
+    read: any timer the server keeps passes WAIT_MAX_S at its fourth read, within
+    a second of real time (the timed test shows the server reads it)."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        self.now += 100.0
+        return self.now
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+@pytest.fixture
+def fake_clock(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(mcp_stdio, "time", clock)
+    return clock
+
+
+def test_a_wait_without_a_timer_outlasts_300_s_and_returns_at_the_end(
+    held_run, fake_clock
+):
+    wire, run_id, hold = held_run
+    wire.tool(2, "lobster_wait", run_id=run_id)
+    wire.no_reply(2, within=1.0)
+    hold.release.set()
+    done = wire.result(2, timeout=10)
+    assert done["status"] == "completed" and "timed_out" not in done
+
+
+def test_a_wait_without_a_timer_returns_at_a_question(
+    engine, tmp_path, data, fake_clock
+):
+    _opened, script = engine
+    hold = Hold("quality_assessment")
+    script["events"] = [hold, SLIDER]
+    script["resume_events"] = [COMPLETE]
+    wire = Wire()
+    wire.tool(1, "lobster_run", **run_args(data, tmp_path / "out"))
+    run_id = wire.result(1)["run_id"]
+    assert hold.entered.wait(10)
+    wire.tool(2, "lobster_wait", run_id=run_id)
+    wire.no_reply(2, within=1.0)
+    hold.release.set()
+    assert wire.result(2, timeout=10)["status"] == "needs_decision"
+    wire.tool(3, "lobster_cancel", run_id=run_id)
+    assert wire.result(3, timeout=5)["outcome"] == "cancel_requested"
+    assert wire.close() == 0
+
+
+def test_a_wait_without_a_timer_ends_on_the_hosts_cancel(held_run, fake_clock):
+    wire, run_id, hold = held_run
+    wire.tool("w", "lobster_wait", run_id=run_id)
+    wire.no_reply("w", within=1.0)
+    wire.send(None, "notifications/cancelled", {"requestId": "w"})
+    wire.no_reply("w", within=1.0)
+    wire.tool(3, "lobster_status", run_id=run_id)
+    assert wire.result(3, timeout=2)["status"] == "running"
+
+
+def test_a_wait_with_a_timer_still_times_out(held_run, fake_clock):
+    wire, run_id, hold = held_run
+    wire.tool(2, "lobster_wait", run_id=run_id, timeout_s=mcp_contract.WAIT_MAX_S)
+    short = wire.result(2, timeout=5)
+    assert short["status"] == "running" and short["timed_out"] is True
+    assert fake_clock.now > mcp_contract.WAIT_MAX_S

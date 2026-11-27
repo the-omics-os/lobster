@@ -55,10 +55,10 @@ def test_paths_are_absolute_without_the_project_directory_remark():
         assert "absolute path" in texts()[name]
 
 
-def test_the_wait_text_keeps_the_default_and_allows_300_only_when_known():
-    assert mcp_contract.WAIT_DEFAULT_S == 50
-    assert "Leave timeout_s at its default 50" in texts()["lobster_wait"]
-    assert "300 only when your host is known to allow" in texts()["lobster_wait"]
+def test_the_wait_text_says_when_to_pass_a_timer():
+    assert not hasattr(mcp_contract, "WAIT_DEFAULT_S")
+    assert "Without timeout_s it returns only then" in texts()["lobster_wait"]
+    assert "pass timeout_s under that limit, such as 50" in texts()["lobster_wait"]
 
 
 def test_a_follow_up_is_as_long_as_a_question():

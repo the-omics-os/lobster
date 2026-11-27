@@ -1790,7 +1790,10 @@ class McpServer:
     def _reply_later(self, request_id: Any, method: str, params: Dict[str, Any]):
         if params.get("name") != "lobster_wait":
             return self._send_reply(request_id, method, params)
-        with self._watch.watching(_late_after_s(params)):
+        late_after_s = _late_after_s(params)
+        if late_after_s is None:
+            return self._send_reply(request_id, method, params)
+        with self._watch.watching(late_after_s):
             self._send_reply(request_id, method, params)
 
     def _send_reply(self, request_id: Any, method: str, params: Dict[str, Any]):
@@ -2218,14 +2221,10 @@ class McpServer:
         return status
 
     def _lobster_wait(self, args: Dict[str, Any], request_id: Any = None):
-        """The run's status once it changes, or after ``timeout_s``."""
+        """The run's status once it settles, or after ``timeout_s`` if given."""
         run_id = _string_arg(args, "run_id")
-        timeout = args.get("timeout_s", contract.WAIT_DEFAULT_S)
-        if (
-            isinstance(timeout, bool)
-            or not isinstance(timeout, (int, float))
-            or not 0 <= timeout <= contract.WAIT_MAX_S
-        ):
+        timeout = args.get("timeout_s")
+        if timeout is not None and not _good_timeout(timeout):
             raise ToolError(
                 f"bad_argument: timeout_s must be a number from 0 to "
                 f"{contract.WAIT_MAX_S}."
@@ -2237,16 +2236,18 @@ class McpServer:
             return status
         wait = self._open_wait(run_id, request_id)
         try:
-            deadline = time.monotonic() + timeout
+            deadline = None if timeout is None else time.monotonic() + timeout
             # shortcut: the status is re-read every WAIT_STEP_S rather than the
             # worker waking the wait, so the end shows up to WAIT_STEP_S late.
             while not wait.ended.wait(
-                max(0.0, min(WAIT_STEP_S, deadline - time.monotonic()))
+                WAIT_STEP_S
+                if deadline is None
+                else max(0.0, min(WAIT_STEP_S, deadline - time.monotonic()))
             ):
                 status = self.runner.status(run_id)
                 if _settled(status):
                     return status
-                if time.monotonic() >= deadline:
+                if deadline is not None and time.monotonic() >= deadline:
                     return _still(run_id, status)
             if wait.cancelled:
                 raise _NoReply()
@@ -2854,17 +2855,23 @@ def enter_start_folder(workspace: Optional[Path]) -> Path:
     return start
 
 
-def _late_after_s(params: Dict[str, Any]) -> float:
-    """How long a lobster_wait with *params* may take before it is late."""
+def _good_timeout(timeout: Any) -> bool:
+    return (
+        not isinstance(timeout, bool)
+        and isinstance(timeout, (int, float))
+        and 0 <= timeout <= contract.WAIT_MAX_S
+    )
+
+
+def _late_after_s(params: Dict[str, Any]) -> Optional[float]:
+    """How long a lobster_wait with *params* may take before it is late; None
+    for a wait without a timer, which is never late. A bad timer is refused at
+    once, so it is late after the grace alone."""
     arguments = params.get("arguments")
     timeout = arguments.get("timeout_s") if isinstance(arguments, dict) else None
-    if (
-        isinstance(timeout, bool)
-        or not isinstance(timeout, (int, float))
-        or not 0 <= timeout <= contract.WAIT_MAX_S
-    ):
-        timeout = contract.WAIT_DEFAULT_S  # a bad one is refused at once anyway
-    return timeout + mcp_watch.GRACE_S
+    if timeout is None:
+        return None
+    return (timeout if _good_timeout(timeout) else 0) + mcp_watch.GRACE_S
 
 
 def run_mcp_stdio(
