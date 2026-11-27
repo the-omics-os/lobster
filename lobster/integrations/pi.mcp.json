@@ -6,7 +6,8 @@
       "directTools": true,
       "toolPrefix": "none",
       "requestTimeoutMs": 3600000,
-      "timeout": 3600
+      "timeout": 3600,
+      "exposure": "direct"
     }
   }
 }

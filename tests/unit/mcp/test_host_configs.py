@@ -18,7 +18,8 @@ Read on 2026-11-27:
 - pi ``mcp.json`` (pi-mcp-adapter 2.33.0 README, "Server Options"):
   ``mcpServers.<name>`` with ``command``, ``args``, ``directTools``,
   ``toolPrefix`` (``"none"``), ``requestTimeoutMs``. The os native MCP preview
-  reads the same entry, takes ``timeout`` in seconds and ignores the adapter's
+  reads the same entry, takes ``timeout`` in seconds and ``exposure``
+  (``"direct"`` declares the tools to the model) and ignores the adapter's
   keys (os ``docs/extensions.md`` "Native MCP runtime reference";
   ``src/core/mcp-servers.ts`` ``validateMcpServerConfig``).
 - opencode ``opencode.json`` (opencode.ai/docs/mcp-servers): V2
@@ -112,6 +113,7 @@ def test_pi_snippet():
                 "toolPrefix": "none",  # lobster_run, not lobster_lobster_run
                 "requestTimeoutMs": 3_600_000,
                 "timeout": 3600,  # os native preview, in seconds
+                "exposure": "direct",  # os native preview: declared, not codemode
             }
         }
     }

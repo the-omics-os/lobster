@@ -30,7 +30,8 @@ and os files raise that limit to an hour; in a host with a short limit the model
 passes `timeout_s` under it. The pi file registers the tools directly under
 their own names (`directTools`, `toolPrefix: "none"`), so the model calls
 `lobster_run` rather than going through the `mcp` proxy tool; `timeout` is the
-os native preview's limit in seconds and `requestTimeoutMs` the adapter's.
+os native preview's limit in seconds and `requestTimeoutMs` the adapter's;
+`exposure: "direct"` declares the tools to the model in the os native preview.
 
 Desktop apps do not start from your shell and may not find `lobster` on PATH:
 replace `"lobster"` with the absolute path printed by `which lobster`.
