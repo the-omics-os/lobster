@@ -32,8 +32,7 @@ def similarity_heatmap(data, *, compound_ids, fingerprint="morgan", title=None):
             y=labels,
             zmin=0,
             zmax=1,
-            colorscale="Viridis",
-            uid="matrix:similarity",
+            uid="matrix:similarity",  # colour scale: the template's sequential
             hovertemplate="%{x} / %{y}<br>Similarity=%{z:.3f}<extra></extra>",
         )
     )

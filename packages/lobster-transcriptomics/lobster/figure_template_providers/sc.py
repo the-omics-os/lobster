@@ -5,6 +5,12 @@ Means, fractions expressing, scaling and counts are descriptive transforms.
 """
 
 from lobster.figure_templates import figure_template, set_trace_identity
+from lobster.figure_templates._style import (
+    DIVERGING,
+    INK,
+    SEQUENTIAL,
+    SEQUENTIAL_EXPRESSION,
+)
 
 TEMPLATE_MANIFEST = [
     {"name": f"sc.{name}", "version": "1", "purpose": purpose, "callable": name}
@@ -67,6 +73,22 @@ def _embedding(data, basis):
     return coordinates
 
 
+def _signed_scale(values, key):
+    """DIVERGING around 0 over a symmetric range when values go negative."""
+    import numpy as np
+
+    values = np.asarray(values, dtype=float)
+    if not values.size or values.min() >= 0:
+        return None
+    limit = float(np.abs(values).max())
+    return {
+        "colorscale": DIVERGING,
+        f"{key}mid": 0,
+        f"{key}min": -limit,
+        f"{key}max": limit,
+    }
+
+
 @figure_template("sc.umap")
 def umap(data, *, color="leiden", basis="X_umap", title="UMAP", marker_size=5):
     import numpy as np
@@ -87,8 +109,9 @@ def umap(data, *, color="leiden", basis="X_umap", title="UMAP", marker_size=5):
             marker={
                 "size": marker_size,
                 "color": labels.to_numpy(),
-                "colorscale": "Viridis",
+                "colorscale": SEQUENTIAL,
                 "showscale": True,
+                "colorbar": {"outlinewidth": 0},
             },
         )
         set_trace_identity(trace, data.obs_names.tolist(), entity_kind="cell")
@@ -108,6 +131,18 @@ def umap(data, *, color="leiden", basis="X_umap", title="UMAP", marker_size=5):
             )
             set_trace_identity(trace, data.obs_names[mask].tolist(), entity_kind="cell")
             figure.add_trace(trace)
+        if len(figure.data) >= 3:
+            # Label each category at its median, so a split cluster's label
+            # still sits inside its own points.
+            for trace in figure.data:
+                figure.add_annotation(
+                    x=float(np.median(trace.x)),
+                    y=float(np.median(trace.y)),
+                    text=trace.name,
+                    showarrow=False,
+                    font={"color": INK, "size": 12},
+                    bgcolor="rgba(255,255,255,0.7)",
+                )
     figure.update_layout(
         title=title, xaxis_title=f"{basis} 1", yaxis_title=f"{basis} 2"
     )
@@ -139,9 +174,12 @@ def feature(
             mode="markers",
             marker={
                 "color": expression[:, index],
-                "colorscale": "Viridis",
+                "colorscale": SEQUENTIAL_EXPRESSION,
                 "size": marker_size,
+                # Panels are one gene each, not series: no symbol cycle
+                "symbol": "circle",
                 "showscale": True,
+                "colorbar": {"outlinewidth": 0},
             },
         )
         set_trace_identity(trace, data.obs_names.tolist(), entity_kind="cell")
@@ -227,8 +265,10 @@ def dot(
                 "size": fractions.ravel(),
                 "sizemode": "area",
                 "sizeref": 0.25,
-                "colorscale": "Viridis",
+                "symbol": "circle",
                 "showscale": True,
+                "colorbar": {"outlinewidth": 0},
+                **(_signed_scale(means, "c") or {"colorscale": SEQUENTIAL_EXPRESSION}),
             },
             customdata=np.column_stack([means.ravel(), fractions.ravel()]),
             hovertemplate="%{x} / %{y}<br>mean=%{customdata[0]:.3f}<br>% expressing=%{customdata[1]:.1f}<extra></extra>",
@@ -249,7 +289,7 @@ def heatmap(data, *, genes, groupby="leiden", layer=None, title="Mean gene expre
             x=gene_names,
             y=groups,
             uid="matrix:group_expression",
-            colorscale="Viridis",
+            **(_signed_scale(means, "z") or {"colorscale": SEQUENTIAL_EXPRESSION}),
         )
     )
     figure.update_layout(title=title, xaxis_title="Gene", yaxis_title=groupby)

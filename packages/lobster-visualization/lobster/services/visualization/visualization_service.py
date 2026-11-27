@@ -253,11 +253,21 @@ class SingleCellVisualizationService:
 
             # Create the plot
             if is_categorical:
-                # Categorical coloring
+                # Categorical coloring. Colour and symbol map the same column, so
+                # px cycles the template's symbols in step with the colours and
+                # keeps one legend entry per category.
                 fig = px.scatter(
-                    x=umap_coords[:, 0],
-                    y=umap_coords[:, 1],
-                    color=color_data.astype(str),
+                    pd.DataFrame(
+                        {
+                            "x": umap_coords[:, 0],
+                            "y": umap_coords[:, 1],
+                            "color": np.asarray(color_data.astype(str)),
+                        }
+                    ),
+                    x="x",
+                    y="y",
+                    color="color",
+                    symbol="color",
                     title=title or f"UMAP colored by {color_by}",
                     labels={"x": "UMAP 1", "y": "UMAP 2", "color": color_by},
                     width=width or self.default_width,
@@ -413,11 +423,19 @@ class SingleCellVisualizationService:
             else:
                 color_data = pd.Series(["All"] * adata.n_obs, index=adata.obs_names)
 
-            # Create plot
+            # Create plot (colour and symbol map the same column: see UMAP)
             fig = px.scatter(
-                x=pca_coords[:, pc1],
-                y=pca_coords[:, pc2],
-                color=color_data,
+                pd.DataFrame(
+                    {
+                        "x": pca_coords[:, pc1],
+                        "y": pca_coords[:, pc2],
+                        "color": color_data.to_numpy(),
+                    }
+                ),
+                x="x",
+                y="y",
+                color="color",
+                symbol="color",
                 title=title or f"PCA Plot - PC{pc1 + 1} vs PC{pc2 + 1}{var_explained}",
                 labels={
                     "x": f"PC{pc1 + 1}{var_explained.split('/')[0] if var_explained else ''}",

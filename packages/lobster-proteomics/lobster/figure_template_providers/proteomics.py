@@ -1,6 +1,7 @@
 """Pure drawings of retained proteomics results; no statistical testing or I/O."""
 
 from lobster.figure_templates import figure_template, set_trace_identity
+from lobster.figure_templates._style import DOWN, INK, KEY, NO_CALL, SEQUENTIAL, UP
 
 TEMPLATE_MANIFEST = [
     {
@@ -85,7 +86,7 @@ def volcano(
     )
     y = -np.log10(np.maximum(pvalues, p_floor))
     figure = go.Figure()
-    for category, color in (("ns", "#A2ADB3"), ("down", "#007F86"), ("up", "#E07A3F")):
+    for category, color in (("ns", NO_CALL), ("down", DOWN), ("up", UP)):
         mask = classes == category
         trace = go.Scattergl(
             x=effects[mask],
@@ -93,7 +94,8 @@ def volcano(
             name=category,
             uid=f"class:{category}",
             mode="markers",
-            marker={"color": color, "size": 7},
+            # Up and down already differ by side of 0: no symbol cycle
+            marker={"color": color, "size": 7, "symbol": "circle"},
             hovertemplate="%{customdata[0]}<br>log2FC=%{x:.3f}<br>-log10(p)=%{y:.3f}<extra>%{fullData.name}</extra>",
         )
         set_trace_identity(
@@ -103,9 +105,10 @@ def volcano(
             comparison=comparison,
         )
         figure.add_trace(trace)
-    figure.add_hline(y=-np.log10(fdr), line_dash="dash", line_color="#73828A")
+    # Thresholds take the template's dashed Ink
+    figure.add_hline(y=-np.log10(fdr))
     for cutoff in (-log2fc_min, log2fc_min):
-        figure.add_vline(x=cutoff, line_dash="dash", line_color="#73828A")
+        figure.add_vline(x=cutoff)
     if label_top:
         eligible = np.flatnonzero(classes != "ns")
         for index in eligible[np.argsort(pvalues[eligible], kind="stable")[:label_top]]:
@@ -114,6 +117,8 @@ def volcano(
                 y=float(y[index]),
                 text=str(table.iloc[index][entity_field]),
                 showarrow=True,
+                arrowcolor=KEY,
+                font={"color": INK},
             )
     figure.update_layout(
         title=title or f"Volcano — {comparison}",
@@ -164,8 +169,9 @@ def pathway_bubble(
                 "size": np.maximum(overlap, 1) * 4,
                 "sizemode": "area",
                 "color": scores,
-                "colorscale": "Viridis",
+                "colorscale": SEQUENTIAL,
                 "showscale": True,
+                "colorbar": {"outlinewidth": 0},
             },
             customdata=overlap.reshape(-1, 1),
             hovertemplate="%{y}<br>-log10(p)=%{x:.3f}<br>overlap=%{customdata[0]}<extra></extra>",

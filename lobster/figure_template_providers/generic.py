@@ -1,7 +1,7 @@
 """Generic descriptive charts. Imports stay lazy for on-demand discovery."""
 
 from lobster.figure_templates import figure_template
-from lobster.figure_templates._style import HOUSE_COLORS
+from lobster.figure_templates._style import DIVERGING, HOUSE_COLORS
 
 TEMPLATE_MANIFEST = [
     {"name": f"generic.{name}", "version": "1", "purpose": purpose, "callable": name}
@@ -28,6 +28,13 @@ def _xy(kind, data, x, y, color, id_col, entity_kind, title, **kwargs):
                 "Entity IDs must be present and unique; row positions are not IDs"
             )
         table[id_col] = table[id_col].astype(str)
+    if color is not None and not pd.api.types.is_numeric_dtype(table[color]):
+        # px pins every trace to circle/solid; mapping the same column makes it
+        # cycle the template's symbols and dashes in step with the colours.
+        if kind == "scatter":
+            kwargs["symbol"] = color
+        elif kind == "line":
+            kwargs["line_dash"] = color
     figure = getattr(px, kind)(
         table,
         x=x,
@@ -116,9 +123,7 @@ def box(data, *, x, y, color=None, points=False, title="Box distributions"):
 
 
 @figure_template("generic.heatmap")
-def heatmap(
-    data, *, x_labels=None, y_labels=None, colorscale="Viridis", title="Heatmap"
-):
+def heatmap(data, *, x_labels=None, y_labels=None, colorscale=None, title="Heatmap"):
     import numpy as np
     import plotly.graph_objects as go
 
@@ -129,10 +134,14 @@ def heatmap(
         raise ValueError("x_labels do not match matrix columns")
     if y_labels is not None and len(y_labels) != matrix.shape[0]:
         raise ValueError("y_labels do not match matrix rows")
+    scale = {"colorscale": colorscale}  # None: the template's sequential scale
+    finite = matrix[np.isfinite(matrix)] if matrix.dtype.kind in "fiu" else []
+    if colorscale is None and len(finite) and finite.min() < 0:
+        # A signed matrix diverges around 0 over a symmetric range.
+        limit = float(np.abs(finite).max())
+        scale = {"colorscale": DIVERGING, "zmid": 0, "zmin": -limit, "zmax": limit}
     figure = go.Figure(
-        go.Heatmap(
-            z=matrix, x=x_labels, y=y_labels, colorscale=colorscale, uid="matrix:values"
-        )
+        go.Heatmap(z=matrix, x=x_labels, y=y_labels, uid="matrix:values", **scale)
     )
     figure.update_layout(title=title)
     return figure
@@ -157,10 +166,10 @@ def correlation(data, *, columns=None, method="pearson", title="Correlation"):
             z=corr.to_numpy(),
             x=corr.columns.tolist(),
             y=corr.index.tolist(),
+            zmid=0,
             zmin=-1,
             zmax=1,
-            colorscale="RdBu",
-            reversescale=True,
+            colorscale=DIVERGING,
             uid="matrix:correlation",
         )
     )
