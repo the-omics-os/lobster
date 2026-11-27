@@ -200,7 +200,7 @@ class DoclingService:
         """
         Initialize Docling with graceful degradation.
 
-        If Docling is not installed, logs a warning and sets converter to None.
+        If Docling is not installed, logs at DEBUG and sets converter to None.
         Consumers should check is_available() before using.
         """
         try:
@@ -245,7 +245,8 @@ class DoclingService:
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("docling")
-            logger.warning(
+            # DEBUG: a feature that needs Docling raises DoclingError with this hint when used
+            logger.debug(
                 f"Docling not installed, structure-aware extraction unavailable. "
                 f"Install with: {cmd}"
             )

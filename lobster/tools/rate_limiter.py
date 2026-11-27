@@ -95,8 +95,9 @@ def _create_connection_pool() -> Optional["redis.ConnectionPool"]:
 
     except ConnectionError:
         if not _REDIS_WARNING_SHOWN:
-            logger.warning(
-                "⚠️  Redis unavailable - rate limiting disabled. "
+            # DEBUG: no Redis server is the normal case outside a server deployment
+            logger.debug(
+                "Redis unavailable - rate limiting disabled. "
                 "For production use, start Redis with: docker-compose up -d redis"
             )
             _REDIS_WARNING_SHOWN = True
