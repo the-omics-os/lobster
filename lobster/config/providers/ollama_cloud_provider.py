@@ -54,7 +54,8 @@ class OllamaCloudProvider(ILLMProvider):
             from lobster.core.component_registry import get_install_command
 
             raise ImportError(
-                f"Install Ollama Cloud support: {get_install_command('openai', is_extra=True)}"
+                "Ollama Cloud support is not installed. "
+                f"Install with: {get_install_command('openai', is_extra=True)}"
             ) from exc
 
     def get_default_model(self) -> str:

@@ -837,9 +837,10 @@ def config_provider_switch(
     if not result["success"]:
         error_msg = result.get("error", h("Unknown error"))
         hint = result.get("hint", "")
-        output.print(f"[red]✗ {error_msg}[/red]")
+        # An install command's [extras] must not read as markup.
+        output.print(f"[red]✗ {escape(error_msg)}[/red]")
         if hint:
-            output.print(f"[dim]{hint}[/dim]")
+            output.print(f"[dim]{escape(hint)}[/dim]")
         return None
 
     # Success message
@@ -883,7 +884,7 @@ def config_provider_switch(
     except Exception as e:
         output.print(
             h("[red]✗ Failed to save workspace config: {error}[/red]").format(
-                error=str(e)
+                error=escape(str(e))
             )
         )
         output.print(h("[dim]Check workspace directory permissions[/dim]"))
@@ -1211,7 +1212,7 @@ def config_model_switch(
                     model=model_name, name=current_provider
                 )
             )
-            output.print(f"[dim]{hint}[/dim]")
+            output.print(f"[dim]{escape(hint)}[/dim]")
             return None
 
         # Rebuild the running chat first: a model that cannot be created raises
@@ -1228,7 +1229,9 @@ def config_model_switch(
             config.save(workspace_path)
         except Exception as e:
             output.print(
-                h("[red]✗ Failed to save model config: {error}[/red]").format(error=e)
+                h("[red]✗ Failed to save model config: {error}[/red]").format(
+                    error=escape(str(e))
+                )
             )
             return None
 
@@ -1270,7 +1273,9 @@ def config_model_switch(
 
     except Exception as e:
         output.print(
-            h("[red]✗ Failed to switch model: {error}[/red]").format(error=str(e))
+            h("[red]✗ Failed to switch model: {error}[/red]").format(
+                error=escape(str(e))
+            )
         )
         output.print(h("[dim]Check provider configuration[/dim]"))
         return None
@@ -1437,7 +1442,12 @@ def config_test_impl(output_json: bool = False):
                     test_results["checks"]["llm_provider"][
                         "message"
                     ] = f"Ollama error: {str(e)[:60]}"
-                    log(h("❌ Ollama check failed: {error}").format(error=e), "red")
+                    log(
+                        h("❌ Ollama check failed: {error}").format(
+                            error=escape(str(e))
+                        ),
+                        "red",
+                    )
                     provider = None
 
             # Test LLM connectivity
@@ -1488,7 +1498,10 @@ def config_test_impl(output_json: bool = False):
                     )
     except Exception as e:
         test_results["checks"]["llm_provider"]["message"] = str(e)[:100]
-        log(h("❌ LLM Provider test failed: {error}").format(error=e), "red")
+        log(
+            h("❌ LLM Provider test failed: {error}").format(error=escape(str(e))),
+            "red",
+        )
 
     if not output_json:
         console.print()
@@ -1541,10 +1554,13 @@ def config_test_impl(output_json: bool = False):
             log(h("❌ Workspace: Permission denied"), "red")
         except Exception as e:
             test_results["checks"]["workspace"]["message"] = str(e)[:60]
-            log(h("❌ Workspace: {error}").format(error=e), "red")
+            log(h("❌ Workspace: {error}").format(error=escape(str(e))), "red")
     except Exception as e:
         test_results["checks"]["workspace"]["message"] = str(e)[:60]
-        log(h("❌ Workspace setup failed: {error}").format(error=e), "red")
+        log(
+            h("❌ Workspace setup failed: {error}").format(error=escape(str(e))),
+            "red",
+        )
 
     # Determine overall validity
     test_results["valid"] = test_results["checks"]["llm_provider"]["status"] == "pass"
@@ -1773,7 +1789,7 @@ def show_config_impl(workspace=None, show_all: bool = False):
 
     except ConfigurationError as e:
         console.print(h("   [red]✗ No provider configured[/red]"))
-        console.print(h("   [dim]Error: {error}[/dim]").format(error=str(e)))
+        console.print(h("   [dim]Error: {error}[/dim]").format(error=escape(str(e))))
         console.print(
             h("   [yellow]💡 Run 'lobster init' to configure a provider[/yellow]")
         )
@@ -1823,7 +1839,9 @@ def show_config_impl(workspace=None, show_all: bool = False):
                 )
         except Exception as e:
             console.print(
-                h("      [dim]Could not read: {error}[/dim]").format(error=str(e))
+                h("      [dim]Could not read: {error}[/dim]").format(
+                    error=escape(str(e))
+                )
             )
     else:
         console.print(
@@ -1854,7 +1872,9 @@ def show_config_impl(workspace=None, show_all: bool = False):
                 )
         except Exception as e:
             console.print(
-                h("      [dim]Could not read: {error}[/dim]").format(error=str(e))
+                h("      [dim]Could not read: {error}[/dim]").format(
+                    error=escape(str(e))
+                )
             )
     else:
         console.print(
@@ -1953,7 +1973,7 @@ def show_config_impl(workspace=None, show_all: bool = False):
             console.print(
                 h(
                     "   [bold white]{name}[/bold white]: [red]Error - {error}[/red]"
-                ).format(name=agent_cfg.display_name, error=str(e))
+                ).format(name=agent_cfg.display_name, error=escape(str(e)))
             )
             console.print()
 
@@ -2091,7 +2111,7 @@ def test_impl(profile=None, agent=None):
                         h("[bold red]❌ Provider Test Failed[/bold red]\n\n")
                         + h("Provider: [cyan]{name}[/cyan]\n").format(name=provider)
                         + h("Error: [red]{error}[/red]\n\n").format(
-                            error=error_msg[:100]
+                            error=escape(error_msg[:100])
                         )
                         + h("[yellow]💡 Check your API keys in .env file[/yellow]\n")
                         + h(
@@ -2104,7 +2124,9 @@ def test_impl(profile=None, agent=None):
                 raise typer.Exit(1)
 
         except Exception as e:
-            console.print(h("[red]❌ Error: {error}[/red]").format(error=str(e)))
+            console.print(
+                h("[red]❌ Error: {error}[/red]").format(error=escape(str(e)))
+            )
             raise typer.Exit(1)
 
     # Profile-based testing: test agent LLM params resolution
@@ -2152,7 +2174,7 @@ def test_impl(profile=None, agent=None):
                 except Exception as e:
                     console.print(
                         h("   [red]{name}: {error}[/red]").format(
-                            name=agent_name, error=str(e)
+                            name=agent_name, error=escape(str(e))
                         )
                     )
                     all_valid = False
@@ -2172,7 +2194,9 @@ def test_impl(profile=None, agent=None):
 
     except Exception as e:
         console.print(
-            h("\n[red]Error testing configuration: {error}[/red]").format(error=str(e))
+            h("\n[red]Error testing configuration: {error}[/red]").format(
+                error=escape(str(e))
+            )
         )
         return False
 

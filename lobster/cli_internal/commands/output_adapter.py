@@ -20,6 +20,8 @@ from rich.table import Table
 from lobster.i18n import h
 
 _RICH_TAG_RE = re.compile(r"\[([^\[\]]+)\]")
+# What Rich's markup parser takes for the start of a tag.
+_RICH_TAG_START_RE = re.compile(r"[a-z#/@]")
 _ALERT_STYLES = {"error", "warning", "success", "info"}
 
 
@@ -28,12 +30,21 @@ def _strip_markup(text: str) -> str:
     if not matches:
         return text
 
+    # Backslashes before a tag work as in Rich (rich.markup.escape writes them):
+    # they halve, and an odd count makes the tag literal text.
+    slashes: dict[int, int] = {}
+    for idx, match in enumerate(matches):
+        count = 0
+        while text[match.start() - count - 1 : match.start() - count] == "\\":
+            count += 1
+        if count and _RICH_TAG_START_RE.match(match.group(1)):
+            slashes[idx] = count
     removable: set[int] = set()
     open_stack: list[int] = []
 
     for idx, match in enumerate(matches):
         raw_tag = match.group(1).strip()
-        if not raw_tag:
+        if not raw_tag or slashes.get(idx, 0) % 2:
             continue
 
         if raw_tag == "/":
@@ -61,17 +72,18 @@ def _strip_markup(text: str) -> str:
 
         open_stack.append(idx)
 
-    if not removable:
+    if not removable and not slashes:
         return text
 
     parts: list[str] = []
     cursor = 0
     for idx, match in enumerate(matches):
-        if idx not in removable:
+        count = slashes.get(idx, 0)
+        if not count and idx not in removable:
             continue
         start, end = match.span()
-        parts.append(text[cursor:start])
-        cursor = end
+        parts.append(text[cursor : start - count] + "\\" * (count // 2))
+        cursor = end if idx in removable else start
     parts.append(text[cursor:])
     return "".join(parts)
 
@@ -484,6 +496,9 @@ class JsonOutputAdapter(OutputAdapter):
         sanitized: Dict[str, Any] = {"kind": data["kind"]}
         for key, value in data.items():
             if key == "kind":
+                continue
+            if data["kind"] == "code" and key == "code":
+                sanitized[key] = value  # file contents and code are not markup
                 continue
             sanitized[key] = self._sanitize_value(value)
         return sanitized

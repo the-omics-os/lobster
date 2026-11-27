@@ -209,7 +209,8 @@ class LobsterConsoleManager:
             show_time=True,
             show_level=True,
             show_path=True,
-            markup=True,
+            # Log text is plain: an install command's [extras] is not a style tag.
+            markup=False,
             rich_tracebacks=True,
             tracebacks_show_locals=False,
             tracebacks_max_frames=10,
