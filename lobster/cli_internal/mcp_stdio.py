@@ -1873,7 +1873,8 @@ class McpServer:
         if isinstance(payload, dict):  # first, so a host's preview shows it
             payload = {"headline": mcp_headline.headline(name, payload), **payload}
         try:
-            text = json.dumps(payload, default=str, allow_nan=False)
+            # Unescaped, so a host that shows the raw text shows the glyphs.
+            text = json.dumps(payload, default=str, allow_nan=False, ensure_ascii=False)
         except ValueError:  # NaN or Infinity is not JSON
             text = "internal: the result held a number that is not valid JSON."
             return {"content": [{"type": "text", "text": text}], "isError": True}

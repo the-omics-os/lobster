@@ -98,7 +98,9 @@ def test_every_reply_is_one_json_block_led_by_its_headline(tool, kind):
     result = reply_of(tool, payload)
     assert set(result) == {"content"}
     assert len(result["content"]) == 1 and result["content"][0]["type"] == "text"
-    reply = json.loads(result["content"][0]["text"])
+    text = result["content"][0]["text"]
+    assert "\\u" not in text  # glyphs, not escapes, in what a host shows
+    reply = json.loads(text)
     assert next(iter(reply)) == "headline"
     line = reply.pop("headline")
     assert line and "\n" not in line and "{" not in line and "}" not in line
