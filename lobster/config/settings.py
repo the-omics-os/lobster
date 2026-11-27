@@ -25,6 +25,41 @@ _SHELL_ONLY_KEYS = ("LOBSTER_LAMIN", "LOBSTER_LAMIN_INSTANCE")
 _PROJECT_KEYS = "_project_applied"
 _START_KEYS = "_start_applied"
 
+# The names `lobster init` writes into a project's .env files: each provider's key
+# variables (_PROVIDER_ENV_KEYS in lobster/ui/bridge/init_adapter.py), the Ollama
+# settings of provider_setup.py, NCBI_API_KEY, and Lobster's and Omics-OS's own
+# settings. An MCP run reads only these from a project, so a key the file holds for
+# another tool never reaches the run; tests/unit/mcp/test_run_project_env.py fails
+# when init writes a name this misses.
+_LOBSTER_WRITTEN_NAMES = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "AWS_BEDROCK_ACCESS_KEY",
+        "AWS_BEDROCK_SECRET_ACCESS_KEY",
+        "AZURE_AI_CREDENTIAL",
+        "AZURE_AI_ENDPOINT",
+        "GOOGLE_API_KEY",
+        "NCBI_API_KEY",
+        "NEBIUS_API_KEY",
+        "OLLAMA_API_KEY",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_DEFAULT_MODEL",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+    }
+)
+
+
+def _lobster_written(name: str) -> bool:
+    """Whether ``lobster init`` writes *name* into a project's .env files."""
+    return name in _LOBSTER_WRITTEN_NAMES or name.startswith(("LOBSTER_", "OMICS_OS_"))
+
+
+def _dotenv_disabled() -> bool:
+    """python-dotenv's own off switch, which load_dotenv obeys (same test)."""
+    value = os.environ.get("PYTHON_DOTENV_DISABLED", "").casefold()
+    return value in {"1", "true", "t", "yes", "y"}
+
 
 def _is_project_workspace(workspace: Path) -> bool:
     """A workspace holding a ``project.json`` (a regular file, never a link) is a project.
@@ -223,7 +258,9 @@ class Settings:
         """
         return getattr(self, name, default)
 
-    def _load_credentials(self, workspace_path: Path = None) -> None:
+    def _load_credentials(
+        self, workspace_path: Path = None, lobster_names_only: bool = False
+    ) -> None:
         """
         Load credentials from the ``.env`` files, in this order (highest first):
 
@@ -241,6 +278,8 @@ class Settings:
 
         Args:
             workspace_path: Optional explicit workspace path. If None, uses CWD.
+            lobster_names_only: Take from the workspace ``.env`` files only the names
+                ``lobster init`` writes (``_lobster_written``); an MCP run in a project.
 
         Example:
             >>> settings._load_credentials()  # Load from CWD
@@ -253,7 +292,7 @@ class Settings:
         """
         shell = {k: os.environ[k] for k in _SHELL_ONLY_KEYS if k in os.environ}
         try:
-            self._load_credential_files(workspace_path)
+            self._load_credential_files(workspace_path, lobster_names_only)
         finally:
             for key in _SHELL_ONLY_KEYS:
                 if key in shell:
@@ -261,7 +300,9 @@ class Settings:
                 else:
                     os.environ.pop(key, None)
 
-    def _load_credential_files(self, workspace_path: Path = None) -> None:
+    def _load_credential_files(
+        self, workspace_path: Path = None, lobster_names_only: bool = False
+    ) -> None:
         from lobster.config.global_config import (
             get_global_credentials_path,
             global_credentials_exist,
@@ -299,11 +340,16 @@ class Settings:
         candidates = (
             (project_env, workspace_env) if is_project else (workspace_env, cwd_env)
         )
+        # A run that may read only a project's own files reads none when the folder is
+        # not a project (its project.json went away since the run was asked for).
+        only_project = lobster_names_only and not is_project
+        if only_project:
+            candidates = ()
 
         # override=False keeps what is already set (a real export, or a .env loaded
         # above it), so the .env next to the installation only fills gaps. It is
         # read before the global file because it has always ranked above it.
-        if not is_project and not workspace_env.exists():
+        if not is_project and not only_project and not workspace_env.exists():
             upward = find_dotenv()
             if upward:
                 before = {k: os.environ.get(k) for k in dotenv_values(upward)}
@@ -323,18 +369,31 @@ class Settings:
                 # A reload for a named workspace is the project's; the no-workspace load
                 # is the server's own start.
                 self._load_workspace_credentials(
-                    env_file, _PROJECT_KEYS if workspace_path else _START_KEYS
+                    env_file,
+                    _PROJECT_KEYS if workspace_path else _START_KEYS,
+                    lobster_names_only,
                 )
                 logger.debug(f"Loaded workspace credentials from {env_file}")
                 if not is_project:
                     break
 
-    def _load_workspace_credentials(self, env_file: Path, store: str) -> None:
+    def _load_workspace_credentials(
+        self, env_file: Path, store: str, lobster_names_only: bool = False
+    ) -> None:
         """Load an overriding ``.env``; remember what each key replaced so a later load
         can put it back (one process may serve several projects in turn)."""
-        names = [k for k, v in dotenv_values(env_file).items() if v is not None]
+        values = dotenv_values(env_file)  # what load_dotenv(override=True) sets
+        names = [
+            k
+            for k, v in values.items()
+            if v is not None and (not lobster_names_only or _lobster_written(k))
+        ]
         before = {k: os.environ.get(k) for k in names}
-        load_dotenv(env_file, override=True)
+        if not lobster_names_only:
+            load_dotenv(env_file, override=True)
+        elif not _dotenv_disabled():
+            for key in names:
+                os.environ[key] = values[key]
         for key in names:
             if key in os.environ:
                 self._remember(store, key, os.environ[key], before[key])
@@ -366,7 +425,9 @@ class Settings:
                 os.environ[key] = previous
         self.__dict__[store] = {}
 
-    def reload_credentials(self, workspace_path: Path) -> None:
+    def reload_credentials(
+        self, workspace_path: Path, lobster_names_only: bool = False
+    ) -> None:
         """
         Reload credentials for a specific workspace.
 
@@ -376,11 +437,13 @@ class Settings:
 
         Args:
             workspace_path: Path to the workspace directory
+            lobster_names_only: Take from its ``.env`` files only the names
+                ``lobster init`` writes (an MCP run in a project)
 
         Example:
             >>> settings.reload_credentials(Path("/new/workspace"))
         """
-        self._load_credentials(workspace_path)
+        self._load_credentials(workspace_path, lobster_names_only)
         # Refresh API key attributes
         self.AWS_BEDROCK_ACCESS_KEY = os.environ.get("AWS_BEDROCK_ACCESS_KEY", "")
         self.AWS_BEDROCK_SECRET_ACCESS_KEY = os.environ.get(

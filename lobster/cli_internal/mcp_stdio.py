@@ -2405,13 +2405,17 @@ def _build_client(
     **kwargs: Any,
 ) -> Any:
     """The engine client of one run, its session in *workspace*, which
-    _prepare_session has given the run's provider file and expert list."""
+    _prepare_session has given the run's provider file and expert list. A run
+    in a project uses the project's keys, wherever the server was started."""
     from lobster.cli_internal.commands.heavy.session_infra import (
         init_client_or_raise_startup_diagnostic,
     )
 
     return init_client_or_raise_startup_diagnostic(
-        workspace=workspace, interactive=INTERACTIVE, **kwargs
+        workspace=workspace,
+        interactive=INTERACTIVE,
+        credentials_from=project_ws,
+        **kwargs,
     )
 
 
@@ -2840,9 +2844,10 @@ def enter_start_folder(workspace: Optional[Path]) -> Path:
     current folder) the working folder, else *workspace* itself; returns the
     resolved start folder. Called once, as the server starts.
 
-    A run of this build takes its provider file and .env from the working
-    folder, so this makes ``--workspace`` and a start in a subfolder the same
-    as a start in the project folder. Values read later relative to the
+    A run of this build takes its provider file from the working folder (a run
+    in a project reads that project's .env files itself), so this makes
+    ``--workspace`` and a start in a subfolder the same as a start in the
+    project folder. Values read later relative to the
     first working folder are made absolute first."""
     from lobster.core.runtime.workspace import find_project_root
 

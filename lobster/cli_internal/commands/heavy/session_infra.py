@@ -710,15 +710,22 @@ def validate_startup_or_raise_startup_diagnostic(
     workspace: Optional[Path] = None,
     *,
     provider_override: Optional[str] = None,
+    credentials_from: Optional[Path] = None,
 ) -> Path:
-    """Validate provider startup prerequisites without binding a UI renderer."""
+    """Validate provider startup prerequisites without binding a UI renderer.
+
+    *credentials_from*: the project workspace of an MCP run, whose session folder
+    lies outside it; its keys are read, only the names ``lobster init`` writes."""
     from lobster.config.settings import settings
     from lobster.core.config_resolver import ConfigResolver, ConfigurationError
     from lobster.core.workspace import resolve_workspace
 
     workspace_path = resolve_workspace(explicit_path=workspace, create=True)
     _maybe_seed_workspace_provider_config(workspace_path)
-    settings.reload_credentials(workspace_path)
+    if credentials_from is None:
+        settings.reload_credentials(workspace_path)
+    else:
+        settings.reload_credentials(credentials_from, lobster_names_only=True)
 
     resolver = ConfigResolver.get_instance(workspace_path)
     try:
@@ -781,6 +788,7 @@ def init_client_or_raise_startup_diagnostic(
     model_override: Optional[str] = None,
     session_id: Optional[str] = None,
     interactive: bool = True,
+    credentials_from: Optional[Path] = None,
 ) -> "AgentClient":
     """Initialize either local or cloud client, raising structured diagnostics."""
     from lobster.core.config_resolver import ConfigurationError
@@ -789,6 +797,7 @@ def init_client_or_raise_startup_diagnostic(
     workspace_path = validate_startup_or_raise_startup_diagnostic(
         workspace=workspace,
         provider_override=provider_override,
+        credentials_from=credentials_from,
     )
 
     # Check for cloud API key

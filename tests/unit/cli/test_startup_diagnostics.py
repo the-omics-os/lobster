@@ -310,7 +310,7 @@ def test_init_client_go_tui_mode_skips_terminal_callbacks(tmp_path, monkeypatch)
     monkeypatch.setattr(
         session_infra,
         "validate_startup_or_raise_startup_diagnostic",
-        lambda workspace=None, provider_override=None: tmp_path,
+        lambda workspace=None, provider_override=None, credentials_from=None: tmp_path,
     )
     monkeypatch.setattr("lobster.ui.setup_logging", lambda *args, **kwargs: None)
     monkeypatch.setattr(

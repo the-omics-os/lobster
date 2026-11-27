@@ -357,38 +357,34 @@ def test_the_overview_imports_nothing_of_the_engine(project):
     assert done.stdout.strip() == ""
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the engine loads only <ws>/.env, then searches upward from its own "
-    "code; the project .env rule (<ws>/.env, then <ws>/../.env) comes with the "
-    "credentials loader of a later change",
-)
 def test_a_server_started_elsewhere_finds_the_project_key(
     project, tmp_path, monkeypatch
 ):
     """The key the overview reports in the project folder's .env reaches the
-    run's engine client, whatever folder the server was started in."""
+    run's engine, whatever folder the server was started in."""
     from lobster.cli_internal import mcp_stdio
+    from lobster.config.settings import settings
+    from lobster.core.config_resolver import ConfigResolver
 
     seen = {}
 
-    def client(**kwargs):
+    def resolver(*args, **kwargs):
         import os
 
         seen["key"] = os.environ.get(KEY)
         raise RuntimeError("stop after the key was read")
 
-    from lobster.cli_internal.commands.heavy import session_infra
-
-    monkeypatch.setattr(
-        session_infra, "init_client_or_raise_startup_diagnostic", client
-    )
+    monkeypatch.setattr(ConfigResolver, "get_instance", resolver)
+    monkeypatch.setattr("lobster.config.settings.find_dotenv", lambda: "")
     (project.root / ".env").write_text(f"{KEY}={SECRET}\n")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    with pytest.raises(RuntimeError):
-        mcp_stdio._build_client(tmp_path / "session", project.workspace, None)
+    try:
+        with pytest.raises(RuntimeError):
+            mcp_stdio._build_client(tmp_path / "session", project.workspace, None)
+    finally:
+        settings.reload_credentials(tmp_path / "nowhere")  # undo the project's keys
     assert seen["key"] == SECRET
 
 

@@ -42,7 +42,7 @@ def _marker(workspace, client):
 def _mcp_client(workspace, **kwargs):
     """The client the MCP run path builds, with the engine's startup stubbed out."""
 
-    def build(workspace=None, interactive=True, **more):
+    def build(workspace=None, interactive=True, credentials_from=None, **more):
         return AgentClient(workspace_path=workspace, **more)
 
     with patch.object(session_infra, "init_client_or_raise_startup_diagnostic", build):
