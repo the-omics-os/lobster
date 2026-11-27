@@ -1,16 +1,15 @@
 """Golden fixture — the exact byte-shape the npm CLI writes.
 
-``golden/credentials_v2.json`` mirrors what the real npm ``@omicsos/lobster``
-writes (token VALUES scrubbed to PLACEHOLDERs; structure/keys/indentation kept).
-Two guards:
+``golden/credentials_v2.json`` mirrors what the real npm CLI writes (token
+VALUES scrubbed to PLACEHOLDERs; structure/keys/indentation kept). It is the
+realistic omics-os CLI sign-in that Lobster must ignore:
 
-  1. **Contract fields present** — every field Python's read/refresh/sync path
-     depends on exists in the golden. If npm ever drops one, this fails.
-  2. **Python parses it** — loading the golden through Python's reader yields the
-     active profile, aliases cli_token→access_token, and reports the tenant host.
+  1. **Realistic** — the golden keeps the fields the npm CLI writes.
+  2. **Ignored** — with the golden as the sign-in, Lobster has no key, sends to
+     the platform host only, and leaves the file byte-identical.
 
 Regenerate against a THROWAWAY tenant when npm's format changes:
-  * ``lobster cloud login`` (npm) → copy ``~/.config/omics-os/credentials.json``
+  * ``omics-os login`` (npm) → copy ``~/.config/omics-os/credentials.json``
   * scrub every ``cli_token``/``refresh_token``/``credential_id``/``user_id``/
     ``org_id``/``email`` value to a ``*_PLACEHOLDER_*`` string
   * keep keys, nesting, and value FORMAT (e.g. ISO-Z timestamps) intact
@@ -27,7 +26,7 @@ pytestmark = pytest.mark.integration
 
 GOLDEN = Path(__file__).parent / "golden" / "credentials_v2.json"
 
-# Fields Python's read/refresh/sync path relies on, per profile.
+# Fields the npm CLI writes per profile; they keep the sentinel realistic.
 _REQUIRED_PROFILE_FIELDS = {
     "credential_type",
     "cli_token",
@@ -67,24 +66,18 @@ def test_golden_tokens_are_scrubbed():
         assert "PLACEHOLDER" in prof["refresh_token"]
 
 
-def test_python_reads_golden_active_profile(tmp_path, monkeypatch):
-    """Python's reader parses npm's byte-shape and resolves the active profile."""
+def test_python_ignores_the_golden_sign_in(tmp_path, monkeypatch):
+    """Lobster reads no key or endpoint from the npm CLI's sign-in."""
     from lobster.config import credentials
 
-    cred_dir = tmp_path / "omics-os"
-    cred_dir.mkdir(parents=True)
-    target = cred_dir / "credentials.json"
+    target = tmp_path / ".config" / "omics-os" / "credentials.json"
+    target.parent.mkdir(parents=True)
     target.write_text(GOLDEN.read_text(encoding="utf-8"), encoding="utf-8")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
-    monkeypatch.setattr(credentials, "CREDENTIALS_FILE", target)
+    before = target.read_bytes()
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
     monkeypatch.delenv("OMICS_OS_ENDPOINT", raising=False)
 
-    view = credentials.load_active_profile()
-    assert view is not None
-    # active is databiomix → tenant endpoint + its cli_token aliased to access_token
-    assert view["endpoint"] == "https://databiomix.omics-os.com"
-    assert view["access_token"] == view["cli_token"]
-    assert credentials.get_endpoint() == "https://databiomix.omics-os.com"
-    # token not expired (far-future golden) → get_api_key returns it without refresh
-    assert credentials.get_api_key() == view["cli_token"]
+    assert credentials.get_api_key() is None
+    assert credentials.get_endpoint() == "https://app.omics-os.com"
+    assert target.read_bytes() == before

@@ -127,16 +127,10 @@ def _detect_existing_state() -> dict:
     }
 
     try:
-        from lobster.config.credentials import load_active_profile
+        from lobster.config.credentials import get_api_key
 
-        creds = load_active_profile()
-        if creds and creds.get("access_token"):
-            state["has_cloud_credentials"] = True
-            state["cloud_user_email"] = creds.get("email")
-            state["cloud_tier"] = creds.get("tier")
-            from lobster.config.credentials import is_token_expired
-
-            state["cloud_token_expired"] = is_token_expired()
+        # Lobster's own key; the email, tier and expiry fields stay empty.
+        state["has_cloud_credentials"] = get_api_key() is not None
     except Exception:
         pass
 

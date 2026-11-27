@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -299,63 +298,10 @@ func startOAuthFlow(params *oauthFlowParams, cancel <-chan struct{}) tea.Cmd {
 // Credential persistence
 // ---------------------------------------------------------------------------
 
-// saveOAuthCredentials writes OAuth credentials to
-// ~/.config/omics-os/credentials.json with mode 0600.
-// This mirrors the Python credentials.py format.
-//
-// Note: email, tier, and user_id are NOT populated here — they come from
-// gateway validation which happens in Python postprocessing.
+// saveOAuthCredentials saves nothing: Lobster keeps only an Omics-OS Cloud API
+// key (OMICS_OS_API_KEY in its own settings) and never writes the omics-os
+// CLI's ~/.config/omics-os.
+// shortcut: nothing starts the browser flow that calls this; remove both in 1.3.3.
 func saveOAuthCredentials(msg oauthSucceededMsg) error {
-	configDir := filepath.Join(homeDir(), ".config", "omics-os")
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	if err := os.Chmod(configDir, 0700); err != nil {
-		return fmt.Errorf("chmod config dir: %w", err)
-	}
-
-	expiresIn := msg.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 3600
-	}
-
-	creds := map[string]interface{}{
-		"auth_mode":     "oauth",
-		"access_token":  msg.AccessToken,
-		"refresh_token": msg.RefreshToken,
-		"id_token":      msg.IDToken,
-		"endpoint":      msg.Endpoint,
-		"token_expiry":  time.Now().UTC().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339),
-	}
-
-	data, err := json.MarshalIndent(creds, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal credentials: %w", err)
-	}
-	data = append(data, '\n')
-
-	credPath := filepath.Join(configDir, "credentials.json")
-
-	f, err := os.OpenFile(credPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("open credentials file: %w", err)
-	}
-	defer f.Close()
-
-	if err := f.Chmod(0600); err != nil {
-		return fmt.Errorf("chmod credentials file: %w", err)
-	}
-	if _, err := f.Write(data); err != nil {
-		return fmt.Errorf("write credentials: %w", err)
-	}
-
-	return nil
-}
-
-// homeDir returns the user's home directory.
-func homeDir() string {
-	if h, err := os.UserHomeDir(); err == nil {
-		return h
-	}
-	return os.Getenv("HOME")
+	return errors.New("browser sign-in is not supported; enter an Omics-OS Cloud API key")
 }

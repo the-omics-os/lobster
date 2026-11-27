@@ -1,14 +1,17 @@
-"""E2E live smoke — real refresh + one real round-trip against app.omics-os.com.
+"""E2E live smoke — one real round-trip with a Lobster key against app.omics-os.com.
 
-GATED (``@pytest.mark.real_api`` → skipped unless ``--runreal``). Uses the
-developer's real credentials for a THROWAWAY test tenant. Run pre-release:
-    uv run pytest tests/integration/cred_compat/test_e2e_live_smoke.py --runreal -v
+GATED (``@pytest.mark.real_api`` → skipped unless ``--runreal``). Needs
+OMICS_OS_API_KEY for a THROWAWAY test tenant in the environment. Python runs
+with its own settings in a tmp XDG_CONFIG_HOME. Run pre-release:
+    OMICS_OS_API_KEY=<throwaway key> uv run pytest \
+        tests/integration/cred_compat/test_e2e_live_smoke.py --runreal -v
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from urllib.parse import urlparse
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -16,51 +19,31 @@ pytestmark = [pytest.mark.integration, pytest.mark.real_api]
 
 
 @pytest.fixture
-def real_creds_guard():
-    cred = Path.home() / ".config" / "omics-os" / "credentials.json"
-    if not cred.exists():
-        pytest.skip("No real credentials file — log in first (throwaway tenant).")
-    backup = cred.read_bytes()
-    try:
-        yield cred
-    finally:
-        cred.write_bytes(backup)
+def live_key():
+    key = (os.environ.get("OMICS_OS_API_KEY") or "").strip()
+    if not key:
+        pytest.skip("Set OMICS_OS_API_KEY to a throwaway tenant's key.")
+    return key
 
 
-def test_live_refresh_returns_token_and_pins_platform(real_creds_guard, monkeypatch):
-    """A real refresh against app.omics-os.com returns a token; verify the URL host."""
+def test_live_status_with_a_lobster_key(live_key, tmp_path):
+    env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path / "xdg"), "NO_COLOR": "1"}
+    env.pop("OMICS_OS_ENDPOINT", None)
+    res = subprocess.run(
+        [sys.executable, "-m", "lobster.cli", "cloud", "status"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        input="",
+        check=False,
+    )
+    assert res.returncode == 0, res.stdout[-300:] + res.stderr[-300:]
+    assert live_key not in res.stdout + res.stderr
+
+
+def test_live_get_api_key_returns_the_environment_key(live_key):
     from lobster.config import credentials
 
-    captured = {}
-    real_post = None
-
-    import httpx
-
-    orig_client = httpx.Client
-
-    class _SpyClient(orig_client):
-        def post(self, url, *a, **k):
-            captured.setdefault("urls", []).append(url)
-            return super().post(url, *a, **k)
-
-    monkeypatch.setattr(httpx, "Client", _SpyClient)
-
-    token = credentials.refresh_token()
-    if token is None:
-        pytest.skip(
-            "Token not refreshable in this tenant (may be api_key or already valid)."
-        )
-
-    # Every refresh POST must have gone to the platform host — never a tenant.
-    for url in captured.get("urls", []):
-        host = urlparse(url).hostname or ""
-        assert host == "app.omics-os.com", f"refresh hit non-platform host: {host}"
-
-
-def test_live_get_api_key_returns_usable_token(real_creds_guard):
-    from lobster.config import credentials
-
-    token = credentials.get_api_key()
-    assert token, "get_api_key returned nothing against the real logged-in file"
-    # omc_ (first-party) or omk_ (api key) or a Cognito access token — never empty.
-    assert isinstance(token, str) and len(token) > 10
+    assert credentials.get_api_key() == live_key

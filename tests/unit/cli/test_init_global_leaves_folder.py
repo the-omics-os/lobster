@@ -5,7 +5,6 @@ import typer
 from typer.testing import CliRunner
 
 from lobster.cli_internal.commands.heavy import init_commands
-from lobster.config import credentials
 
 pytestmark = pytest.mark.no_auto_config
 KEY = "omk_global_init_test"
@@ -22,10 +21,6 @@ def run_folder(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(folder)
     monkeypatch.setattr(global_config, "CONFIG_DIR", home / ".config/lobster")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", home / ".config/omics-os")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", home / ".config/omics-os/credentials.json"
-    )
     for name in (
         "OMICS_OS_API_KEY",
         "OMICS_OS_ENDPOINT",

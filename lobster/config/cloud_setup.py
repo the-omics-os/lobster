@@ -27,15 +27,15 @@ def rejected_key_message(server: str) -> str:
 
 
 OMICS_OS_AUTH_GUIDANCE = (
-    "Create an API key at https://app.omics-os.com/account.\n"
-    "Python local gateway: set OMICS_OS_API_KEY or use "
-    "lobster cloud login --api-key <key>.\n"
-    "Non-interactive local setup: lobster init --non-interactive --use-omics-os "
+    "Create an Omics-OS Cloud API key at https://app.omics-os.com/account, then "
+    "run: lobster cloud login --api-key <key> (or set OMICS_OS_API_KEY in your "
+    "shell).\n"
+    "Non-interactive setup: lobster init --non-interactive --use-omics-os "
     "--skip-extras --skip-ssl-test.\n"
-    "Alternative managed Cloud client (npm): npm install -g omics-os && "
-    "omics-os login --device.\n"
-    "Device login needs human browser approval; configure the Python "
-    "provider separately rather than assuming credential sharing."
+    f"Without an account, request access at {ACCESS_REQUEST_URL}\n"
+    "To work in Omics-OS Cloud from a terminal instead, use the omics-os CLI: "
+    "npm install -g omics-os && omics-os login --device (it keeps its own "
+    "sign-in)."
 )
 
 

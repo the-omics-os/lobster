@@ -41,10 +41,6 @@ def isolated_setup(monkeypatch, tmp_path):
     from lobster.config import global_config
 
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global-config")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "credentials")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "credentials" / "credentials.json"
-    )
     for name in (
         "OMICS_OS_API_KEY",
         "OMICS_OS_ENDPOINT",
@@ -80,6 +76,12 @@ def invoke_init(*options):
     )
 
 
+def lobster_saved_key():
+    from lobster.config import global_config
+
+    return global_config.get_global_credentials_path()
+
+
 def assert_supported_guidance(output):
     output = " ".join(output.split())  # Rich wraps lines at the console width
     assert "app.omics-os.com" in output
@@ -100,7 +102,7 @@ def assert_cloud_config(tmp_path, expected_key):
     assert KEY not in str(config)
 
 
-@pytest.mark.parametrize("route", ["explicit", "environment", "saved-profile"])
+@pytest.mark.parametrize("route", ["explicit", "environment", "saved-by-login"])
 def test_machine_cloud_setup_saves_actual_provider_without_prompts(
     route, monkeypatch, tmp_path, forbid_interactive_and_install
 ):
@@ -110,18 +112,32 @@ def test_machine_cloud_setup_saves_actual_provider_without_prompts(
         options = ["--use-omics-os"]
         if route == "environment":
             monkeypatch.setenv("OMICS_OS_API_KEY", KEY)
-        else:
-            credentials.save_credentials(
-                {
-                    "auth_mode": "api_key",
-                    "api_key": KEY,
-                    "endpoint": "https://app.omics-os.com",
-                }
-            )
+        else:  # what lobster cloud login --api-key saves
+            from lobster.config import global_config
+
+            global_config.save_global_credentials({"OMICS_OS_API_KEY": KEY})
     result = invoke_init(*options)
     assert result.exit_code == 0, result.output
     assert_cloud_config(tmp_path, KEY)
     assert KEY not in result.output
+
+
+def test_machine_cloud_setup_does_not_take_the_omics_os_cli_sign_in(
+    monkeypatch, tmp_path, forbid_interactive_and_install
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    sign_in = tmp_path / "home" / ".config" / "omics-os" / "credentials.json"
+    sign_in.parent.mkdir(parents=True)
+    sign_in.write_text(json.dumps({"auth_mode": "api_key", "api_key": KEY}))
+    before = sign_in.read_bytes()
+    study = tmp_path / "study"  # init refuses a folder that holds the home
+    study.mkdir()
+    monkeypatch.chdir(study)
+    result = invoke_init("--use-omics-os")
+    assert result.exit_code != 0
+    assert "--omics-os-key" in result.output
+    assert not (study / ".env").exists()
+    assert sign_in.read_bytes() == before
 
 
 @pytest.mark.parametrize("key", [None, "", "   "])
@@ -214,7 +230,7 @@ def test_python_login_without_key_only_redirects_without_browser_or_listener(
     assert result.exit_code != 0
     assert_supported_guidance(result.output)
     assert "--api-key" in result.output
-    assert not credentials.CREDENTIALS_FILE.exists()
+    assert not lobster_saved_key().exists()
 
 
 def test_init_login_helper_returns_false_with_supported_guidance_only(
@@ -230,7 +246,7 @@ def test_init_login_helper_returns_false_with_supported_guidance_only(
     monkeypatch.setattr(http.server, "HTTPServer", forbidden)
     assert cloud_commands.attempt_login_for_init() is False
     assert_supported_guidance(capsys.readouterr().out)
-    assert not credentials.CREDENTIALS_FILE.exists()
+    assert not lobster_saved_key().exists()
 
 
 def test_provider_help_explains_supported_local_and_device_paths():
@@ -249,19 +265,14 @@ def test_provider_missing_key_error_does_not_offer_bare_browser_login():
     assert "OMICS_OS_API_KEY" in str(error.value)
 
 
-def test_manual_api_key_login_preserves_v2_profiles_and_uses_allowed_endpoint(
-    monkeypatch,
+def test_manual_api_key_login_saves_lobsters_key_and_leaves_the_cli_sign_in(
+    monkeypatch, tmp_path
 ):
-    credentials.save_credentials(
-        {
-            "version": 2,
-            "active_profile": "default",
-            "profiles": {
-                "default": {"auth_mode": "api_key", "api_key": "omk_old"},
-                "other": {"auth_mode": "api_key", "api_key": "omk_sibling"},
-            },
-        }
-    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sign_in = tmp_path / ".config" / "omics-os" / "credentials.json"
+    sign_in.parent.mkdir(parents=True)
+    sign_in.write_text(json.dumps({"auth_mode": "api_key", "api_key": "omk_cli"}))
+    before = sign_in.read_bytes()
     requests = []
     real_client = httpx.Client
 
@@ -281,9 +292,8 @@ def test_manual_api_key_login_preserves_v2_profiles_and_uses_allowed_endpoint(
     assert len(requests) == 1
     assert str(requests[0].url) == "https://app.omics-os.com/api/v1/gateway/usage"
     assert requests[0].headers["Authorization"] == f"Bearer {KEY}"
-    raw = credentials.load_credentials()
-    assert raw["profiles"]["default"]["api_key"] == KEY
-    assert raw["profiles"]["other"]["api_key"] == "omk_sibling"
+    assert f"OMICS_OS_API_KEY={KEY}" in lobster_saved_key().read_text().splitlines()
+    assert sign_in.read_bytes() == before
     assert KEY not in result.output
 
 
@@ -297,7 +307,7 @@ def test_manual_api_key_login_refuses_untrusted_endpoint_before_http(monkeypatch
     result = CliRunner().invoke(cloud_commands.cloud_app, ["login", "--api-key", KEY])
     assert result.exit_code != 0
     assert "allowlist" in result.output
-    assert not credentials.CREDENTIALS_FILE.exists()
+    assert not lobster_saved_key().exists()
 
 
 def init_kwargs():
@@ -638,7 +648,10 @@ def test_python_cloud_login_help_describes_supported_paths_not_automatic_oauth()
     result = CliRunner().invoke(app, ["cloud", "login", "--help"])
     assert result.exit_code == 0
     output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
-    assert_supported_guidance(output)
+    output = " ".join(output.split())
+    assert "app.omics-os.com/account" in output
+    assert "credentials.env" in output
+    assert "omics-os CLI" in output  # whose sign-in stays its own
     assert "opens a browser for OAuth" not in output
 
 

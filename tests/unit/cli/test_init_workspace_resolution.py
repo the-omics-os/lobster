@@ -18,16 +18,12 @@ KEY = "sk-ant-synthetic-test-key"  # nosec B105 - synthetic value
 
 @pytest.fixture
 def dirs(monkeypatch, tmp_path):
-    from lobster.config import credentials, global_config
+    from lobster.config import global_config
 
     proj = tmp_path / "proj"
     proj.mkdir()
     monkeypatch.chdir(proj)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "creds")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "creds" / "credentials.json"
-    )
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
     for name in (
         "OMICS_OS_API_KEY",

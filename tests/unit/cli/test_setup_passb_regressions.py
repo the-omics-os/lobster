@@ -21,10 +21,6 @@ KEY = "omk_passb_synthetic"
 def isolated(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "profiles")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "profiles/credentials.json"
-    )
     monkeypatch.setattr(init_commands, "console", Console(width=2000))
     for name in (
         "OMICS_OS_API_KEY",

@@ -52,7 +52,7 @@ def _refused(res) -> bool:
 @pytest.mark.parametrize("poison", _GENUINE_POISON)
 def test_poisoned_endpoint_fails_closed(isolated_home, cred_factory, command, poison):
     """Genuine poison → command refuses, no traceback, no send."""
-    isolated_home.write(cred_factory.v2_single())
+    isolated_home.save_lobster_key("omk_TESTKEYxxxxxxxxxxxxxxxxxxxxxx")
     res = isolated_home.run_cli(command, endpoint_override=poison)
     assert (
         "Traceback" not in res.stderr
@@ -71,13 +71,9 @@ def test_no_httpx_call_on_poisoned_endpoint_provider(
     This is the worst site — the default `lobster chat` path. A poisoned endpoint
     must raise before any client is constructed / any byte is sent.
     """
-    from lobster.config import credentials
     from lobster.config.endpoint_policy import EndpointPolicyError
 
-    cred_dir = tmp_path / "omics-os"
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
-    monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_dir / "credentials.json")
-    credentials.save_credentials(cred_factory.v2_single())
+    monkeypatch.setenv("OMICS_OS_API_KEY", "omk_TESTKEYxxxxxxxxxxxxxxxxxxxxxx")
     monkeypatch.setenv("OMICS_OS_ENDPOINT", "https://app.omics-os.com@evil.com")
 
     from lobster.config.providers.omics_os_provider import OmicsOSProvider

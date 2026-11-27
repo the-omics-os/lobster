@@ -137,17 +137,11 @@ def status() -> None:
 
     # Omics-OS Cloud
     try:
-        from lobster.config.credentials import load_active_profile
+        from lobster.config.credentials import get_api_key
 
-        cloud_creds = load_active_profile()
-        if cloud_creds:
-            mode = cloud_creds.get("auth_mode", "?")
-            email = cloud_creds.get("email", "")
-            label = f" ({email})" if email else ""
+        if get_api_key():
             table.add_row(
-                "omics-os",
-                mode,
-                h("[green]configured{label}[/green]").format(label=label),
+                "omics-os", h("API key (env)"), h("[green]configured[/green]")
             )
         else:
             table.add_row("omics-os", "—", h("[dim]not configured[/dim]"))

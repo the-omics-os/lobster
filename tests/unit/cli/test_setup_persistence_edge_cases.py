@@ -11,7 +11,6 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from lobster.cli_internal.commands.heavy import init_commands
-from lobster.config import credentials
 from lobster.config.workspace_config import WorkspaceProviderConfig
 
 pytestmark = pytest.mark.no_auto_config
@@ -24,10 +23,6 @@ def isolated_setup(monkeypatch, tmp_path):
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global-config")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "credentials")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "credentials/credentials.json"
-    )
     for name in (
         "OMICS_OS_API_KEY",
         "OMICS_OS_ENDPOINT",

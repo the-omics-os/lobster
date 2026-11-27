@@ -15,7 +15,7 @@ KEY = "sk-ant-synthetic-test-key"  # nosec B105 - synthetic value
 
 @pytest.fixture
 def dirs(monkeypatch, tmp_path):
-    from lobster.config import credentials, global_config
+    from lobster.config import global_config
 
     home = tmp_path / "home"
     home.mkdir()
@@ -24,10 +24,6 @@ def dirs(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(work)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "creds")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "creds" / "credentials.json"
-    )
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
     monkeypatch.setattr(
         "lobster.cli_internal.provider_hint.lobster_path", lambda: LOBSTER

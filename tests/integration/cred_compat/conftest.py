@@ -1,16 +1,18 @@
-"""Fixtures for CRED_COMPAT_V2 E2E tests.
+"""Fixtures for the Omics-OS Cloud key E2E tests.
+
+Lobster keeps its key as OMICS_OS_API_KEY in its own credentials.env and never
+reads or writes the omics-os CLI's sign-in (~/.config/omics-os/credentials.json).
 
 Provides:
   * ``fake_gateway``    — stdlib recording HTTP server standing in for the cloud.
   * ``attacker_server`` — a SECOND recording server; the exfil gate asserts it
                           receives ZERO requests under poisoned-endpoint variants.
-  * ``cred_factory``    — builds the 5 credential shapes (V1 oauth/apikey,
-                          V2 single/multi, malformed) with PLACEHOLDER tokens.
-  * ``isolated_home``   — a tmp HOME with a ``write(shape)`` helper; running the
-                          real ``lobster`` CLI under it reads/writes the tmp
-                          credentials file, not the developer's real one.
-  * ``run_cli``         — subprocess runner for ``python -m lobster.cli`` under
-                          the isolated env.
+  * ``cred_factory``    — the 5 shapes the omics-os CLI's sign-in has had (V1
+                          oauth/apikey, V2 single/multi, malformed), PLACEHOLDER
+                          tokens; Lobster must ignore every one.
+  * ``isolated_home``   — a tmp HOME: ``write(shape)`` plants an omics-os CLI
+                          sign-in, ``save_lobster_key(key)`` writes Lobster's own
+                          credentials.env, ``run_cli`` runs the real ``lobster``.
 
 NO real tokens. NO live network — the servers are localhost stdlib.
 """
@@ -281,7 +283,17 @@ class _IsolatedHome:
         self.workspace = tmp_path / "workspace"
         for p in (self.home, self.xdg_config, self.xdg_cache, self.workspace):
             p.mkdir(parents=True, exist_ok=True)
+        # The omics-os CLI's sign-in; Lobster must leave it byte-identical.
         self.cred_file = self.home / ".config" / "omics-os" / "credentials.json"
+        # Lobster's own settings (XDG_CONFIG_HOME/lobster on Unix).
+        self.lobster_saved = self.xdg_config / "lobster" / "credentials.env"
+
+    def save_lobster_key(self, key: str, *other_lines: str) -> Path:
+        self.lobster_saved.parent.mkdir(parents=True, exist_ok=True)
+        lines = [*other_lines, f"OMICS_OS_API_KEY={key}"]
+        self.lobster_saved.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.chmod(self.lobster_saved, 0o600)
+        return self.lobster_saved
 
     def write(self, shape: dict) -> Path:
         self.cred_file.parent.mkdir(parents=True, exist_ok=True)

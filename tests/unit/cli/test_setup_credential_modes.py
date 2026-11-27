@@ -21,7 +21,6 @@ KEY = "synthetic-mode-test-key"
 def isolated(monkeypatch, tmp_path):
     # Resolve at call time: the CLI decomposition tests reload these modules.
     global_config = importlib.import_module("lobster.config.global_config")
-    credentials = importlib.import_module("lobster.config.credentials")
     oauth_store = importlib.import_module("lobster.config.auth.oauth_store")
     init_commands = importlib.import_module(
         "lobster.cli_internal.commands.heavy.init_commands"
@@ -33,10 +32,6 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(i18n, "_LANG", "en")
     monkeypatch.setattr(i18n, "_SOURCE", "default")
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "profiles")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "profiles/credentials.json"
-    )
     monkeypatch.setattr(oauth_store, "AUTH_DIR", tmp_path / "oauth")
     monkeypatch.setattr(init_commands, "console", Console(width=2000))
     monkeypatch.setattr(uv_tool_env, "is_uv_tool_env", lambda: False)
@@ -110,13 +105,12 @@ class ObservedStream:
         "workspace-bridge",
         "global-env",
         "oauth-json",
-        "v2-json",
     ],
 )
 def test_each_writer_is_private_before_first_write_and_after_save(
     writer, existing, monkeypatch, tmp_path
 ):
-    from lobster.config import credentials, global_config
+    from lobster.config import global_config
     from lobster.config.auth import oauth_store
     from lobster.ui.bridge import init_adapter
 
@@ -126,7 +120,6 @@ def test_each_writer_is_private_before_first_write_and_after_save(
         "global-json": global_config.CONFIG_DIR / global_config.CONFIG_FILE_NAME,
         "workspace-json": tmp_path / ".lobster_workspace/provider_config.json",
         "oauth-json": oauth_store.AUTH_DIR / "synthetic.json",
-        "v2-json": credentials.CREDENTIALS_FILE,
     }
     path = paths[writer]
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,8 +127,6 @@ def test_each_writer_is_private_before_first_write_and_after_save(
         path.write_text("legacy synthetic contents\n")
         path.chmod(0o644)
     targets = {path}
-    if writer == "v2-json":
-        targets.add(path.with_suffix(f".tmp.{os.getpid()}"))
     modes = []
     original_open, original_fdopen = io.open, os.fdopen
 
@@ -162,12 +153,10 @@ def test_each_writer_is_private_before_first_write_and_after_save(
         init_adapter._write_workspace_env(path, [f"OMICS_OS_API_KEY={KEY}"])
     elif writer == "global-env":
         global_config.save_global_credentials({"OMICS_OS_API_KEY": KEY})
-    elif writer == "oauth-json":
+    else:
         oauth_store.save(
             oauth_store.OAuthCredentials(KEY, "synthetic-refresh", 1, "synthetic")
         )
-    else:
-        credentials.save_credentials({"api_key": KEY})
     assert modes, "the real data-writing boundary was not observed"
     assert set(modes) == {0o600}, f"{writer}: write modes {modes}"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600

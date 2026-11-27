@@ -8,7 +8,7 @@ the slots into env names. These tests pin that contract offline.
 import pytest
 from dotenv import dotenv_values
 
-from lobster.config import credentials, global_config
+from lobster.config import global_config
 from lobster.config.providers.registry import ProviderRegistry
 from lobster.ui.bridge import init_adapter
 from lobster.ui.wizard.manifest import _PROVIDER_CREDENTIALS
@@ -33,10 +33,6 @@ def test_written_keys_configure_the_engine_provider(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "omics-os")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "omics-os" / "credentials.json"
-    )
     result = {"provider": provider, "agents": []}
     for slot, field in zip(SLOTS, _PROVIDER_CREDENTIALS[provider]):
         result[slot] = (

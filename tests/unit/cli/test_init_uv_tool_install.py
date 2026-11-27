@@ -16,7 +16,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from lobster.cli_internal.commands.heavy import init_commands
-from lobster.config import credentials, global_config
+from lobster.config import global_config
 from lobster.core import uv_tool_env
 
 pytestmark = pytest.mark.no_auto_config
@@ -28,10 +28,6 @@ PYTHON = f"{sys.version_info[0]}.{sys.version_info[1]}"
 def tool_env(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
-    monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "profiles")
-    monkeypatch.setattr(
-        credentials, "CREDENTIALS_FILE", tmp_path / "profiles/credentials.json"
-    )
     monkeypatch.setattr(init_commands, "console", Console(width=2000))
     for name in ("OMICS_OS_API_KEY", "LOBSTER_LLM_PROVIDER", "LOBSTER_WORKSPACE"):
         monkeypatch.delenv(name, raising=False)

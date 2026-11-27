@@ -18,7 +18,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnostic,
     StartupDiagnosticError,
 )
-from lobster.config import credentials, global_config
+from lobster.config import global_config
 from lobster.config.workspace_config import WorkspaceProviderConfig
 from lobster.core import projects
 from tests.unit.mcp.test_run import (  # noqa: F401
@@ -136,34 +136,18 @@ def test_a_run_from_elsewhere_says_so_and_how_to_fix_it(engine, project, data):
     assert mcp_overview.lobster_command("init", "--global") in message
 
 
-@pytest.mark.parametrize(
-    "provider, saved, said",
-    [
-        ("omics-os", True, True),
-        ("omics-os", False, False),
-        # another provider's missing key: an old omics-os login is not the fix
-        ("anthropic", True, False),
-    ],
-)
-def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
-    engine, tmp_path, data, monkeypatch, provider, saved, said
+@pytest.mark.parametrize("provider", ["omics-os", "anthropic"])
+def test_a_run_without_a_key_ignores_the_omics_os_cli_sign_in(
+    engine, tmp_path, data, monkeypatch, provider
 ):
     monkeypatch.setenv("LOBSTER_LLM_PROVIDER", provider)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
-    login = tmp_path / "home" / "omics-os.json"
-    monkeypatch.setattr(credentials, "CREDENTIALS_FILE", login)
-    if saved:  # expired, no refresh token: the run got no key from it
-        login.parent.mkdir(parents=True, exist_ok=True)
-        login.write_text(
-            json.dumps(
-                {
-                    "auth_mode": "oauth",
-                    "access_token": "omc_expired_000",
-                    "token_expiry": "2026-01-01T00:00:00+00:00",
-                }
-            )
-        )
+    home = tmp_path / "home"
+    sign_in = home / ".config" / "omics-os" / "credentials.json"
+    sign_in.parent.mkdir(parents=True)
+    sign_in.write_text(json.dumps({"auth_mode": "oauth", "access_token": "omc_000"}))
+    before = sign_in.read_bytes()
     _opened, script = engine
     script["raise"] = StartupDiagnosticError(
         StartupDiagnostic(
@@ -180,9 +164,8 @@ def test_a_run_whose_saved_login_cannot_be_used_says_to_log_in_again(
     message = wait_terminal(server, run["run_id"])["error"]["message"]
     assert message.startswith(f"Missing credentials for provider '{provider}'. ")
     assert mcp_overview.key_fix() in message
-    line = mcp_overview.lobster_command("cloud", "login")
-    assert (line in message) is said
-    assert "omc_expired_000" not in message
+    assert "omc_000" not in message
+    assert sign_in.read_bytes() == before
 
 
 def test_a_run_without_a_provider_in_no_project_gets_the_fix(engine, tmp_path, data):

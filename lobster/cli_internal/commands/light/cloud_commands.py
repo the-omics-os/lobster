@@ -33,6 +33,18 @@ cloud_app = typer.Typer(
 console = Console()
 
 
+def _saved_key() -> Optional[str]:
+    """The OMICS_OS_API_KEY in Lobster's global credentials.env, if any."""
+    from dotenv import dotenv_values
+
+    from lobster.config.global_config import get_global_credentials_path
+
+    path = get_global_credentials_path()
+    if not path.is_file():
+        return None
+    return (dotenv_values(path).get("OMICS_OS_API_KEY") or "").strip() or None
+
+
 def _is_secure_endpoint(endpoint: str) -> bool:
     """Check that the endpoint is HTTPS or localhost (for dev)."""
     parsed = urlparse(endpoint)
@@ -121,7 +133,7 @@ def _print_login_success(data: dict) -> None:
 
 def _api_key_login(api_key: Optional[str]) -> None:
     """Authenticate with an API key (interactive prompt if not provided)."""
-    from lobster.config.credentials import _save_active_profile, get_endpoint
+    from lobster.config.credentials import get_api_key, get_endpoint
 
     if not api_key:
         api_key = typer.prompt(
@@ -149,30 +161,23 @@ def _api_key_login(api_key: Optional[str]) -> None:
     if data is None:
         raise typer.Exit(1)
 
-    creds = {
-        "auth_mode": "api_key",
-        "api_key": api_key,
-        "endpoint": endpoint,
-        "user_id": data.get("user_id", ""),
-        "email": data.get("email", ""),
-        "tier": data.get("tier", "free"),
-    }
+    from rich.markup import escape
 
-    # V2-safe write: merge into the active profile (preserves siblings). Clear
-    # stale omics_cli/oauth fields so the profile stays token-model-coherent.
-    _save_active_profile(
-        creds,
-        remove=(
-            "cli_token",
-            "credential_id",
-            "credential_type",
-            "access_token",
-            "refresh_token",
-            "id_token",
-            "token_expiry",
-        ),
-    )
+    from lobster.config.global_config import save_global_credentials
+
+    in_use, saved_before = get_api_key(), _saved_key()
+    path = save_global_credentials({"OMICS_OS_API_KEY": api_key}, append=True)
     _print_login_success(data)
+    console.print(h("[dim]Saved in {path}[/dim]").format(path=escape(str(path))))
+    if in_use and in_use not in (saved_before, api_key):
+        # The shell or this folder's .env sets another key, and it wins.
+        console.print(
+            h(
+                "[yellow]OMICS_OS_API_KEY is also set in your shell or in this "
+                "folder's .env, and that key is used first. Remove it there to "
+                "use the key Lobster saved.[/yellow]"
+            )
+        )
 
 
 def _browser_login() -> None:
@@ -194,15 +199,10 @@ def attempt_login_for_init() -> bool:
 @cloud_app.command()
 def account() -> None:
     """Show your Omics-OS Cloud account summary."""
-    from lobster.config.credentials import (
-        get_api_key,
-        get_endpoint,
-        load_active_profile,
-    )
+    from lobster.config.credentials import get_api_key, get_endpoint
 
-    creds = load_active_profile()
     api_key = get_api_key()
-    if not api_key or not creds:
+    if not api_key:
         console.print(
             h(
                 "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
@@ -212,10 +212,11 @@ def account() -> None:
         raise typer.Exit(0)
 
     endpoint = get_endpoint()
-    email = creds.get("email", "unknown")
-    tier = creds.get("tier", "unknown")
-    user_id = creds.get("user_id", "unknown")
-    auth_mode = creds.get("auth_mode", "unknown")
+    # The key's own account, as the gateway reports it (one request).
+    data = _validate_credentials(endpoint, api_key)
+    if data is None:
+        raise typer.Exit(1)
+    budget = data.get("budget", {})
 
     table = Table(
         title=h("Omics-OS Cloud Account"), show_header=False, border_style="cyan"
@@ -223,37 +224,12 @@ def account() -> None:
     table.add_column(h("Field"), style="bold")
     table.add_column(h("Value"))
 
-    table.add_row(h("Email"), email)
-    table.add_row(h("Tier"), tier)
-    table.add_row(h("User ID"), user_id)
-    table.add_row(h("Auth mode"), auth_mode)
+    table.add_row(h("Tier"), data.get("tier", "unknown"))
+    table.add_row(h("User ID"), data.get("user_id", "unknown"))
     table.add_row(h("Endpoint"), endpoint)
-
-    # Fetch live usage data
-    import httpx
-
-    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
-
-    try:
-        # Fail closed before attaching the bearer token (poisoned-endpoint exfil).
-        validate_endpoint(endpoint)
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(
-                f"{endpoint}/api/v1/gateway/usage",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-        if resp.status_code == 200:
-            data = resp.json()
-            budget = data.get("budget", {})
-            table.add_row("", "")
-            table.add_row(h("Budget remaining"), f"${budget.get('remaining_usd', '?')}")
-            table.add_row(h("Period"), data.get("period", "?"))
-    except EndpointPolicyError:
-        table.add_row("", "")
-        table.add_row(h("Cloud usage"), h("[red]endpoint not in allowlist[/red]"))
-    except (httpx.ConnectError, httpx.TimeoutException):
-        table.add_row("", "")
-        table.add_row(h("Status"), h("[dim]Could not reach cloud[/dim]"))
+    table.add_row("", "")
+    table.add_row(h("Budget remaining"), f"${budget.get('remaining_usd', '?')}")
+    table.add_row(h("Period"), data.get("period", "?"))
 
     console.print(table)
     console.print(
@@ -295,15 +271,12 @@ def login(
         help=h("Omics-OS API key from app.omics-os.com/account"),
     ),
 ) -> None:
-    """Authenticate the Python local gateway provider with --api-key <key>.
+    """Save your Omics-OS Cloud API key for Lobster: --api-key <key>.
 
-    Create a key at app.omics-os.com/account. Without --api-key,
-    this Python command prints setup guidance and exits nonzero; it does not
-    launch a browser or prompt for a key.
-
-    Alternative managed Cloud client (npm): npm install -g omics-os &&
-    omics-os login --device. Configure Python separately using
-    OMICS_OS_API_KEY; do not assume npm credential sharing.
+    Create a key at app.omics-os.com/account. Lobster checks it and saves it as
+    OMICS_OS_API_KEY in its own credentials.env. The omics-os CLI's sign-in is
+    separate: this command neither reads nor changes it. Without --api-key it
+    prints how to get a key and exits nonzero.
     """
     if api_key:
         _api_key_login(api_key)
@@ -321,17 +294,10 @@ def status() -> None:
 
     api_key = get_api_key()
     if not api_key:
-        console.print(
-            h(
-                "[yellow]No Omics-OS Cloud API key found.[/yellow]\n"
-                "Credentials are read from the active Python profile or the "
-                "[bold]OMICS_OS_API_KEY[/bold] environment variable; these are "
-                "separate sources and neither is set in the current active profile.\n"
-                "Set [bold]OMICS_OS_API_KEY[/bold], run [bold]lobster init[/bold] "
-                "to configure a profile, or run: "
-                "[bold]lobster cloud login --api-key <key>[/bold]"
-            )
-        )
+        console.print(h("[yellow]No Omics-OS Cloud API key is set.[/yellow]"))
+        from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
+
+        console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
         raise typer.Exit(0)
 
     endpoint = get_endpoint()
@@ -407,13 +373,32 @@ def status() -> None:
 
 @cloud_app.command()
 def logout() -> None:
-    """Log out of Omics-OS Cloud."""
-    from lobster.config.credentials import _clear_active_profile
+    """Remove the Omics-OS Cloud key Lobster saved (not the omics-os CLI's sign-in)."""
+    from lobster.config.credentials import get_api_key
+    from lobster.config.global_config import (
+        get_global_credentials_path,
+        save_global_credentials,
+    )
 
-    # Active-profile-only logout: on a V2 multi-profile file this removes the
-    # active profile and preserves siblings (Codex P1). On V1 it deletes the file.
-    _clear_active_profile()
-    console.print(h("Logged out of Omics-OS Cloud."))
+    in_use, saved = get_api_key(), _saved_key()
+    if saved:
+        # An empty value drops the line; the file's other keys stay.
+        save_global_credentials({"OMICS_OS_API_KEY": ""}, append=True)
+        console.print(
+            h("Removed the Omics-OS Cloud key from {path}.").format(
+                path=get_global_credentials_path()
+            ),
+            markup=False,
+        )
+    else:
+        console.print(h("Lobster has no saved Omics-OS Cloud key; nothing to remove."))
+    if in_use and in_use != saved:
+        console.print(
+            h(
+                "[yellow]OMICS_OS_API_KEY is still set in your shell or in this "
+                "folder's .env; Lobster uses it until you remove it there.[/yellow]"
+            )
+        )
 
 
 @cloud_app.command()

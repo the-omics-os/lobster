@@ -21,88 +21,38 @@ def _has_langchain_aws():
 class TestCredentials:
     """Tests for lobster.config.credentials module."""
 
-    def test_load_credentials_missing_file(self, tmp_path, monkeypatch):
+    def test_get_api_key_from_env(self, monkeypatch):
         from lobster.config import credentials
 
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
-        assert credentials.load_credentials() is None
-
-    def test_save_and_load_credentials(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        cred_dir = tmp_path / "omics-os"
-        cred_file = cred_dir / "credentials.json"
-        monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_file)
-
-        data = {
-            "auth_mode": "api_key",
-            "api_key": "omk_test123",
-            "endpoint": "https://example.com",
-        }
-        credentials.save_credentials(data)
-
-        assert cred_file.exists()
-        assert oct(cred_file.stat().st_mode & 0o777) == oct(0o600)
-
-        loaded = credentials.load_credentials()
-        assert loaded["api_key"] == "omk_test123"
-
-    def test_clear_credentials(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        cred_file = tmp_path / "credentials.json"
-        cred_file.write_text("{}")
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_file)
-
-        credentials.clear_credentials()
-        assert not cred_file.exists()
-
-    def test_clear_credentials_no_file(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
-        credentials.clear_credentials()  # Should not raise
-
-    def test_get_api_key_env_priority(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        cred_dir = tmp_path / "omics-os"
-        cred_file = cred_dir / "credentials.json"
-        monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_file)
-
-        data = {"api_key": "omk_from_file"}
-        credentials.save_credentials(data)
-
-        monkeypatch.setenv("OMICS_OS_API_KEY", "omk_from_env")
+        monkeypatch.setenv("OMICS_OS_API_KEY", " omk_from_env ")
         assert credentials.get_api_key() == "omk_from_env"
 
-    def test_get_api_key_file_fallback(self, tmp_path, monkeypatch):
+    def test_get_api_key_none(self, monkeypatch):
         from lobster.config import credentials
 
-        cred_dir = tmp_path / "omics-os"
-        cred_file = cred_dir / "credentials.json"
-        monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_file)
-
-        data = {"api_key": "omk_from_file"}
-        credentials.save_credentials(data)
-
-        monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
-        assert credentials.get_api_key() == "omk_from_file"
-
-    def test_get_api_key_none(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
         monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
         assert credentials.get_api_key() is None
 
-    def test_get_endpoint_default(self, tmp_path, monkeypatch):
+    def test_the_omics_os_cli_sign_in_is_not_read(self, tmp_path, monkeypatch):
         from lobster.config import credentials
 
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
+        sign_in = tmp_path / ".config" / "omics-os" / "credentials.json"
+        sign_in.parent.mkdir(parents=True)
+        sign_in.write_text(
+            json.dumps({"api_key": "omk_from_cli", "endpoint": "https://x.example"})
+        )
+        before = sign_in.read_bytes()
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
+        monkeypatch.delenv("OMICS_OS_ENDPOINT", raising=False)
+
+        assert credentials.get_api_key() is None
+        assert credentials.get_endpoint() == "https://app.omics-os.com"
+        assert sign_in.read_bytes() == before
+
+    def test_get_endpoint_default(self, monkeypatch):
+        from lobster.config import credentials
+
         monkeypatch.delenv("OMICS_OS_ENDPOINT", raising=False)
         assert credentials.get_endpoint() == "https://app.omics-os.com"
 
@@ -111,20 +61,6 @@ class TestCredentials:
 
         monkeypatch.setenv("OMICS_OS_ENDPOINT", "https://custom.example.com/")
         assert credentials.get_endpoint() == "https://custom.example.com"
-
-    def test_get_auth_headers_with_key(self, monkeypatch):
-        from lobster.config import credentials
-
-        monkeypatch.setenv("OMICS_OS_API_KEY", "omk_test")
-        headers = credentials.get_auth_headers()
-        assert headers == {"Authorization": "Bearer omk_test"}
-
-    def test_get_auth_headers_empty(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
-
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
-        monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
-        assert credentials.get_auth_headers() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -157,11 +93,9 @@ class TestOmicsOSProvider:
         p = OmicsOSProvider()
         assert p.get_default_model() == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
-    def test_is_configured_false(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
+    def test_is_configured_false(self, monkeypatch):
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
 
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
         monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
 
         p = OmicsOSProvider()
@@ -175,11 +109,9 @@ class TestOmicsOSProvider:
         p = OmicsOSProvider()
         assert p.is_configured() is True
 
-    def test_create_chat_model_no_key_raises(self, tmp_path, monkeypatch):
-        from lobster.config import credentials
+    def test_create_chat_model_no_key_raises(self, monkeypatch):
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
 
-        monkeypatch.setattr(credentials, "CREDENTIALS_FILE", tmp_path / "nope.json")
         monkeypatch.delenv("OMICS_OS_API_KEY", raising=False)
 
         p = OmicsOSProvider()

@@ -1,6 +1,8 @@
 package initwizard
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -425,7 +427,9 @@ func TestCloudEmptyKeyStaysAtCredentialStep(t *testing.T) {
 	}
 }
 
-func TestOAuthSucceededAdvancesStep(t *testing.T) {
+func TestOAuthSucceededSavesNothingAndAsksForAKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	m := NewWizardModel("", "")
 
 	// Select omics-os -> stepAPIKey.
@@ -435,11 +439,10 @@ func TestOAuthSucceededAdvancesStep(t *testing.T) {
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
-	// Simulate OAuth waiting state.
+	// Nothing starts the browser flow; should its message arrive, Lobster
+	// saves no token and never writes the omics-os CLI's folder.
 	m.oauthWaiting = true
 	m.oauthCancel = make(chan struct{})
-
-	// Send oauthSucceededMsg (no email/tier — those come from Python gateway validation).
 	result, _ = m.Update(oauthSucceededMsg{
 		AccessToken: "test-token",
 		Endpoint:    "https://app.omics-os.com",
@@ -447,14 +450,16 @@ func TestOAuthSucceededAdvancesStep(t *testing.T) {
 	m = result.(WizardModel)
 
 	if m.oauthWaiting {
-		t.Fatal("expected oauthWaiting=false after success")
+		t.Fatal("expected oauthWaiting=false after the message")
 	}
-	if !m.result.OAuthAuthenticated {
-		t.Fatal("expected OAuthAuthenticated=true")
+	if m.result.OAuthAuthenticated {
+		t.Fatal("expected no OAuth sign-in")
 	}
-	// Omics-OS has no model catalog, so should go to agent packages.
-	if m.step != stepAgentPackages {
-		t.Fatalf("expected stepAgentPackages after OAuth success, got %d", m.step)
+	if m.step != stepAPIKey || m.oauthLastError == "" {
+		t.Fatalf("expected the key step with guidance, got step %d", m.step)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "omics-os")); !os.IsNotExist(err) {
+		t.Fatalf("the omics-os CLI's folder was touched: %v", err)
 	}
 }
 

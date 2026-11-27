@@ -13,8 +13,9 @@ omics-os lobster query --json "Describe the data available in this session"
 ```
 
 Device login still needs a human browser approval; do not automate passwords or
-copy credentials into prompts. Sign-in writes shared credentials under
-`~/.config/omics-os/`; obtain permission for that location. For npm's headless
+copy credentials into prompts. Sign-in writes the npm CLI's own credentials
+under `~/.config/omics-os/` (Python Lobster neither reads nor changes them);
+obtain permission for that location. For npm's headless
 Cloud-session automation, provide `OMICS_OS_API_KEY` through the environment;
 Python's local gateway key uses the same name. npm login is not a
 substitute for installing and configuring Python. A stored credential file is

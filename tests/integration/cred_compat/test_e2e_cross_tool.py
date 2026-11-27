@@ -1,19 +1,21 @@
-"""E2E cross-tool contract — the real npm CLI ↔ Python round-trip.
+"""E2E cross-tool contract — the real npm CLI and Python Lobster stay apart.
 
 GATED (``@pytest.mark.real_api`` → skipped unless ``--runreal``). Requires the
-real npm Cloud client (``omics-os``, or the older ``@omicsos/lobster``) on PATH and a logged-in throwaway test tenant. This
-is the whole point of CRED_COMPAT_V2: the two tools share one credential file and
-must both read what the other writes.
+real npm Cloud client (``omics-os``) on PATH, signed in to a THROWAWAY test
+tenant. Since 1.3.2 the two tools keep separate sign-ins: Python Lobster neither
+reads nor changes ~/.config/omics-os, so its commands must leave the npm sign-in
+byte-identical and working, and must not see it as a Lobster key.
 
 Run pre-release, by a human, against a THROWAWAY tenant:
     uv run pytest tests/integration/cred_compat/test_e2e_cross_tool.py --runreal -v
 
-These tests do NOT run in CI and never write real tokens into fixtures.
+These tests do NOT run in CI and never write real tokens into fixtures. Python
+runs with its own settings in a tmp XDG_CONFIG_HOME, so the developer's saved
+Lobster key is neither read nor removed.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -24,27 +26,13 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_api]
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
-
-def _npm_lobster() -> str | None:
-    # Both npm packages install lobster-cli; a bare "lobster" can be the Python CLI.
-    return shutil.which("lobster-cli")
-
 
 @pytest.fixture
-def real_home():
-    """Use the developer's REAL credentials file (throwaway tenant).
-
-    Cross-tool tests need the file the npm CLI actually wrote — we do not
-    fabricate it. We snapshot it, run the round-trip, and restore it after so the
-    test never mutates the real login permanently.
-    """
+def real_sign_in():
+    """The npm CLI's REAL sign-in file (throwaway tenant), restored after."""
     cred = Path.home() / ".config" / "omics-os" / "credentials.json"
     if not cred.exists():
-        pytest.skip(
-            "No real credentials file — log in with the npm CLI first (throwaway tenant)."
-        )
+        pytest.skip("No npm sign-in: run omics-os login first (throwaway tenant).")
     backup = cred.read_bytes()
     try:
         yield cred
@@ -52,49 +40,41 @@ def real_home():
         cred.write_bytes(backup)  # restore original bytes
 
 
-def _py_cli(args: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
+def _py_cli(args: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
+    env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path / "xdg"), "NO_COLOR": "1"}
+    env.pop("OMICS_OS_API_KEY", None)
+    env.pop("OMICS_OS_ENDPOINT", None)
     return subprocess.run(
         [sys.executable, "-m", "lobster.cli", *args],
-        cwd=str(REPO_ROOT),
+        cwd=str(tmp_path),
+        env=env,
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=60,
         input="",
         check=False,
     )
 
 
-def test_python_reads_npm_written_file(real_home):
-    """The Python CLI authenticates against the file the npm CLI wrote."""
-    res = _py_cli(["cloud", "account"])
+def test_python_does_not_take_the_npm_sign_in(real_sign_in, tmp_path):
+    before = real_sign_in.read_bytes()
+    res = _py_cli(["cloud", "account"], tmp_path)
     assert res.returncode == 0, res.stderr
-    assert (
-        "Not connected" not in res.stdout
-    ), "Python sees the npm-written file as logged out"
+    assert "Not connected" in res.stdout
+    assert real_sign_in.read_bytes() == before
 
 
-def test_npm_reads_file_after_python_refresh(real_home):
-    """After a Python refresh rotates tokens, the npm CLI still authenticates."""
-    npm = _npm_lobster()
+def test_npm_stays_signed_in_after_python_commands(real_sign_in, tmp_path):
+    npm = shutil.which("omics-os")
     if not npm:
-        pytest.skip("npm Cloud client (lobster-cli) not on PATH")
-
-    # Force a Python-side refresh (reads → rotates → writes the shared file).
-    from lobster.config import credentials
-
-    refreshed = credentials.refresh_token()
-    if not refreshed:
-        pytest.skip(
-            "Refresh did not return a token (token may be non-refreshable in this tenant)."
-        )
-
-    # File must still be valid V2 JSON after the Python write.
-    data = json.loads(real_home.read_text(encoding="utf-8"))
-    assert data.get("version") == 2
-
-    # The real npm CLI must still read it and report authenticated.
+        pytest.skip("npm Cloud client (omics-os) not on PATH")
+    before = real_sign_in.read_bytes()
+    for args in (["cloud", "status"], ["cloud", "logout"]):
+        res = _py_cli(args, tmp_path)
+        assert res.returncode == 0, (args, res.stderr[-300:])
+    assert real_sign_in.read_bytes() == before
     res = subprocess.run(
-        [npm, "cloud", "status"],
+        [npm, "status"],
         capture_output=True,
         text=True,
         timeout=60,
@@ -102,6 +82,4 @@ def test_npm_reads_file_after_python_refresh(real_home):
         check=False,
         env={**os.environ, "NO_COLOR": "1"},
     )
-    assert (
-        res.returncode == 0
-    ), f"npm CLI failed to read Python-refreshed file: {res.stderr[-300:]}"
+    assert res.returncode == 0, f"npm CLI signed out by Python: {res.stderr[-300:]}"

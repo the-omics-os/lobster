@@ -1,1 +1,1 @@
-"""CRED_COMPAT_V2 end-to-end tests — cross-tool credential contract."""
+"""End-to-end tests: Lobster keeps its own Omics-OS Cloud key."""
