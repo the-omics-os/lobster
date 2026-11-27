@@ -188,6 +188,10 @@ def test_the_registry_entry_follows_the_release_and_the_pypi_readme():
     plugin = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
     assert plugin["version"] == __version__
     assert (package["registryType"], package["identifier"]) == ("pypi", "lobster-ai")
+    # uvx runs the command named like the package: pyproject must provide it.
+    scripts = tomllib.loads((root / "pyproject.toml").read_text())["project"]["scripts"]
+    assert package["runtimeHint"] == "uvx"
+    assert scripts[package["identifier"]] == scripts["lobster"]
     readme = (root / "README.md").read_text(encoding="utf-8")
     assert f"<!-- mcp-name: {server['name']} -->" in readme
     assert len(server["description"]) <= 100

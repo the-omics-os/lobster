@@ -287,6 +287,9 @@ all = [
 
 [project.scripts]
 lobster = "lobster.cli:app"
+# Same command under the package name, so `uvx lobster-ai mcp --stdio` works
+# (the MCP Registry entry in server.json starts the server that way).
+lobster-ai = "lobster.cli:app"
 
 # =============================================================================
 # Entry Points - Service Discovery (PEP 420 compliant)
