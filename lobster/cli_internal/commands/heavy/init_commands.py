@@ -3228,7 +3228,7 @@ def init_impl(
                     h(
                         "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\n"
                         "A configuration file already exists at:\n[cyan]{existing_path}[/cyan]\n\n"
-                        "To reconfigure, use:\n"
+                        "It is kept as it is. To reconfigure, use:\n"
                         "[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\n"
                         "Or edit the file manually."
                     ).format(

@@ -162,6 +162,32 @@ def test_init_adopts_existing_configuration_without_force(dirs):
     assert (ws / "provider_config.json").read_text() == '{"global_provider": "ollama"}'
 
 
+def test_init_says_an_existing_configuration_is_kept(dirs):
+    ws = dirs / ".lobster_workspace"
+    ws.mkdir()
+    (ws / "provider_config.json").write_text('{"global_provider": "ollama"}')
+    (dirs / ".env").write_text("X=1\n")
+    result = run_init()
+    assert result.exit_code == 0, result.output
+    text = " ".join(result.output.split())
+    assert "Configuration Already Exists" in text
+    assert "It is kept as it is. To reconfigure, use:" in text
+    assert f"Project work created at {dirs}" in text
+    assert (dirs / ".env").read_text() == "X=1\n"
+    assert (ws / "provider_config.json").read_text() == '{"global_provider": "ollama"}'
+
+
+def test_init_with_only_a_stray_env_keeps_it_and_makes_no_project(dirs):
+    (dirs / ".env").write_text("X=1\n")
+    result = run_init()
+    assert result.exit_code == 0, result.output
+    text = " ".join(result.output.split())
+    assert "It is kept as it is." in text
+    assert "Project" not in text
+    assert (dirs / ".env").read_text() == "X=1\n"
+    assert not (dirs / ".lobster_workspace").exists()
+
+
 def test_global_init_makes_no_project_and_takes_no_folder(dirs):
     result = run_init("--global")
     assert result.exit_code == 0, result.output

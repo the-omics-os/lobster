@@ -831,7 +831,7 @@
   "✗ Installation failed.": "✗ 安装失败。",
   "  [yellow]⚠[/yellow] {collection_name} (skipped)": "  [yellow]⚠[/yellow] {collection_name}（已跳过）",
   "[bold yellow]⚠️  Global Configuration Already Exists[/bold yellow]\n\nA global config already exists at:\n[cyan]{config_path}[/cyan]\n\nTo reconfigure, use:\n[bold {PRIMARY_ORANGE}]lobster init --global --force[/bold {PRIMARY_ORANGE}]\n\nOr edit the file manually.": "[bold yellow]⚠️  全局配置已存在[/bold yellow]\n\n全局配置已存在于：\n[cyan]{config_path}[/cyan]\n\n如需重新配置，请使用：\n[bold {PRIMARY_ORANGE}]lobster init --global --force[/bold {PRIMARY_ORANGE}]\n\n也可以手动编辑该文件。",
-  "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\nA configuration file already exists at:\n[cyan]{existing_path}[/cyan]\n\nTo reconfigure, use:\n[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\nOr edit the file manually.": "[bold yellow]⚠️  配置已存在[/bold yellow]\n\n配置文件已存在于：\n[cyan]{existing_path}[/cyan]\n\n如需重新配置，请使用：\n[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\n也可以手动编辑该文件。",
+  "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\nA configuration file already exists at:\n[cyan]{existing_path}[/cyan]\n\nIt is kept as it is. To reconfigure, use:\n[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\nOr edit the file manually.": "[bold yellow]⚠️  配置已存在[/bold yellow]\n\n配置文件已存在于：\n[cyan]{existing_path}[/cyan]\n\n现有配置保持不变。如需重新配置，请使用：\n[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\n也可以手动编辑该文件。",
   "[red]❌ Failed to create backup: {str}[/red]": "[red]❌ 创建备份失败：{str}[/red]",
   "[red]❌ Error: Invalid profile '{profile}'[/red]": "[red]❌ 错误：无效的配置方案 '{profile}'[/red]",
   "Valid profiles: {join}": "可用配置方案：{join}",
