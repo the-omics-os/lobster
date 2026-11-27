@@ -313,9 +313,17 @@ def test_centroid_labels_skip_categories_without_finite_points(cells):
 
 def test_signed_feature_plot_keeps_white_at_zero_with_a_user_range(cells):
     scaled = cells.copy()
-    scaled.X = scaled.X - scaled.X.mean(axis=0)
-    figure = SingleCellVisualizationService().create_feature_plot(
-        scaled, ["gene-a"], use_raw=False, vmin=-1.0, vmax=3.0
-    )
-    marker = figure.data[0].marker
-    assert (marker.cmin, marker.cmax) == (-3.0, 3.0)
+    values = np.linspace(-10.0, 20.0, scaled.n_obs)
+    scaled.X[:, list(scaled.var_names).index("gene-a")] = values
+    service = SingleCellVisualizationService()
+
+    def bounds(**limits):
+        figure = service.create_feature_plot(
+            scaled, ["gene-a"], use_raw=False, **limits
+        )
+        return figure.data[0].marker.cmin, figure.data[0].marker.cmax
+
+    assert bounds(vmin=-1.0, vmax=3.0) == (-3.0, 3.0)
+    assert bounds(vmin=-5.0) == (-20.0, 20.0)  # the free side keeps its extent
+    assert bounds(vmax=5.0) == (-10.0, 10.0)
+    assert bounds(vmax=0.0) == (-10.0, 10.0)  # not a collapsed 0..0

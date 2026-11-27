@@ -747,7 +747,8 @@ class SingleCellVisualizationService:
                 )
                 given = [abs(v) for v in (vmin, vmax) if v is not None]
                 if limit:  # white stays at 0, also with a user range
-                    high = max(given) if given else limit
+                    # Data is clipped to vmin/vmax first; a free side keeps its extent
+                    high = max([limit, *given])
                     low = -high
                 else:
                     low = vmin if vmin is not None else expr_data.min()

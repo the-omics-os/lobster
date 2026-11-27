@@ -282,6 +282,9 @@ def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
     # shares one with a green-family colour.
     named = {"solid", "dot", "dash", "longdash", "dashdot", "longdashdot"}
     assert set(dashes) == named
+    assert len(set(dashes[:6])) == 6
+    # "dash" is the green family's alone: a green line shares it with no other hue
+    assert [i for i, dash in enumerate(dashes) if dash == "dash"] == [2, 6, 9]
     red_family, green_family = (1, 5, 8, 12), (2, 6, 9)
     assert {HOUSE_COLORS[i] for i in red_family} == {
         "#CC2C18",

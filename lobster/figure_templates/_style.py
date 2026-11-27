@@ -69,8 +69,9 @@ SCATTER_SYMBOLS = [
     "bowtie",
 ]
 # Only the 6 named dashes: px switches line charts to scattergl above 1,000
-# rows and WebGL accepts no others. They repeat, ordered so no red-family
-# colour (positions 1, 5, 8, 12) shares a dash with a green-family one (2, 6, 9).
+# rows and WebGL accepts no others. The first 6 differ; after that they repeat.
+# "dash" is reserved for the green family (positions 2, 6, 9), the hue confused
+# with both red and brown, so a green line never shares its dash with another hue.
 LINE_DASHES = [
     "solid",
     "dot",
@@ -78,14 +79,14 @@ LINE_DASHES = [
     "longdash",
     "dashdot",
     "longdashdot",
-    "longdash",
+    "dash",
     "dot",
     "dashdot",
-    "solid",
     "dash",
+    "longdash",
     "longdashdot",
     "dot",
-    "dashdot",
+    "solid",
 ]
 
 

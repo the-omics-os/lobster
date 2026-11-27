@@ -86,12 +86,13 @@ exposes the values:
 The template uses Manrope (falling back to Arial) at 14 in `INK`, a transparent
 legend, colorbars without an outline and dashed `INK` shapes for thresholds.
 Scatter and scattergl traces cycle marker symbols and line dashes in step with
-the colours. The dashes are the 6 named ones (WebGL accepts no others),
-repeated so no red-family colour shares a dash with a green-family one.
+the colours. In scatter charts, up to 14 series differ by marker symbol. Line
+dashes are the 6 named ones (WebGL accepts no others): the first 6 series
+differ by dash, and green lines have a dash no other colour uses.
 
-Lobster's visualization tools, plot tools and templates apply these rules: in
-scatter and line charts, series differ by symbol or dash as well as colour;
-signed values diverge around 0; marker colours start at grey. Hand-written
+Lobster's visualization tools, plot tools and templates apply these rules:
+the symbol and dash cycles, signed values diverging around 0, and marker
+colours starting at grey. Hand-written
 figures get the template defaults (font, colours, colorway, scales and, for
 `go.Scatter` traces, the symbol and dash cycles). Plotly Express pins every
 trace to circle markers and solid lines unless you pass `symbol=` (scatter) or
