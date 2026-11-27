@@ -130,9 +130,12 @@ def _house_template():
             "paper_bgcolor": "#FFFFFF",
             "plot_bgcolor": "#FFFFFF",
             "colorway": HOUSE_COLORS,
+            # Plotly Express and plain markers take these: grey start, so the
+            # lowest points stay visible. Heatmap-type traces get SEQUENTIAL
+            # from the data defaults below.
             "colorscale": {
-                "sequential": SEQUENTIAL,
-                "sequentialminus": SEQUENTIAL,
+                "sequential": SEQUENTIAL_EXPRESSION,
+                "sequentialminus": SEQUENTIAL_EXPRESSION,
                 "diverging": DIVERGING,
             },
             "coloraxis": {"colorscale": SEQUENTIAL_EXPRESSION, "colorbar": colorbar},

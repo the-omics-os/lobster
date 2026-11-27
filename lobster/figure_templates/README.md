@@ -78,6 +78,9 @@ exposes the values:
   (green, white at 0.5, magenta; use it with zmid 0 and a symmetric range).
   `value_scale(values, unsigned=...)` picks by sign: DIVERGING and its
   half-range when any finite value is negative, else the unsigned scale.
+  The template's own sequential default, which Plotly Express and plain
+  markers use, is `SEQUENTIAL_EXPRESSION`; heatmap, contour and 2D histogram
+  traces default to `SEQUENTIAL`.
 - Roles: `INK`, `TICK`, `GRID`, `AXIS`, `NO_CALL`, `UP`, `DOWN` and `KEY`.
 
 The template uses Manrope (falling back to Arial) at 14 in `INK`, a transparent

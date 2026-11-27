@@ -233,8 +233,8 @@ def test_house_style_values():
     def as_lists(scale):
         return [list(stop) for stop in scale]
 
-    assert as_lists(scales.sequential) == _style.SEQUENTIAL
-    assert as_lists(scales.sequentialminus) == _style.SEQUENTIAL
+    assert as_lists(scales.sequential) == _style.SEQUENTIAL_EXPRESSION
+    assert as_lists(scales.sequentialminus) == _style.SEQUENTIAL_EXPRESSION
     assert as_lists(scales.diverging) == _style.DIVERGING
     for kind in ("heatmap", "contour", "histogram2d", "histogram2dcontour"):
         (trace,) = getattr(template.data, kind)
@@ -813,7 +813,29 @@ def _marker_scales(figure):
         yield trace.type, scale[0][1]
 
 
+def test_hand_written_figures_start_points_grey_and_heatmaps_white(house_session):
+    import plotly.express as px
+
+    scatter = px.scatter(x=[1, 2, 3], y=[3, 1, 2], color=[0.0, 1.0, 2.0])
+    assert scatter.layout.coloraxis.colorscale[0][1] == "#E0E0E0"
+    image = px.imshow([[1, 2], [3, 4]])
+    assert image.layout.coloraxis.colorscale[0][1] == "#E0E0E0"
+    z = [[1, 2], [3, 4]]
+    for trace in (
+        go.Heatmap(z=z),
+        go.Contour(z=z),
+        go.Histogram2d(x=[1, 2], y=[1, 2]),
+        go.Histogram2dContour(x=[1, 2], y=[1, 2]),
+    ):
+        figure = go.Figure(trace)
+        assert figure.data[0].colorscale is None  # the template data default
+        (default,) = getattr(figure.layout.template.data, trace.type)
+        assert default.colorscale[0][1] == "#FFFFFF", trace.type
+
+
 def test_marker_colour_scales_never_start_at_the_background(cells, house_session):
+    import plotly.express as px
+
     from lobster.tools.plot_tools import _create_figure
 
     cells.obs["score"] = [0.0, 0.2, 0.4, 1.0]
@@ -827,6 +849,7 @@ def test_marker_colour_scales_never_start_at_the_background(cells, house_session
             "scatter", table, "x", "y", "", "v", "", "S"
         ),
         "plot_tools.bar": _create_figure("bar", table, "x", "y", "", "v", "", "B"),
+        "hand-written px": px.scatter(table, x="x", y="y", color="v"),
     }
     for name in TEMPLATES:
         if name.startswith(("sc.", "proteomics.")):

@@ -42,8 +42,8 @@ def test_session_figures_embed_house_style(tmp_path, restore_plotly_templates):
         x=[0, 1, 2, 3, 4], y=[1, 0, 1, 0, 1], color=["a", "b", "c", "a", "b"]
     )
     assert [trace.marker.color for trace in figure.data] == HOUSE_COLORS[:3]
-    colorscale = figure.layout.template.layout.colorscale.sequential
-    assert [list(stop) for stop in colorscale] == SEQUENTIAL
+    (heatmap,) = figure.layout.template.data.heatmap
+    assert [list(stop) for stop in heatmap.colorscale] == SEQUENTIAL
 
 
 def test_session_works_without_templates(
