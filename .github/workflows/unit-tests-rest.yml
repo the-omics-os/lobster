@@ -28,7 +28,9 @@ jobs:
   unit-tests-rest:
     name: Unit Tests (rest) ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A shard's pytest takes about 11 min on a typical runner and up to 20 on a
+    # slow one (every test about 1.7x slower), so 20 cancelled finished runs.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
