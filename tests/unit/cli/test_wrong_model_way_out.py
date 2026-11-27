@@ -7,6 +7,12 @@ from lobster.cli_internal.go_tui_launcher import _friendly_error
 
 pytestmark = pytest.mark.no_auto_config
 
+# OpenAI's text without its error code (lobster query, 1.3.1, a tester's run).
+OPENAI_WITHOUT_CODE = (
+    "Error code: 404 - The model `gpt-6.3-sol` does not exist or you do not have "
+    "access to it."
+)
+
 # Error texts as the provider SDKs raise them for a model name they do not know.
 WRONG_MODEL_ERRORS = [
     "An error occurred (ValidationException) when calling the ConverseStream "
@@ -23,6 +29,11 @@ WRONG_MODEL_ERRORS = [
     "operation: Omics-OS Cloud: Invalid model ID: claude-sonnet-9",
     "Error code: 400 - {'error': {'message': 'openai/gpt-9 is not a valid model ID', "
     "'code': 400}}",
+    OPENAI_WITHOUT_CODE,
+    # The Omics-OS Cloud gateway.
+    "An error occurred (ValidationException) when calling the Converse operation: "
+    'Omics-OS Cloud: Invalid request: {"detail":{"status":422,"code":"MODEL_UNKNOWN",'
+    '"message":"Unknown model.","retryable":false}}',
 ]
 
 
@@ -41,6 +52,13 @@ def test_classic_chat_gives_the_same_way_out(raw):
     guidance = ErrorHandlerRegistry().handle_error(Exception(raw))
     assert guidance.error_type == "model_not_found"
     assert any("/config model" in step for step in guidance.solutions)
+
+
+def test_the_way_out_names_the_option_for_one_run():
+    from lobster.utils.error_handlers import ErrorHandlerRegistry
+
+    guidance = ErrorHandlerRegistry().handle_error(Exception(OPENAI_WITHOUT_CODE))
+    assert any("lobster query --model <name>" in step for step in guidance.solutions)
 
 
 def test_shell_config_says_the_slash_commands_are_for_chat(monkeypatch, tmp_path):

@@ -1292,10 +1292,12 @@ class NetworkErrorHandler(ErrorHandler):
 
 
 # How each provider SDK says that it has no model by the configured name:
-# Bedrock, Anthropic, OpenAI, Ollama, Gemini, Omics-OS Cloud, OpenRouter.
+# Bedrock, Anthropic, OpenAI (with and without its error code), Ollama, Gemini,
+# Omics-OS Cloud (old and current gateway wording), OpenRouter.
 UNKNOWN_MODEL = re.compile(
     r"model identifier is invalid|not_found_error.{0,80}model|model_not_found"
-    r"|invalid model id|not a valid model id"
+    r"|the model `[^`]+` does not exist|invalid model id|MODEL_UNKNOWN"
+    r"|not a valid model id"
     r'|model "[^"]+" not found|models/\S+ is not found',
     re.IGNORECASE,
 )
@@ -1315,6 +1317,7 @@ class UnknownModelErrorHandler(ErrorHandler):
             solutions=[
                 "List the models: /config model",
                 "Switch and keep it: /config model <name> --save",
+                'For one run: lobster chat --model <name>, or lobster query --model <name> "…"',
                 "From the shell: lobster init --force",
             ],
             severity="error",
