@@ -183,10 +183,13 @@ jobs:
   # (3-4 s each, ~600 tests). Sharded by file name so every new
   # test_replay_* file runs in a shard. Transcriptomics is installed here, so
   # the replay files that ci-basic.yml skips run on every PR.
+  # The [a-c] shard's pytest takes 7-8 min on a typical runner and over 11 min
+  # on a slow one; 18 leaves room for that without splitting the shard, which
+  # would rename the checks.
   replay-tests:
     name: Replay Tests ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
