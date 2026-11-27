@@ -189,6 +189,16 @@ The same skills ship inside the package (`lobster skills list`, `lobster skills 
       BubbleTea, Lipgloss, Glamour, and huh — the entire terminal UI stack powering <code>lobster chat</code>.
     </td>
   </tr>
+  <tr>
+    <td style="border: none; background: transparent;">
+      <a href="https://github.com/laminlabs/lamindb">
+        <img src="https://img.shields.io/badge/laminlabs-lamindb-343a40?style=for-the-badge&logo=github&logoColor=white" alt="laminlabs/lamindb">
+      </a>
+    </td>
+    <td style="border: none; background: transparent; vertical-align: middle;">
+      The optional local data catalog behind <code>lobster init --lamin</code>: sessions, saved datasets with versions and content hashes, and exported notebooks.
+    </td>
+  </tr>
 </table>
 
 <br/>
