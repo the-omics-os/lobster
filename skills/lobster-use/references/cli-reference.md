@@ -85,8 +85,8 @@ which init refuses):
   flag can expose the key in process arguments; the environment route is preferred.
 - Don't pass another provider's flags with either Cloud selector: the other
   explicit provider takes priority. No third-party provider key is required for
-  Omics-only setup. `--cloud-key`/`LOBSTER_CLOUD_KEY` is a legacy supplement and
-  does not select the `omics-os` gateway.
+  Omics-only setup. `--cloud-key` and `LOBSTER_CLOUD_KEY` are no longer used:
+  init warns and saves nothing for them, and chat starts with your provider.
 - Init's success message means **saved, not checked**. It does not verify account
   access, format, validity or inference, even if a nonempty key was accepted.
   Do not report authentication verified from init alone.

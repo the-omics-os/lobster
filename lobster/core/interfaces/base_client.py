@@ -14,8 +14,8 @@ class BaseClient(ABC):
     """
     Abstract base class defining the interface for all Lobster client implementations.
 
-    This ensures that both local (AgentClient) and cloud (CloudLobsterClient)
-    implementations provide the same interface to the CLI and other components.
+    This ensures that client implementations such as AgentClient provide the
+    same interface to the CLI and other components.
     """
 
     @abstractmethod

@@ -20,8 +20,6 @@
   "Azure AI API credential (non-interactive mode)": "Azure AI 凭证（不提问模式）",
   "Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.": "智能体配置档（development、production、performance、max）。仅用于 Anthropic 和 Bedrock。",
   "NCBI API key (optional, non-interactive mode)": "NCBI API 密钥（可选，不提问模式）",
-  "Omics-OS Cloud API key (optional, enables premium tier)": "Omics-OS Cloud API 密钥（可选，用于高级等级）",
-  "Custom cloud endpoint URL (optional)": "自定义云端地址（可选）",
   "Skip SSL connectivity test during init": "初始化时跳过 SSL 连通测试",
   "Enable/disable SSL verification (non-interactive mode)": "打开或关闭 SSL 校验（不提问模式）",
   "Path to custom CA certificate bundle": "自定义 CA 证书包的路径",
@@ -730,7 +728,6 @@
   "  • Ollama Cloud: --ollama-cloud-key=xxx": "  • Ollama Cloud：--ollama-cloud-key=xxx",
   "  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx": "  • Azure AI：--azure-endpoint=xxx --azure-credential=xxx",
   "[yellow]Warning: an explicit provider takes priority over Omics-OS Cloud.[/yellow]": "[yellow]提示：明确指定的模型服务优先于 Omics-OS Cloud。[/yellow]",
-  "[green]✓ Cloud API key configured (premium tier enabled)[/green]": "[green]✓ 已配置云端 API 密钥（已启用高级等级）[/green]",
   "\n[dim]Testing connectivity to NCBI databases...[/dim]": "\n[dim]正在测试与 NCBI 数据库的连接...[/dim]",
   "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\nLet's set up your API keys.\nThis wizard will create a [cyan].env[/cyan] file in your current directory.": "[bold white]🦞 欢迎使用 Lobster AI！[/bold white]\n\n我们来设置你的 API 密钥。\n本向导会在当前目录创建一个 [cyan].env[/cyan] 文件。",
   "[bold white]Enter your Omics-OS API key[/bold white]": "[bold white]请输入你的 Omics-OS API 密钥[/bold white]",
@@ -2236,5 +2233,7 @@
   "[yellow]OMICS_OS_API_KEY is still set in your shell or in this folder's .env; Lobster uses it until you remove it there.[/yellow]": "[yellow]你的 shell 或此文件夹的 .env 中仍设置了 OMICS_OS_API_KEY；在你从那里移除之前，Lobster 会继续使用它。[/yellow]",
   "[dim]Saved in {path}[/dim]": "[dim]已保存到 {path}[/dim]",
   "Removed the Omics-OS Cloud key from {path}.": "已从 {path} 移除 Omics-OS Cloud 密钥。",
-  "[yellow]OMICS_OS_API_KEY is also set in your shell or in this folder's .env, and that key is used first. Remove it there to use the key Lobster saved.[/yellow]": "[yellow]你的 shell 或此文件夹的 .env 中也设置了 OMICS_OS_API_KEY，并且会优先使用该密钥。从那里移除它后，才会使用 Lobster 保存的密钥。[/yellow]"
+  "[yellow]OMICS_OS_API_KEY is also set in your shell or in this folder's .env, and that key is used first. Remove it there to use the key Lobster saved.[/yellow]": "[yellow]你的 shell 或此文件夹的 .env 中也设置了 OMICS_OS_API_KEY，并且会优先使用该密钥。从那里移除它后，才会使用 Lobster 保存的密钥。[/yellow]",
+  "[yellow]LOBSTER_CLOUD_KEY is no longer used; Lobster runs with your provider. Connect your Omics-OS Cloud account: lobster cloud login --api-key <key>[/yellow]": "[yellow]LOBSTER_CLOUD_KEY 已不再使用，Lobster 使用你选择的模型服务。连接你的 Omics-OS Cloud 账户：lobster cloud login --api-key <key>[/yellow]",
+  "[yellow]{flag} is no longer used and was not saved. Connect your Omics-OS Cloud account: lobster cloud login --api-key <key>[/yellow]": "[yellow]{flag} 已不再使用，也没有保存。连接你的 Omics-OS Cloud 账户：lobster cloud login --api-key <key>[/yellow]"
 }

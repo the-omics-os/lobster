@@ -832,16 +832,9 @@ def init(
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help=h("NCBI API key (optional, non-interactive mode)")
     ),
-    cloud_key: Optional[str] = typer.Option(
-        None,
-        "--cloud-key",
-        help=h("Omics-OS Cloud API key (optional, enables premium tier)"),
-    ),
-    cloud_endpoint: Optional[str] = typer.Option(
-        None,
-        "--cloud-endpoint",
-        help=h("Custom cloud endpoint URL (optional)"),
-    ),
+    # Accepted and ignored: see init_impl.
+    cloud_key: Optional[str] = typer.Option(None, "--cloud-key", hidden=True),
+    cloud_endpoint: Optional[str] = typer.Option(None, "--cloud-endpoint", hidden=True),
     skip_ssl_test: bool = typer.Option(
         False,
         "--skip-ssl-test",
@@ -970,9 +963,6 @@ def init(
         --use-ollama                                 # CI/CD: Ollama (profile not applicable)
       lobster init --non-interactive \\
         --use-ollama --ollama-model=mixtral:8x7b-instruct  # CI/CD: Ollama with custom model
-      lobster init --non-interactive \\
-        --anthropic-key=sk-ant-xxx \\
-        --cloud-key=cloud_xxx                        # CI/CD: With cloud access
       lobster init --non-interactive \\
         --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
       lobster init --non-interactive \\

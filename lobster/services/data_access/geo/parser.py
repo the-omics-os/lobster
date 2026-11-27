@@ -467,8 +467,7 @@ class GEOParser:
                     if subsample_target
                     else None
                 ),
-                "2. Use cloud mode with more memory (set LOBSTER_CLOUD_KEY)",
-                f"3. Increase system RAM to {recommended_gb:.1f} GB",
+                f"2. Increase system RAM to {recommended_gb:.1f} GB",
             ]
             options = [o for o in options if o]  # Filter out None
 

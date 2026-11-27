@@ -917,7 +917,6 @@ def test_a_rerun_does_not_say_a_setting_is_not_set_and_from_this_project(
         ("--ncbi-key", "K"),
         ("--profile", "development"),
         ("--ollama-model", "llama"),
-        ("--cloud-endpoint", "https://x.example"),
         ("--install-docling",),
         ("--install-vector-search",),
         ("--agents-description", "an agent"),

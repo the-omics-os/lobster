@@ -46,7 +46,7 @@ file. See the [lookup details](cli-reference.md#local-python-with-an-omics-os-cl
 `--omics-os-key <key>` takes precedence, including explicit blank input failing
 without fallback, but can expose the key in process arguments. Do not combine Cloud
 setup with another provider's flags: the other explicit provider takes priority.
-`--cloud-key` is a different legacy supplement, not gateway selection.
+`--cloud-key` is no longer used: init warns and saves nothing for it.
 
 Read the exit status **and output**. Missing credentials fail nonzero without a
 hidden prompt. Existing different-provider configuration requires approved

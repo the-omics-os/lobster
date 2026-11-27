@@ -176,16 +176,10 @@ AWS_BEDROCK_SECRET_ACCESS_KEY="your-aws-secret-key-here"
 NCBI_API_KEY="your-ncbi-api-key-here"
 
 # =============================================================================
-# OMICS-OS CLOUD CONFIGURATION (Optional)
+# OMICS-OS CLOUD (Optional)
 # =============================================================================
-# Set these to use Omics-OS Cloud instead of local processing
-# Get your API key from https://app.omics-os.com or contact info@omics-os.com
-
-# LOBSTER_CLOUD_KEY="your-cloud-api-key-here"
-# LOBSTER_ENDPOINT="https://api.lobster.omics-os.com"  # Optional: defaults to production
-
-# When LOBSTER_CLOUD_KEY is set, all processing will be done in the cloud
-# When not set, Lobster will run locally with full functionality
+# Connect your Omics-OS Cloud account: lobster cloud login --api-key <key>
+# Without an account, request access at https://www.omics-os.com/early-access
 
 # =============================================================================
 # AGENT CONFIGURATION (Professional System)

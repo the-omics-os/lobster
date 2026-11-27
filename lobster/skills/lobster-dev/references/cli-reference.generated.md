@@ -216,8 +216,6 @@ Initialize Lobster AI configuration.
   - `azure-credential` (string, optional) - Azure AI API credential (non-interactive mode)
   - `profile` (string, optional) - Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.
   - `ncbi-key` (string, optional) - NCBI API key (optional, non-interactive mode)
-  - `cloud-key` (string, optional) - Omics-OS Cloud API key (optional, enables premium tier)
-  - `cloud-endpoint` (string, optional) - Custom cloud endpoint URL (optional)
   - `skip-ssl-test` (boolean, optional) - Skip SSL connectivity test during init
   - `ssl-verify` (boolean, optional) - Enable/disable SSL verification (non-interactive mode)
   - `ssl-cert-path` (string, optional) - Path to custom CA certificate bundle

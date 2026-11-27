@@ -2103,7 +2103,6 @@ _KEY_FLAG_NAMES = (
     "azure_credential",
     "use_omics_os",
     "omics_os_key",
-    "cloud_key",
 )
 
 
@@ -2112,7 +2111,6 @@ _TERMINAL_ONLY_OPTIONS = (
     ("--ncbi-key", "ncbi_key"),
     ("--profile", "profile"),
     ("--ollama-model", "ollama_model"),
-    ("--cloud-endpoint", "cloud_endpoint"),
     ("--install-docling", "install_docling"),
     ("--install-vector-search", "install_vector_search"),
     ("--agents-description", "agents_description"),
@@ -2681,16 +2679,9 @@ def init_impl(
     ncbi_key: Optional[str] = typer.Option(
         None, "--ncbi-key", help=h("NCBI API key (optional, non-interactive mode)")
     ),
-    cloud_key: Optional[str] = typer.Option(
-        None,
-        "--cloud-key",
-        help=h("Omics-OS Cloud API key (optional, enables premium tier)"),
-    ),
-    cloud_endpoint: Optional[str] = typer.Option(
-        None,
-        "--cloud-endpoint",
-        help=h("Custom cloud endpoint URL (optional)"),
-    ),
+    # Accepted and ignored: see init_impl.
+    cloud_key: Optional[str] = typer.Option(None, "--cloud-key", hidden=True),
+    cloud_endpoint: Optional[str] = typer.Option(None, "--cloud-endpoint", hidden=True),
     skip_ssl_test: bool = typer.Option(
         False,
         "--skip-ssl-test",
@@ -2808,9 +2799,6 @@ def init_impl(
       lobster init --non-interactive \\
         --use-ollama --ollama-model=qwen3:14b       # CI/CD: Ollama with custom model
       lobster init --non-interactive \\
-        --anthropic-key=sk-ant-xxx \\
-        --cloud-key=cloud_xxx                        # CI/CD: With cloud access
-      lobster init --non-interactive \\
         --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
       lobster init --non-interactive \\
         --nebius-key=xxx                             # CI/CD: Nebius AI Studio (open-weight models)
@@ -2823,6 +2811,19 @@ def init_impl(
     from lobster.config.global_config import GlobalProviderConfig
 
     flags = locals()  # a snapshot of the options; a generator below has its own locals
+    # shortcut: --cloud-key chose a client for a retired service; it is accepted
+    # and ignored so scripts that pass it keep working. Delete both in 1.3.3.
+    for flag, value in (
+        ("--cloud-key", cloud_key),
+        ("--cloud-endpoint", cloud_endpoint),
+    ):
+        if isinstance(value, str):
+            console.print(
+                h(
+                    "[yellow]{flag} is no longer used and was not saved. Connect your Omics-OS Cloud account: lobster cloud login --api-key <key>[/yellow]"
+                ).format(flag=flag),
+                soft_wrap=True,
+            )
     if ui_mode not in ("auto", "go", "classic"):
         console.print(
             h(
@@ -3496,15 +3497,6 @@ def init_impl(
         if ncbi_key:
             env_lines.append("\n# Optional: Enhanced literature search")
             env_lines.append(f"NCBI_API_KEY={ncbi_key.strip()}")
-
-        if cloud_key:
-            env_lines.append("\n# Omics-OS Cloud configuration (enables premium tier)")
-            env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
-            if cloud_endpoint:
-                env_lines.append(f"LOBSTER_ENDPOINT={cloud_endpoint.strip()}")
-            console.print(
-                h("[green]✓ Cloud API key configured (premium tier enabled)[/green]")
-            )
 
         # Handle SSL configuration from flags
         if ssl_verify is not None or ssl_cert_path:

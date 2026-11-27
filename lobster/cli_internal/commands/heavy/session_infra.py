@@ -790,7 +790,7 @@ def init_client_or_raise_startup_diagnostic(
     interactive: bool = True,
     credentials_from: Optional[Path] = None,
 ) -> "AgentClient":
-    """Initialize either local or cloud client, raising structured diagnostics."""
+    """Initialize the local client, raising structured diagnostics."""
     from lobster.core.config_resolver import ConfigurationError
     from lobster.ui import setup_logging
 
@@ -800,128 +800,13 @@ def init_client_or_raise_startup_diagnostic(
         credentials_from=credentials_from,
     )
 
-    # Check for cloud API key
-    cloud_key = os.environ.get("LOBSTER_CLOUD_KEY")
-    cloud_endpoint = os.environ.get("LOBSTER_ENDPOINT")
-
-    if cloud_key:
-        _startup_console_print("[bold blue]Cloud API key detected...[/bold blue]")
-
-        try:
-            from lobster.lobster_cloud.client import CloudLobsterClient
-
-            _startup_console_print(
-                "[bold blue]   Initializing Omics-OS Cloud...[/bold blue]"
+    # The client LOBSTER_CLOUD_KEY selected called a retired service.
+    if os.environ.get("LOBSTER_CLOUD_KEY"):
+        _startup_console_print(
+            h(
+                "[yellow]LOBSTER_CLOUD_KEY is no longer used; Lobster runs with your provider. Connect your Omics-OS Cloud account: lobster cloud login --api-key <key>[/yellow]"
             )
-            if cloud_endpoint:
-                _startup_console_print(
-                    f"[dim blue]   Endpoint: {cloud_endpoint}[/dim blue]"
-                )
-
-            client_kwargs = {"api_key": cloud_key}
-            if cloud_endpoint:
-                client_kwargs["endpoint"] = cloud_endpoint
-
-            cloud_client = CloudLobsterClient(**client_kwargs)
-
-            max_retries = 3
-            retry_delay = 2
-
-            for attempt in range(max_retries):
-                try:
-                    status_result = cloud_client.get_status()
-
-                    if status_result.get("success", False):
-                        _startup_console_print(
-                            "[bold green]Cloud connection established[/bold green]"
-                        )
-                        _startup_console_print(
-                            f"[dim blue]   Status: {status_result.get('status', 'unknown')}[/dim blue]"
-                        )
-                        if status_result.get("version"):
-                            _startup_console_print(
-                                f"[dim blue]   Version: {status_result.get('version')}[/dim blue]"
-                            )
-                        return cloud_client
-                    else:
-                        error_msg = status_result.get("error", "Unknown error")
-                        if attempt < max_retries - 1:
-                            _startup_console_print(
-                                f"[yellow]Connection test failed (attempt {attempt + 1}): {error_msg}[/yellow]"
-                            )
-                            _startup_console_print(
-                                f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
-                            )
-                            time.sleep(retry_delay)
-                        else:
-                            _startup_console_print(
-                                f"[red]Cloud connection failed after {max_retries} attempts: {error_msg}[/red]"
-                            )
-                            raise Exception(f"Connection test failed: {error_msg}")
-
-                except Exception as e:
-                    if "timeout" in str(e).lower():
-                        error_type = "Connection timeout"
-                        suggestion = "Check your internet connection and endpoint URL"
-                    elif "401" in str(e) or "unauthorized" in str(e).lower():
-                        error_type = "Authentication failed"
-                        suggestion = "Verify your LOBSTER_CLOUD_KEY is correct"
-                    elif "404" in str(e) or "not found" in str(e).lower():
-                        error_type = "Endpoint not found"
-                        suggestion = "Check your LOBSTER_ENDPOINT URL"
-                    else:
-                        error_type = "Connection error"
-                        suggestion = "Check network connectivity and service status"
-
-                    if attempt < max_retries - 1:
-                        _startup_console_print(
-                            f"[yellow]{error_type} (attempt {attempt + 1}): {e}[/yellow]"
-                        )
-                        _startup_console_print(
-                            f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
-                        )
-                        time.sleep(retry_delay)
-                    else:
-                        _startup_console_print(
-                            f"[red]{error_type} after {max_retries} attempts[/red]"
-                        )
-                        _startup_console_print(f"[red]   Error: {e}[/red]")
-                        _startup_console_print(
-                            f"[yellow]   Suggestion: {suggestion}[/yellow]"
-                        )
-                        raise Exception(f"{error_type}: {e}")
-
-        except ImportError:
-            _startup_console_print(
-                "[bold yellow]Omics-OS Cloud Not Available Locally[/bold yellow]"
-            )
-            _startup_console_print(
-                "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
-            )
-            _startup_console_print(
-                "[white]You have a [bold blue]LOBSTER_CLOUD_KEY[/bold blue] set, but this is the open-source version.[/white]"
-            )
-            _startup_console_print("")
-            _startup_console_print(
-                "[bold white]Get Omics-OS Cloud Access:[/bold white]"
-            )
-            _startup_console_print(
-                "   Visit: [bold blue]https://app.omics-os.com[/bold blue]"
-            )
-            _startup_console_print(
-                "   Email: [bold blue]cloud@omics-os.com[/bold blue]"
-            )
-            _startup_console_print("")
-            _startup_console_print(
-                "[bold white]For now, using local mode with full functionality:[/bold white]"
-            )
-            _startup_console_print(
-                "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
-            )
-
-        except Exception as e:
-            _startup_console_print(f"[red]Cloud connection error: {e}[/red]")
-            _startup_console_print("[yellow]   Falling back to local mode...[/yellow]")
+        )
 
     # Use local client (existing code)
     import logging as _logging
