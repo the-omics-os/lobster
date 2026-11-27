@@ -2,19 +2,19 @@ name: Unit Tests (rest)
 
 # The unit tests that no other lane runs on a pull request: tests/unit minus
 # what Fast Validation, Basic CI and the Replay Tests shards select.
-# Measuring stage: it runs on a push of the one branch below, or by hand.
-# The push trigger is removed before it runs on pull requests.
 on:
-  push:
-    branches: [ci/unit-tests-rest]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: unit-tests-rest-${{ github.ref }}
-  cancel-in-progress: false
+  # A new push to a pull request cancels its older run; runs by hand keep theirs.
+  group: unit-tests-rest-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PYTHONPATH: ${{ github.workspace }}
@@ -26,14 +26,27 @@ env:
 
 jobs:
   unit-tests-rest:
-    name: Unit Tests (rest)
+    name: Unit Tests (rest) ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two shards of about equal time. The second runs everything the first
+        # does not, so a new test folder always lands in a shard.
+        include:
+          - shard: tools+mcp
+            select: tests/unit/tools tests/unit/mcp
+            skip: ""
+          - shard: other
+            select: tests/unit
+            skip: --ignore=tests/unit/tools --ignore=tests/unit/mcp
 
     steps:
     - name: Checkout
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
     - name: Set up Python 3.12
@@ -45,7 +58,6 @@ jobs:
       uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
 
     - name: Install every package
-      id: install
       run: |
         uv venv --python 3.12 .venv
         # hdf5 (PyTables): tests/unit/core/test_hdf_minimum_adapter_refusal.py writes real HDF files.
@@ -61,7 +73,7 @@ jobs:
       # Selected by DIRECTORY minus what the other lanes select, so a new test
       # file outside those paths runs here without editing this list.
       run: |
-        python -m pytest tests/unit \
+        python -m pytest ${{ matrix.select }} ${{ matrix.skip }} \
           --ignore=tests/unit/config \
           --ignore=tests/unit/core/backends \
           --ignore=tests/unit/core/test_client.py \
@@ -87,26 +99,10 @@ jobs:
           --durations=30 \
           -v
 
-    - name: Run the replay tests that need proteomics or metabolomics
-      # Measures what the Replay Tests shards add once they install these packages.
-      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-      run: |
-        python -m pytest \
-          tests/unit/cli/test_replay_multi_input.py \
-          tests/unit/cli/test_replay_named_result_steps.py \
-          -m "not slow and not real_api" \
-          --import-mode=importlib \
-          -n auto --dist worksteal \
-          --junit-xml=replay-omics-results.xml \
-          --durations=10 \
-          -v
-
     - name: Upload test results
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       if: always()
       with:
-        name: unit-tests-rest-results
-        path: |
-          unit-rest-results.xml
-          replay-omics-results.xml
+        name: unit-tests-rest-results-${{ strategy.job-index }}
+        path: unit-rest-results.xml
         retention-days: 14
