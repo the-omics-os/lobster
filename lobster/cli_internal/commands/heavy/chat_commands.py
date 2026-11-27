@@ -1258,8 +1258,11 @@ def chat_impl(
 
                 # Display session ID for continuity
                 console.print(
-                    f"[dim]Session: {client.session_id} "
-                    f"(use --session-id latest to continue)[/dim]"
+                    "[dim]"
+                    + h(
+                        "Session: {session} (use --session-id latest to continue)"
+                    ).format(session=client.session_id)
+                    + "[/dim]"
                 )
 
                 console.print(

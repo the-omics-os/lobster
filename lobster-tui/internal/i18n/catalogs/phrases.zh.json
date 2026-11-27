@@ -585,7 +585,6 @@
   "Conversation reset": "对话已重置",
   "Messages cleared. Data and modalities retained.": "消息已清除，数据和数据模态已保留。",
   "exit?": "退出？",
-  "(use --session-id latest to continue)": "（使用 --session-id latest 继续）",
   "Unknown command: {cmd}": "未知命令：{cmd}",
   "Nothing to save (no data loaded)": "没有可保存的内容（未加载数据）",
   "Restore not available for this client": "此客户端不支持恢复",

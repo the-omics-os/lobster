@@ -23,7 +23,6 @@ from rich import box
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -82,9 +81,6 @@ from lobster.cli_internal.commands import (
     workspace_load,
     workspace_remove,
     workspace_status,
-)
-from lobster.cli_internal.commands.heavy.animations import (
-    display_goodbye,
 )
 from lobster.cli_internal.commands.heavy.display_helpers import build_status_blocks
 from lobster.cli_internal.commands.heavy.session_infra import (
@@ -3013,34 +3009,9 @@ when they are started by agents or analysis workflows.
                 raise KeyboardInterrupt
             return None
 
-        if Confirm.ask(f"[dim]{h('exit?')}[/dim]"):
-            if hasattr(client, "_save_session_json"):
-                try:
-                    client._save_session_json()
-                except Exception:  # nosec B110 - session autosave is best-effort
-                    pass
-            display_goodbye()
-
-            # Display session ID for continuity
-            console.print(
-                f"[dim]Session: {client.session_id} "
-                f"{h('(use --session-id latest to continue)')}[/dim]"
-            )
-
-            console.print(
-                "[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]"
-            )
-            console.print(
-                "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster/issues]github.com/the-omics-os/lobster/issues[/link][/dim]"
-            )
-
-            # Display session token usage summary
-            if hasattr(client, "token_tracker") and client.token_tracker:
-                summary = client.token_tracker.get_minimal_summary()
-                if summary:
-                    console.print(f"[dim]{summary}[/dim]")
-            console.print()  # Empty line before exit
-            raise KeyboardInterrupt
+        # The chat loop asks "exit?" once, saves the session and says goodbye,
+        # as for Ctrl+C.
+        raise KeyboardInterrupt
 
     else:
         output.print(h("Unknown command: {cmd}").format(cmd=cmd), style="error")

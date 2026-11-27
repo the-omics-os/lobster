@@ -2705,17 +2705,7 @@ def test_exit_command_protocol_mode_avoids_direct_console_and_confirm(
                 "direct console.print should not be used in protocol mode"
             )
 
-    class _FailingConfirm:
-        @staticmethod
-        def ask(*_args, **_kwargs):
-            raise AssertionError("Confirm.ask should not be used in protocol mode")
-
-    def _failing_display_goodbye(*_args, **_kwargs):
-        raise AssertionError("display_goodbye should not be called in protocol mode")
-
     monkeypatch.setattr(slash_commands, "console", _FailingConsole())
-    monkeypatch.setattr(slash_commands, "Confirm", _FailingConfirm)
-    monkeypatch.setattr(slash_commands, "display_goodbye", _failing_display_goodbye)
 
     summary = slash_commands._execute_command(
         "/exit",
@@ -2751,17 +2741,7 @@ def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(
                 "direct console.print should not be used in protocol mode"
             )
 
-    class _FailingConfirm:
-        @staticmethod
-        def ask(*_args, **_kwargs):
-            raise AssertionError("Confirm.ask should not be used in protocol mode")
-
-    def _failing_display_goodbye(*_args, **_kwargs):
-        raise AssertionError("display_goodbye should not be called in protocol mode")
-
     monkeypatch.setattr(slash_commands, "console", _FailingConsole())
-    monkeypatch.setattr(slash_commands, "Confirm", _FailingConfirm)
-    monkeypatch.setattr(slash_commands, "display_goodbye", _failing_display_goodbye)
 
     with pytest.raises(KeyboardInterrupt):
         slash_commands._execute_command(
