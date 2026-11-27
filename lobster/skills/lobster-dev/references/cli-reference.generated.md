@@ -91,13 +91,13 @@ Start an interactive cloud chat session (lobster-cli, direct connection).
 
 ### `lobster cloud login`
 
-Authenticate the Python local gateway provider with --api-key <key>.
+Save your Omics-OS Cloud API key for Lobster: --api-key <key>.
 
   - `api-key` (string, optional) - Omics-OS API key from app.omics-os.com/account
 
 ### `lobster cloud logout`
 
-Log out of Omics-OS Cloud.
+Remove the Omics-OS Cloud key Lobster saved (not the omics-os CLI's sign-in).
 
 ### `lobster cloud projects`
 

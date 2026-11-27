@@ -425,6 +425,13 @@ class Settings:
                 os.environ[key] = previous
         self.__dict__[store] = {}
 
+    def set_by_env_file(self, key: str) -> bool:
+        """Whether a ``.env`` this process loaded (not the global file) set ``key``."""
+        return any(
+            key in self.__dict__.get(store, {})
+            for store in (_START_KEYS, _PROJECT_KEYS)
+        )
+
     def reload_credentials(
         self, workspace_path: Path, lobster_names_only: bool = False
     ) -> None:

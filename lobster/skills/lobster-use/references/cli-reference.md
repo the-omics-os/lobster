@@ -116,11 +116,11 @@ A subsequent analysis can still write data and use paid inference.
 
 **Human route:** Python `lobster init` accepts a key in a masked Cloud prompt.
 Bare Python `lobster cloud login` does not start a supported browser flow; it
-returns guidance. Python `lobster cloud login --api-key <key>` is a separate
-manual-key login that can validate/store a platform credential, but the flag
+returns guidance. Python `lobster cloud login --api-key <key>` checks the key and
+saves it as `OMICS_OS_API_KEY` in Lobster's own `credentials.env`, but the flag
 exposes the key in argv and login does not select the local provider. npm device
-login requires human approval and is not a non-interactive setup shortcut;
-configure Python separately rather than assuming shared credentials work.
+login requires human approval and is not a non-interactive setup shortcut; the
+two keep separate sign-ins, and Python Lobster never reads the npm CLI's.
 
 `--skip-extras` also suppresses the entire end-of-wizard `uv tool` installation
 prompt/handoff, not just provider extras, and skips the `--preset`/`--agents` packages. Agent choices can still be recorded and

@@ -63,9 +63,7 @@ def test_poisoned_endpoint_fails_closed(isolated_home, cred_factory, command, po
     )
 
 
-def test_no_httpx_call_on_poisoned_endpoint_provider(
-    tmp_path, monkeypatch, cred_factory
-):
+def test_no_httpx_call_on_poisoned_endpoint_provider(monkeypatch):
     """In-process: the LOCAL CHAT provider makes ZERO outbound calls on poison.
 
     This is the worst site — the default `lobster chat` path. A poisoned endpoint

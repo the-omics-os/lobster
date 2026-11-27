@@ -45,6 +45,16 @@ def _saved_key() -> Optional[str]:
     return (dotenv_values(path).get("OMICS_OS_API_KEY") or "").strip() or None
 
 
+def _key_set_elsewhere(in_use: Optional[str], saved: Optional[str]) -> bool:
+    """Whether the shell or a .env sets OMICS_OS_API_KEY; that key is used first."""
+    from lobster.config.settings import get_settings
+
+    if not in_use:
+        return False
+    # shortcut: a shell export equal to the saved key reads as the saved key.
+    return get_settings().set_by_env_file("OMICS_OS_API_KEY") or in_use != saved
+
+
 def _is_secure_endpoint(endpoint: str) -> bool:
     """Check that the endpoint is HTTPS or localhost (for dev)."""
     parsed = urlparse(endpoint)
@@ -169,7 +179,7 @@ def _api_key_login(api_key: Optional[str]) -> None:
     path = save_global_credentials({"OMICS_OS_API_KEY": api_key}, append=True)
     _print_login_success(data)
     console.print(h("[dim]Saved in {path}[/dim]").format(path=escape(str(path))))
-    if in_use and in_use not in (saved_before, api_key):
+    if in_use != api_key and _key_set_elsewhere(in_use, saved_before):
         # The shell or this folder's .env sets another key, and it wins.
         console.print(
             h(
@@ -216,7 +226,7 @@ def account() -> None:
     data = _validate_credentials(endpoint, api_key)
     if data is None:
         raise typer.Exit(1)
-    budget = data.get("budget", {})
+    budget = data.get("budget") or {}
 
     table = Table(
         title=h("Omics-OS Cloud Account"), show_header=False, border_style="cyan"
@@ -392,7 +402,7 @@ def logout() -> None:
         )
     else:
         console.print(h("Lobster has no saved Omics-OS Cloud key; nothing to remove."))
-    if in_use and in_use != saved:
+    if _key_set_elsewhere(in_use, saved):
         console.print(
             h(
                 "[yellow]OMICS_OS_API_KEY is still set in your shell or in this "

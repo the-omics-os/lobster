@@ -203,7 +203,7 @@ def test_force_uses_credential_priority_and_backs_up_both_artifacts(
     assert expected not in result.output
 
 
-def test_saved_active_python_profile_precedes_local_saved_files(monkeypatch, tmp_path):
+def test_the_key_in_use_precedes_local_saved_files(monkeypatch, tmp_path):
     monkeypatch.setattr(uv_tool_env, "is_uv_tool_env", lambda: False)
     assert invoke("--global", "--omics-os-key", "omk_global").exit_code == 0
     assert invoke("--omics-os-key", "omk_workspace").exit_code == 0
