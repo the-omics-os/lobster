@@ -10,13 +10,17 @@ from tests.unit.utils.test_callback_cache_cost import MODEL, result, tracker
 pytestmark = pytest.mark.no_auto_config
 
 
-def _call(callback, response):
+def _call(callback, response, provider="amazon_bedrock"):
     run_id = uuid4()
     callback.on_chat_model_start(
         {},
         [[]],
         run_id=run_id,
-        metadata={"ls_provider": "amazon_bedrock", "ls_model_name": MODEL},
+        metadata=(
+            {}
+            if provider is None
+            else {"ls_provider": provider, "ls_model_name": MODEL}
+        ),
     )
     callback.on_llm_end(response, run_id=run_id)
 
@@ -53,3 +57,23 @@ def test_each_reason_warns_once_and_reset_rearms(caplog):
         callback.reset()
         _call(callback, result(ttl=False))
     assert len(_fallback_records(caplog)) == 2
+
+
+@pytest.mark.parametrize("provider", [None, "anthropic", "openai", "omics-os"])
+def test_a_provider_without_a_cache_price_identity_logs_only_at_debug(caplog, provider):
+    # Every cached turn on such a provider takes this fallback: expected, not a warning
+    from tests.unit.utils.test_callback_cache_cost import legacy_amount
+
+    callback = tracker()
+    with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
+        _call(callback, result(), provider)
+        _call(callback, result(), provider)
+    summary = callback.get_usage_summary()
+    records = _fallback_records(caplog)
+    assert [r.levelno for r in records] == [logging.DEBUG, logging.DEBUG]
+    assert "reason=pricing_identity_unknown" in records[0].message
+    # Accounting is unchanged by the quieter log.
+    assert [i["cache_cost_reason"] for i in summary["invocations"]] == [
+        "pricing_identity_unknown"
+    ] * 2
+    assert callback.total_cost_usd == pytest.approx(2 * legacy_amount())

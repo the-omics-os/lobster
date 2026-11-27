@@ -1314,8 +1314,11 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 reason = decision.reason or "unknown"
                 seen = self._cache_fallback_counts.get(reason, 0) + 1
                 self._cache_fallback_counts[reason] = seen
+                # A provider other than Bedrock has no cache price identity, so
+                # every cached turn on it takes this fallback: expected, DEBUG.
+                expected = reason == "pricing_identity_unknown"
                 logger.log(
-                    logging.WARNING if seen == 1 else logging.DEBUG,
+                    logging.WARNING if seen == 1 and not expected else logging.DEBUG,
                     "Cache cost fallback: reason=%s; logical_input_type=%s; "
                     "cache_read_type=%s; cache_write_type=%s; occurrence=%d "
                     "(later occurrences with this reason are logged at DEBUG)",

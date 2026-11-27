@@ -160,7 +160,7 @@ def test_cache_off_still_accounts_observed_usage(monkeypatch, flag, provider, ca
         monkeypatch.setenv("LOBSTER_BEDROCK_PROMPT_CACHE", flag)
     rates = pricing.get_rates("bedrock", MODEL)
     callback = manual_tracker()
-    with caplog.at_level(logging.WARNING, logger="lobster.utils.callbacks"):
+    with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
         summary = record(callback, result(), provider)
     if provider == "amazon_bedrock":
         expected = float(

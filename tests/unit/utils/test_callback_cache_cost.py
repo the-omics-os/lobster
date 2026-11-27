@@ -109,7 +109,7 @@ def test_missing_unknown_identity_uses_exact_legacy_and_one_content_free_log(
     caplog, provider
 ):
     callback = tracker()
-    with caplog.at_level(logging.WARNING, logger="lobster.utils.callbacks"):
+    with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
         summary = record(callback, result(), provider)
     assert callback.total_cost_usd == legacy_amount()
     assert summary["invocations"][0]["cache_cost_status"] == "legacy_fallback"
@@ -176,7 +176,7 @@ def test_one_hour_write_uses_exact_legacy_and_one_flag(caplog):
 
 def test_unpriced_status_only_when_legacy_itself_is_unknown(caplog):
     callback = TokenTrackingCallback("synthetic")
-    with caplog.at_level(logging.WARNING, logger="lobster.utils.callbacks"):
+    with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
         summary = record(callback, result(), provider=None)
     assert callback._calculate_cost(MODEL, 20, 5) is None
     assert callback.invocations[0].cost_usd is None
@@ -229,7 +229,7 @@ def test_no_cache_and_zero_cache_match_literal_legacy_summary(details):
 def test_only_actual_ls_label_no_conflicting_provider_override(metadata, caplog):
     callback = tracker()
     callback.on_chat_model_start({}, [[]], run_id=RUN, metadata=metadata)
-    with caplog.at_level(logging.WARNING, logger="lobster.utils.callbacks"):
+    with caplog.at_level(logging.DEBUG, logger="lobster.utils.callbacks"):
         callback.on_llm_end(result(), run_id=RUN)
     summary = callback.get_usage_summary()
     assert callback.total_cost_usd == legacy_amount()
