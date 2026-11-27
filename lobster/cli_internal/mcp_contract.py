@@ -161,6 +161,7 @@ QUESTION = (
 
 _RUN = {
     "name": "lobster_run",
+    "title": "Lobster: run",
     "description": " ".join(
         [
             "Start a Lobster AI run on an experimental question and return at "
@@ -229,6 +230,7 @@ _RUN = {
 
 _STATUS = {
     "name": "lobster_status",
+    "title": "Lobster: status",
     "description": " ".join(
         [
             "Report the state of a Lobster run: running, needs_decision, "
@@ -267,6 +269,7 @@ _STATUS = {
 
 _ANSWER = {
     "name": "lobster_answer",
+    "title": "Lobster: answer",
     "description": " ".join(
         [
             "Answer the question of a run whose status (from lobster_wait or "
@@ -331,6 +334,7 @@ _ANSWER = {
 # stops it short of closing the server.
 _CANCEL = {
     "name": "lobster_cancel",
+    "title": "Lobster: cancel",
     "description": " ".join(
         [
             "Stop a running Lobster run. Use only when the user asks to stop.",
@@ -367,6 +371,7 @@ _CANCEL = {
 
 _CONTINUE = {
     "name": "lobster_continue",
+    "title": "Lobster: continue",
     "description": " ".join(
         [
             "Add one more turn to the session of a completed Lobster run, on "
@@ -437,6 +442,7 @@ _CONTINUE = {
 
 _INSPECT = {
     "name": "lobster_inspect",
+    "title": "Lobster: inspect",
     "description": " ".join(
         [
             "Read the structure of an .h5ad file that a Lobster run wrote, "
@@ -494,6 +500,7 @@ _INSPECT = {
 
 _WAIT = {
     "name": "lobster_wait",
+    "title": "Lobster: wait",
     "description": " ".join(
         [
             "Wait until a Lobster run needs you: it returns the status as "
@@ -536,6 +543,7 @@ _WAIT = {
 
 _OVERVIEW = {
     "name": "lobster_overview",
+    "title": "Lobster: overview",
     "description": " ".join(
         [
             "The live state of the Lobster project this server was started "
@@ -563,6 +571,7 @@ DOCS_QUERY_MAX = 200
 DOCS_RESULTS_MAX = 20  # mcp_docs.MAX_RESULTS; this module imports nothing of it
 _DOCS = {
     "name": "lobster_docs",
+    "title": "Lobster: docs",
     "description": " ".join(
         [
             "Search or read the public Lobster AI and Omics-OS documentation "

@@ -57,7 +57,16 @@ def call(server: McpServer, name: str, arguments: dict) -> dict:
     if result.get("isError"):
         return {"error_text": result["content"][0]["text"]}
     assert set(result) == {"content"}
-    return json.loads(result["content"][0]["text"])
+    return without_headline(result["content"][0]["text"])
+
+
+def without_headline(text: str) -> dict:
+    """The reply object of *text* without its first key ``headline``, which
+    test_headline checks."""
+    reply = json.loads(text)
+    assert next(iter(reply)) == "headline"
+    del reply["headline"]
+    return reply
 
 
 def wait_terminal(server: McpServer, run_id: str, timeout: float = 30) -> dict:

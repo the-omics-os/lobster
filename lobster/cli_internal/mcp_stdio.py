@@ -17,8 +17,9 @@ that); the two commands share no framing.
 * A question from the engine puts the run in ``needs_decision``; the worker
   waits (no timer) until ``lobster_answer``, ``lobster_cancel`` or EOF.
 * A tool result is one text block holding a JSON object and nothing else, the
-  shape hosts unwrap into a plain value. Tool failures set ``isError`` with a
-  one-line message; protocol mistakes are JSON-RPC errors.
+  shape hosts unwrap into a plain value. Its first key, ``headline``, is one
+  line for the host to show its user (``mcp_headline``). Tool failures set
+  ``isError`` with a one-line message; protocol mistakes are JSON-RPC errors.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from typing import (
 from lobster.cli_internal import mcp_contract as contract
 from lobster.cli_internal import (
     mcp_decision,
+    mcp_headline,
     mcp_inspect,
     mcp_lock,
     mcp_overview,
@@ -1865,6 +1867,8 @@ class McpServer:
         except ToolError as exc:
             text = _one_line(exc, limit=1000)
             return {"content": [{"type": "text", "text": text}], "isError": True}
+        if isinstance(payload, dict):  # first, so a host's preview shows it
+            payload = {"headline": mcp_headline.headline(name, payload), **payload}
         try:
             text = json.dumps(payload, default=str, allow_nan=False)
         except ValueError:  # NaN or Infinity is not JSON

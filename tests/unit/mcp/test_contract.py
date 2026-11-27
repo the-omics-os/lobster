@@ -151,7 +151,14 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
         "lobster_docs",
     ]
     for tool in tools:
-        assert set(tool) == {"name", "description", "inputSchema", "annotations"}
+        assert set(tool) == {
+            "name",
+            "title",
+            "description",
+            "inputSchema",
+            "annotations",
+        }
+        assert tool["title"] == "Lobster: " + tool["name"].removeprefix("lobster_")
         assert tool["inputSchema"]["type"] == "object"
     by = {t["name"]: t for t in tools}
     # By design: run is not claimed non-destructive.
