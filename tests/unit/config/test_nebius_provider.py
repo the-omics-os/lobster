@@ -109,9 +109,9 @@ def test_nebius_registered_and_valid():
 
     This module imports NebiusProvider directly, and that import auto-registers
     the provider — so asserting ProviderRegistry.get("nebius") on a warm
-    registry would pass even if the _provider_specs entry were missing.
+    registry would pass even if the _PROVIDER_SPECS entry were missing.
     reset() clears the registry and forces _ensure_initialized() to re-resolve
-    from _provider_specs, which is the real integration point.
+    from _PROVIDER_SPECS, which is the real integration point.
     """
     assert "nebius" in VALID_PROVIDERS
 

@@ -50,6 +50,22 @@ class ProviderRegistry:
     _providers: Dict[str, ILLMProvider] = {}
     _initialized: bool = False
 
+    # Built-in provider modules and their provider class names. Their order, not
+    # the order modules happened to be imported in, decides which provider wins
+    # a model id two providers list (get_all_models_with_pricing).
+    _PROVIDER_SPECS = (
+        ("lobster.config.providers.anthropic_provider", "AnthropicProvider"),
+        ("lobster.config.providers.bedrock_provider", "BedrockProvider"),
+        ("lobster.config.providers.ollama_provider", "OllamaProvider"),
+        ("lobster.config.providers.gemini_provider", "GeminiProvider"),
+        ("lobster.config.providers.azure_provider", "AzureProvider"),
+        ("lobster.config.providers.openai_provider", "OpenAIProvider"),
+        ("lobster.config.providers.openrouter_provider", "OpenRouterProvider"),
+        ("lobster.config.providers.omics_os_provider", "OmicsOSProvider"),
+        ("lobster.config.providers.nebius_provider", "NebiusProvider"),
+        ("lobster.config.providers.ollama_cloud_provider", "OllamaCloudProvider"),
+    )
+
     @classmethod
     def register(cls, provider: ILLMProvider) -> None:
         """
@@ -171,23 +187,9 @@ class ProviderRegistry:
         if cls._initialized:
             return
 
-        # Provider modules and their provider class names
-        _provider_specs = [
-            ("lobster.config.providers.anthropic_provider", "AnthropicProvider"),
-            ("lobster.config.providers.bedrock_provider", "BedrockProvider"),
-            ("lobster.config.providers.ollama_provider", "OllamaProvider"),
-            ("lobster.config.providers.gemini_provider", "GeminiProvider"),
-            ("lobster.config.providers.azure_provider", "AzureProvider"),
-            ("lobster.config.providers.openai_provider", "OpenAIProvider"),
-            ("lobster.config.providers.openrouter_provider", "OpenRouterProvider"),
-            ("lobster.config.providers.omics_os_provider", "OmicsOSProvider"),
-            ("lobster.config.providers.nebius_provider", "NebiusProvider"),
-            ("lobster.config.providers.ollama_cloud_provider", "OllamaCloudProvider"),
-        ]
-
         import sys
 
-        for module_path, class_name in _provider_specs:
+        for module_path, class_name in cls._PROVIDER_SPECS:
             try:
                 if module_path in sys.modules:
                     # Module already imported — re-register from cached module
@@ -226,7 +228,8 @@ class ProviderRegistry:
         Args:
             provider: Only this provider's catalog (so a model id that two providers
                 list at different prices keeps its own price); None merges all, the
-                last registered provider winning an id.
+                later provider in ``_PROVIDER_SPECS`` winning an id (providers not
+                listed there come last).
 
         Returns:
             Dict mapping model names to pricing info:
@@ -254,7 +257,12 @@ class ProviderRegistry:
         pricing_dict: Dict[str, Dict[str, float]] = {}
         only = provider  # the loop below reuses the name
 
-        for provider in cls._providers.values():
+        rank = {path: i for i, (path, _) in enumerate(cls._PROVIDER_SPECS)}
+        ordered = sorted(
+            cls._providers.values(),
+            key=lambda p: rank.get(type(p).__module__, len(rank)),
+        )
+        for provider in ordered:
             # Skip local providers (Ollama) - they have no cost and require network calls
             # to list models. Cloud providers have static KNOWN_MODELS catalogs.
             if provider.name == "ollama":
