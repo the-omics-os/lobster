@@ -39,10 +39,9 @@ in Bash; do not print it, source the file as code, or enable shell tracing.
 
 This selects the **local** gateway provider without requiring an Anthropic,
 OpenAI or personal AWS key. No npm install/login is needed. `--use-omics-os`
-looks up the nonblank Python environment key, then the active saved Python
-platform profile. If neither supplies a usable credential, workspace-mode init
-tries CWD `.env`, then global Python `credentials.env`; `--global` skips the CWD
-file. See the [lookup details](cli-reference.md#local-python-with-an-omics-os-cloud-account).
+looks up a nonblank `OMICS_OS_API_KEY`. If that supplies no usable credential,
+workspace-mode init tries CWD `.env`, then global Python `credentials.env`;
+`--global` skips the CWD file. See the [lookup details](cli-reference.md#local-python-with-an-omics-os-cloud-account).
 `--omics-os-key <key>` takes precedence, including explicit blank input failing
 without fallback, but can expose the key in process arguments. Do not combine Cloud
 setup with another provider's flags: the other explicit provider takes priority.
@@ -60,9 +59,9 @@ Do not call internal credential/config APIs to bypass an unsupported CLI; check
 access, key validity or inference. In Python `status`, inspect `Initialization`,
 `Provider` and `Configuration Source`: expect provider `omics-os`, but
 `Account Access: Not checked (configuration only)` is **not authentication proof**.
-`--skip-ssl-test` skips init's SSL test, not all possible network activity (a saved
-OAuth token may refresh). Do not add `--skip-extras`: it skips every install, the
-preset's packages included. Inspect the agent
+`--skip-ssl-test` skips init's SSL test, not all possible network activity.
+Do not add `--skip-extras`: it skips every install, the preset's packages
+included. Inspect the agent
 inventory; "No agents installed" is not an analysis-ready setup. Stop on an
 unexpected provider, missing task agents or setup errors.
 

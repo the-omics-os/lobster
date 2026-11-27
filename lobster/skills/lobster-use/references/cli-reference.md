@@ -73,13 +73,12 @@ which init refuses):
 )
 ```
 
-- `--use-omics-os`: select the gateway; resolve a nonblank `OMICS_OS_API_KEY`, then
-  the active saved Python platform profile. If that lookup is missing/blank,
-  workspace-mode init tries CWD `.env`, then global Python `credentials.env`
-  (global paths below). `--global` skips CWD `.env` and uses only the global file
-  for this fallback. Saved files are parsed without exporting their values.
-  An approved saved credential can supply init without the fresh-key ENV guard
-  in the example. A saved OAuth token may refresh; this is not universally offline.
+- `--use-omics-os`: select the gateway; resolve a nonblank `OMICS_OS_API_KEY`.
+  If that lookup is missing/blank, workspace-mode init tries CWD `.env`, then
+  global Python `credentials.env` (global paths below). `--global` skips CWD
+  `.env` and uses only the global file for this fallback. Saved files are parsed
+  without exporting their values. An approved saved credential can supply init
+  without the fresh-key ENV guard in the example.
 - `--omics-os-key <key>`: explicit Cloud key, used before lookup even with
   `--use-omics-os`. Blank explicit input fails rather than falling back. This
   flag can expose the key in process arguments; the environment route is preferred.
