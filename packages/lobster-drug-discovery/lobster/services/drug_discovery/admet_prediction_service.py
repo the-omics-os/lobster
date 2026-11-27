@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 # Optional RDKit dependency
 try:
     from rdkit import Chem
-    from rdkit.Chem import Descriptors, Lipinski, rdMolDescriptors
+    from rdkit.Chem import Descriptors, Lipinski
 
     RDKIT_AVAILABLE = True
 except ImportError:
@@ -153,10 +153,8 @@ class ADMETPredictionService:
         # Water solubility estimate from LogP (Delaney model approximation)
         # log S = 0.16 - 0.63*cLogP - 0.0062*MW + 0.066*RB - 0.74*AP
         rot_bonds = Lipinski.NumRotatableBonds(mol)
-        aromatic_proportion = (
-            rdMolDescriptors.CalcNumAromaticRings(mol)
-            / max(mol.GetNumHeavyAtoms(), 1)
-        )
+        aromatic_atoms = sum(1 for atom in mol.GetAtoms() if atom.GetIsAromatic())
+        aromatic_proportion = aromatic_atoms / max(mol.GetNumHeavyAtoms(), 1)
         log_s = (
             0.16
             - 0.63 * logp
