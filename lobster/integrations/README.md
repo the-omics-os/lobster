@@ -7,6 +7,8 @@
 | `codex.config.toml` | Codex CLI | `~/.codex/config.toml` |
 | `cursor.mcp.json` | Cursor | `<project>/.cursor/mcp.json` or `~/.cursor/mcp.json` |
 | `open-science.connector.json` | AIPOCH Open Science | Import as a custom connector |
+| `opencode.json` | opencode | `<project>/opencode.json` or `~/.config/opencode/opencode.json` |
+| `pi.mcp.json` | pi and os (`pi-mcp-adapter`; os native MCP preview) | `~/.pi/agent/mcp.json` or `.pi/mcp.json`; os: `~/.os/agent/mcp.json` (native preview: `mcp-native.json`) |
 
 The server lists nine tools: `lobster_run`, `lobster_continue`, `lobster_answer`,
 `lobster_cancel`, and `lobster_overview`, `lobster_status`, `lobster_wait`,
@@ -21,6 +23,14 @@ a project made later above that folder is entered on the next call. A run uses
 the project's provider, model and experts, even when a global provider setup or
 `LOBSTER_LLM_PROVIDER` names another, and the key from the project folder's
 `.env`, the server's environment or the global setup.
+
+`lobster_wait` without `timeout_s` returns only when the run ends or needs a
+decision, which can take longer than a host allows a tool call. The Codex, pi
+and os files raise that limit to an hour; in a host with a short limit the model
+passes `timeout_s` under it. The pi file registers the tools directly under
+their own names (`directTools`, `toolPrefix: "none"`), so the model calls
+`lobster_run` rather than going through the `mcp` proxy tool; `timeout` is the
+os native preview's limit in seconds and `requestTimeoutMs` the adapter's.
 
 Desktop apps do not start from your shell and may not find `lobster` on PATH:
 replace `"lobster"` with the absolute path printed by `which lobster`.

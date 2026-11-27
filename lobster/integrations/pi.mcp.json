@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "lobster": {
+      "command": "lobster",
+      "args": ["mcp", "--stdio"],
+      "directTools": true,
+      "toolPrefix": "none",
+      "requestTimeoutMs": 3600000,
+      "timeout": 3600
+    }
+  }
+}

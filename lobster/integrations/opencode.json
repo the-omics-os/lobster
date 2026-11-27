@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "lobster": {
+        "type": "local",
+        "command": ["lobster", "mcp", "--stdio"],
+        "codemode": false
+      }
+    }
+  }
+}
