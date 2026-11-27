@@ -16,6 +16,17 @@ import plotly.io as pio
 from plotly.subplots import make_subplots
 from scipy.sparse import issparse
 
+from lobster.figure_templates._style import (
+    DIVERGING,
+    GRID,
+    HOUSE_COLORS,
+    INK,
+    KEY,
+    NO_CALL,
+    SEQUENTIAL,
+    SEQUENTIAL_EXPRESSION,
+    TICK,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +36,34 @@ class VisualizationError(Exception):
     """Base exception for visualization operations."""
 
     pass
+
+
+def _add_centroid_labels(fig: go.Figure) -> None:
+    """Label each category of an embedding with 3 or more categories in place.
+
+    One trace per category; the label sits at the median, not the mean, so a
+    split cluster still gets its label inside its own points.
+    """
+    traces = [trace for trace in fig.data if trace.x is not None and len(trace.x)]
+    if len(traces) < 3:
+        return
+    for trace in traces:
+        fig.add_annotation(
+            x=float(np.median(trace.x)),
+            y=float(np.median(trace.y)),
+            text=str(trace.name),
+            showarrow=False,
+            font=dict(color=INK, size=12),
+            bgcolor="rgba(255,255,255,0.7)",
+        )
+
+
+def _symmetric_limit(values) -> float:
+    """Half-range for a signed matrix drawn on DIVERGING with its midpoint at 0."""
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    limit = float(np.abs(finite).max()) if finite.size else 0.0
+    return limit or 1.0
 
 
 class SingleCellVisualizationService:
@@ -46,10 +85,9 @@ class SingleCellVisualizationService:
         """
         logger.debug("Initializing SingleCellVisualizationService")
 
-        # Color palettes for consistency
-        self.cluster_colors = px.colors.qualitative.Set1
-        self.continuous_colors = px.colors.sequential.Viridis
-        self.diverging_colors = px.colors.diverging.RdBu_r
+        # Categories take the house colours in order (Plotly cycles above 14).
+        # Other colour scales and backgrounds come from the omics_os template.
+        self.cluster_colors = HOUSE_COLORS
 
         # Default plot settings
         self.default_width = 800
@@ -57,15 +95,8 @@ class SingleCellVisualizationService:
         self.default_marker_size = 3
         self.default_opacity = 0.8
 
-        # Scientific color scales for gene expression
-        self.expression_colorscale = [
-            [0, "lightgray"],
-            [0.01, "lightblue"],
-            [0.1, "blue"],
-            [0.5, "red"],
-            [0.8, "darkred"],
-            [1.0, "black"],
-        ]
+        # Gene expression: grey at zero, then the house sequential scale
+        self.expression_colorscale = SEQUENTIAL_EXPRESSION
 
         logger.debug("SingleCellVisualizationService initialized successfully")
 
@@ -234,7 +265,8 @@ class SingleCellVisualizationService:
                     color_discrete_sequence=self.cluster_colors,
                 )
             else:
-                # Continuous coloring
+                # Continuous coloring: gene expression gets the expression
+                # scale, other values the template's sequential scale.
                 fig = px.scatter(
                     x=umap_coords[:, 0],
                     y=umap_coords[:, 1],
@@ -243,7 +275,11 @@ class SingleCellVisualizationService:
                     labels={"x": "UMAP 1", "y": "UMAP 2", "color": color_by},
                     width=width or self.default_width,
                     height=height or self.default_height,
-                    color_continuous_scale=self.continuous_colors,
+                    color_continuous_scale=(
+                        self.expression_colorscale
+                        if color_by not in adata.obs.columns
+                        else None
+                    ),
                 )
 
             # Update traces
@@ -302,10 +338,9 @@ class SingleCellVisualizationService:
                     else None
                 ),
                 hovermode="closest",
-                plot_bgcolor="white",
-                xaxis=dict(showgrid=True, gridcolor="lightgray", zeroline=True),
-                yaxis=dict(showgrid=True, gridcolor="lightgray", zeroline=True),
             )
+            if is_categorical:
+                _add_centroid_labels(fig)
 
             # FIX ISSUE 1: Increase legend marker size for categorical plots (e.g., sample_id)
             if show_legend and is_categorical:
@@ -429,6 +464,7 @@ class SingleCellVisualizationService:
                         adata.obs_names.tolist(),
                     )
                 )
+            _add_centroid_labels(fig)
 
             return fig
 
@@ -496,9 +532,6 @@ class SingleCellVisualizationService:
                 width=self.default_width,
                 height=self.default_height,
                 hovermode="x unified",
-                plot_bgcolor="white",
-                xaxis=dict(showgrid=True, gridcolor="lightgray"),
-                yaxis=dict(showgrid=True, gridcolor="lightgray"),
             )
 
             return fig
@@ -598,7 +631,6 @@ class SingleCellVisualizationService:
                 width=max(800, 400 * n_genes),
                 height=600,
                 violinmode="group",
-                plot_bgcolor="white",
             )
 
             return fig
@@ -690,11 +722,15 @@ class SingleCellVisualizationService:
                     mode="markers",
                     marker=dict(
                         size=point_size,
+                        # Panels are one gene each, not series: no symbol cycle
+                        symbol="circle",
                         color=expr_data,
                         colorscale=self.expression_colorscale,
                         showscale=(idx == 0),  # Show colorbar only for first plot
                         colorbar=dict(
-                            title="Expression", x=1.15 if ncols == 1 else 1.05
+                            title="Expression",
+                            x=1.15 if ncols == 1 else 1.05,
+                            outlinewidth=0,
                         ),
                         cmin=vmin if vmin is not None else expr_data.min(),
                         cmax=vmax if vmax is not None else expr_data.max(),
@@ -727,7 +763,6 @@ class SingleCellVisualizationService:
                 title="Feature Plot - Gene Expression",
                 width=400 * min(ncols, n_genes),
                 height=400 * nrows,
-                plot_bgcolor="white",
                 showlegend=False,
             )
 
@@ -846,6 +881,19 @@ class SingleCellVisualizationService:
                         f"% Expressing: {pct_expr[i, j]:.1f}%"
                     )
 
+            # Scaled means are signed z-scores: diverging around 0, symmetric range
+            if standard_scale in ("var", "group"):
+                limit = _symmetric_limit(colors)
+                color_range = dict(
+                    colorscale=DIVERGING, cmid=0, cmin=-limit, cmax=limit
+                )
+            else:
+                color_range = dict(
+                    colorscale=self.expression_colorscale,
+                    cmin=np.min(colors) if len(colors) > 0 else 0,
+                    cmax=np.max(colors) if len(colors) > 0 else 1,
+                )
+
             # Add single trace with all dots (enables continuous color mapping)
             fig.add_trace(
                 go.Scatter(
@@ -854,15 +902,14 @@ class SingleCellVisualizationService:
                     mode="markers",
                     marker=dict(
                         size=sizes,  # Array of sizes
+                        symbol="circle",
                         color=colors,  # Array of colors → continuous gradient!
-                        colorscale=self.expression_colorscale,
                         showscale=True,
-                        colorbar=dict(title="Mean<br>Expression", x=1.15),
-                        cmin=(
-                            np.min(colors) if len(colors) > 0 else 0
-                        ),  # Explicit color range
-                        cmax=np.max(colors) if len(colors) > 0 else 1,
-                        line=dict(width=0.5, color="black"),
+                        colorbar=dict(
+                            title="Mean<br>Expression", x=1.15, outlinewidth=0
+                        ),
+                        line=dict(width=0.5, color=INK),
+                        **color_range,
                     ),
                     text=hover_texts,
                     hovertemplate="%{text}<extra></extra>",
@@ -879,8 +926,9 @@ class SingleCellVisualizationService:
                         mode="markers",
                         marker=dict(
                             size=size_pct / 100 * 30,
-                            color="gray",
-                            line=dict(width=0.5, color="black"),
+                            symbol="circle",
+                            color=NO_CALL,
+                            line=dict(width=0.5, color=INK),
                         ),
                         text=f"{size_pct}%",
                         showlegend=False,
@@ -904,7 +952,6 @@ class SingleCellVisualizationService:
                 ),
                 width=max(600, 50 * len(groups)),
                 height=max(400, 30 * len(genes)),
-                plot_bgcolor="white",
                 hovermode="closest",
             )
 
@@ -997,23 +1044,29 @@ class SingleCellVisualizationService:
                     if std_val > 0:
                         group_means[i] = (group_means[i] - mean_val) / std_val
 
+            # z-scores are signed: diverging around 0 with a symmetric range
+            if standard_scale:
+                limit = _symmetric_limit(group_means)
+                color_range = dict(
+                    colorscale=DIVERGING, zmid=0, zmin=-limit, zmax=limit
+                )
+            else:
+                color_range = dict(colorscale=self.expression_colorscale)
+
             # Create heatmap
             fig = go.Figure(
                 data=go.Heatmap(
                     z=group_means,
                     x=groups,
                     y=genes,
-                    colorscale=(
-                        self.diverging_colors
-                        if standard_scale
-                        else self.continuous_colors
-                    ),
+                    **color_range,
                     colorbar=dict(
                         title=(
                             "Expression<br>(z-score)"
                             if standard_scale
                             else "Expression"
-                        )
+                        ),
+                        outlinewidth=0,
                     ),
                     hovertemplate="Gene: %{y}<br>Group: %{x}<br>Expression: %{z:.2f}<extra></extra>",
                 )
@@ -1026,7 +1079,6 @@ class SingleCellVisualizationService:
                 yaxis=dict(title="Genes", tickmode="linear"),
                 width=max(600, 40 * len(groups)),
                 height=max(400, 20 * len(genes)),
-                plot_bgcolor="white",
             )
 
             return fig
@@ -1145,10 +1197,11 @@ class SingleCellVisualizationService:
                 row_heights=[0.25, 0.25, 0.25, 0.25],
             )
 
-            # Define professional color scheme
-            color_quality = px.colors.sequential.Viridis
-            color_mito = px.colors.sequential.Reds
-            color_discrete = px.colors.qualitative.Set2
+            # House colour roles; threshold lines take dashed Ink from the template
+            color_quality = SEQUENTIAL
+            color_mito = SEQUENTIAL
+            color_discrete = HOUSE_COLORS
+            kept_color = HOUSE_COLORS[2]
 
             # Calculate QC thresholds using MAD-based approach
             def calculate_outlier_thresholds(values, nmads=3):
@@ -1216,7 +1269,6 @@ class SingleCellVisualizationService:
             fig.add_hline(
                 y=genes_lower,
                 line_dash="dash",
-                line_color="red",
                 opacity=0.5,
                 row=1,
                 col=1,
@@ -1224,7 +1276,6 @@ class SingleCellVisualizationService:
             fig.add_hline(
                 y=genes_upper,
                 line_dash="dash",
-                line_color="red",
                 opacity=0.5,
                 row=1,
                 col=1,
@@ -1253,7 +1304,6 @@ class SingleCellVisualizationService:
             fig.add_hline(
                 y=mito_upper,
                 line_dash="dash",
-                line_color="red",
                 opacity=0.5,
                 row=1,
                 col=2,
@@ -1319,7 +1369,7 @@ class SingleCellVisualizationService:
                     x=saturation_x,
                     y=saturation_y,
                     mode="markers",
-                    marker=dict(size=2, color="steelblue", opacity=0.5),
+                    marker=dict(size=2, color=color_discrete[0], opacity=0.5),
                     showlegend=False,
                 ),
                 row=2,
@@ -1341,7 +1391,7 @@ class SingleCellVisualizationService:
                     labels=["High Quality", "Low Genes", "High MT%", "Other"],
                     values=[n_high_quality, n_low_genes, n_high_mito, n_other],
                     hole=0.3,
-                    marker=dict(colors=color_discrete[:4]),
+                    marker=dict(colors=[kept_color, KEY, HOUSE_COLORS[3], NO_CALL]),
                     textinfo="label+percent",
                     showlegend=False,
                 ),
@@ -1354,7 +1404,7 @@ class SingleCellVisualizationService:
                 go.Histogram(
                     x=adata.obs["gene_detection_rate"],
                     nbinsx=50,
-                    marker_color="teal",
+                    marker_color=color_discrete[0],
                     opacity=0.7,
                     showlegend=False,
                 ),
@@ -1369,7 +1419,7 @@ class SingleCellVisualizationService:
                     go.Bar(
                         x=sample_counts.index.astype(str),
                         y=sample_counts.values,
-                        marker_color=color_discrete[4],
+                        marker_color=color_discrete[0],
                         showlegend=False,
                         text=sample_counts.values,
                         textposition="outside",
@@ -1391,7 +1441,7 @@ class SingleCellVisualizationService:
                     go.Bar(
                         x=top_genes[:10],
                         y=top_counts[:10],
-                        marker_color=color_discrete[5],
+                        marker_color=color_discrete[0],
                         showlegend=False,
                     ),
                     row=3,
@@ -1413,8 +1463,10 @@ class SingleCellVisualizationService:
                     z=corr_data.values,
                     x=[m.replace("_", " ").replace("percent", "%") for m in qc_metrics],
                     y=[m.replace("_", " ").replace("percent", "%") for m in qc_metrics],
-                    colorscale="RdBu_r",
+                    colorscale=DIVERGING,
                     zmid=0,
+                    zmin=-1,
+                    zmax=1,
                     showscale=False,
                     text=np.round(corr_data.values, 2),
                     texttemplate="%{text}",
@@ -1454,7 +1506,7 @@ class SingleCellVisualizationService:
                         align="left",
                         font=dict(size=11),
                         height=25,
-                        fill_color=["lightgray", "white"],
+                        fill_color=[GRID, "#FFFFFF"],
                     )
                 ),
                 row=3,
@@ -1471,7 +1523,7 @@ class SingleCellVisualizationService:
                         marker=dict(
                             size=3,
                             color=adata.obs["doublet_score"],
-                            colorscale="Hot",
+                            colorscale=SEQUENTIAL,
                             showscale=False,
                             opacity=0.6,
                         ),
@@ -1485,7 +1537,7 @@ class SingleCellVisualizationService:
                     go.Histogram(
                         x=adata.obs["percent_ribo"],
                         nbinsx=50,
-                        marker_color="royalblue",
+                        marker_color=color_discrete[0],
                         opacity=0.7,
                         showlegend=False,
                     ),
@@ -1499,7 +1551,7 @@ class SingleCellVisualizationService:
                 go.Histogram2d(
                     x=adata.obs["n_genes"],
                     y=adata.obs["percent_mito"],
-                    colorscale="Blues",
+                    colorscale=SEQUENTIAL,
                     showscale=False,
                     opacity=0.8,
                 ),
@@ -1514,8 +1566,8 @@ class SingleCellVisualizationService:
                 x1=genes_upper,
                 y0=0,
                 y1=mito_upper,
-                line=dict(color="green", width=2),
-                fillcolor="green",
+                line=dict(color=kept_color, width=2),
+                fillcolor=kept_color,
                 opacity=0.1,
                 row=4,
                 col=2,
@@ -1530,7 +1582,7 @@ class SingleCellVisualizationService:
                 go.Bar(
                     x=filtering_data["Stage"],
                     y=filtering_data["Cells"],
-                    marker_color=["gray", "green"],
+                    marker_color=[NO_CALL, kept_color],
                     text=filtering_data["Cells"],
                     textposition="outside",
                     showlegend=False,
@@ -1562,7 +1614,8 @@ class SingleCellVisualizationService:
                         y=batch_data["n_counts"],
                         mode="lines+markers",
                         name="nUMIs",
-                        marker=dict(size=8),
+                        marker=dict(size=8, color=color_discrete[0]),
+                        line=dict(color=color_discrete[0]),
                         showlegend=False,
                     ),
                     row=4,
@@ -1580,14 +1633,16 @@ class SingleCellVisualizationService:
                         gauge={
                             "axis": {"range": [None, 100]},
                             "bar": {
-                                "color": "darkgreen" if quality_score > 70 else "orange"
+                                "color": kept_color
+                                if quality_score > 70
+                                else HOUSE_COLORS[3]
                             },
                             "steps": [
-                                {"range": [0, 50], "color": "lightgray"},
-                                {"range": [50, 80], "color": "gray"},
+                                {"range": [0, 50], "color": NO_CALL},
+                                {"range": [50, 80], "color": HOUSE_COLORS[13]},
                             ],
                             "threshold": {
-                                "line": {"color": "red", "width": 4},
+                                "line": {"color": KEY, "width": 4},
                                 "thickness": 0.75,
                                 "value": 90,
                             },
@@ -1781,18 +1836,13 @@ class SingleCellVisualizationService:
                 title={
                     "text": title
                     or "Comprehensive Single-Cell RNA-seq Quality Control Report",
-                    "font": {
-                        "size": 24,
-                        "family": "Arial, sans-serif",
-                    },  # FIX ISSUE 3: Increased from 18 to 24
+                    "font": {"size": 24},  # FIX ISSUE 3: Increased from 18 to 24
                     "x": 0.5,
                     "xanchor": "center",
                 },
                 width=1400,
                 height=1200,
                 showlegend=False,
-                plot_bgcolor="white",
-                paper_bgcolor="white",
                 font=dict(size=9),
                 margin=dict(
                     l=50, r=50, t=80, b=100
@@ -1815,7 +1865,7 @@ class SingleCellVisualizationService:
                 y=-0.02,
                 xanchor="center",
                 showarrow=False,
-                font=dict(size=11, color="gray"),
+                font=dict(size=11, color=TICK),
             )
 
             logger.debug(f"Created comprehensive QC plot with {adata.n_obs:,} cells")
@@ -1867,7 +1917,9 @@ class SingleCellVisualizationService:
                         go.Bar(
                             x=cluster_counts.index.astype(str),
                             y=cluster_counts.values,
-                            marker_color="steelblue",
+                            marker_color=HOUSE_COLORS[0],
+                            text=cluster_counts.values,
+                            textposition="outside",
                         )
                     ]
                 )
@@ -1891,21 +1943,8 @@ class SingleCellVisualizationService:
                 if normalize:
                     composition = composition * 100
 
-                # Create extended color palette for 12+ samples
-                import plotly.colors as pc
-
-                n_clusters = len(composition.columns)
-                if n_clusters <= 12:
-                    # Use Set3 (12 distinct colors)
-                    colors = pc.qualitative.Set3[:n_clusters]
-                elif n_clusters <= 24:
-                    # Combine Set3 + Paired
-                    colors = (pc.qualitative.Set3 + pc.qualitative.Paired)[:n_clusters]
-                else:
-                    # Sample from continuous colorscale for many clusters
-                    colors = pc.sample_colorscale("viridis", n_clusters)
-
-                # Create stacked bar plot
+                # Create stacked bar plot: house colours in order, cycled above 14,
+                # and each segment labelled directly with its value.
                 fig = go.Figure()
 
                 for idx, cluster in enumerate(composition.columns):
@@ -1914,7 +1953,10 @@ class SingleCellVisualizationService:
                             name=f"Cluster {cluster}",
                             x=composition.index,
                             y=composition[cluster],
-                            marker_color=colors[idx],
+                            marker_color=HOUSE_COLORS[idx % len(HOUSE_COLORS)],
+                            texttemplate="%{y:.0f}%" if normalize else "%{y}",
+                            textposition="inside",
+                            insidetextanchor="middle",
                         )
                     )
 
@@ -1923,6 +1965,8 @@ class SingleCellVisualizationService:
                     xaxis_title=sample_col,
                     yaxis_title="Percentage" if normalize else "Number of Cells",
                     barmode="stack",
+                    # Segments too thin for their label hide it instead of overflowing
+                    uniformtext=dict(minsize=9, mode="hide"),
                     width=max(800, 50 * len(composition.index)),
                     height=600,
                     legend=dict(
@@ -2002,7 +2046,7 @@ class SingleCellVisualizationService:
                             color_palette[trace.name] = trace.marker.color
                         elif hasattr(trace.marker, "colorscale"):
                             # For continuous color scales, use a representative color
-                            color_palette[trace.name] = "#1f77b4"  # Default blue
+                            color_palette[trace.name] = HOUSE_COLORS[0]
 
                 # Handle text annotations or hover data that might contain cluster IDs
                 if hasattr(trace, "customdata") and trace.customdata:
@@ -2012,11 +2056,8 @@ class SingleCellVisualizationService:
 
             # If no colors found, generate default colors
             if not color_palette:
-                import plotly.express as px
-
-                default_colors = px.colors.qualitative.Set1
                 color_palette = {
-                    f"cluster_{i}": default_colors[i % len(default_colors)]
+                    f"cluster_{i}": HOUSE_COLORS[i % len(HOUSE_COLORS)]
                     for i in range(10)
                 }
 
@@ -2075,21 +2116,17 @@ class SingleCellVisualizationService:
             if not color_palette:
                 color_palette = self._generate_cluster_colors(unique_clusters)
 
-            # Add color information to figure metadata
-            fig.update_layout(
-                annotations=[
-                    dict(
-                        text="Colors synchronized with Rich terminal interface",
-                        showarrow=False,
-                        xref="paper",
-                        yref="paper",
-                        x=0.02,
-                        y=0.98,
-                        xanchor="left",
-                        yanchor="top",
-                        font=dict(size=10, color="gray"),
-                    )
-                ]
+            # Add color information to figure metadata (keeps the centroid labels)
+            fig.add_annotation(
+                text="Colors synchronized with Rich terminal interface",
+                showarrow=False,
+                xref="paper",
+                yref="paper",
+                x=0.02,
+                y=0.98,
+                xanchor="left",
+                yanchor="top",
+                font=dict(size=10, color=TICK),
             )
 
             return fig, color_palette
@@ -2107,82 +2144,34 @@ class SingleCellVisualizationService:
         self, color_data: List, n_colors: int
     ) -> List[str]:
         """
-        Extract discrete colors from continuous color data.
+        Pick discrete colors for clusters drawn on a continuous scale.
+
+        Categories never sample a value scale: they take the house colours in
+        order, cycled above 14.
 
         Args:
-            color_data: Continuous color data from plotly trace
+            color_data: Continuous color data from plotly trace (unused)
             n_colors: Number of discrete colors needed
 
         Returns:
             List of hex color codes
         """
-        try:
-            import numpy as np
-
-            # Convert color data to numpy array
-            color_array = np.array(color_data)
-
-            # Get unique values and map to discrete colors
-            unique_values = np.unique(color_array)
-
-            # Use plotly's default color scale
-            import plotly.express as px
-
-            colors = px.colors.sample_colorscale(
-                "viridis",
-                [i / (len(unique_values) - 1) for i in range(len(unique_values))],
-            )
-
-            return colors[:n_colors]
-
-        except Exception as e:
-            logger.error(f"Error extracting discrete colors: {e}")
-            return self._generate_cluster_colors(list(range(n_colors)))
+        return [HOUSE_COLORS[i % len(HOUSE_COLORS)] for i in range(n_colors)]
 
     def _generate_cluster_colors(self, cluster_ids: List) -> Dict[str, str]:
         """
-        Generate colors for clusters using plotly's default palette.
+        Generate colors for clusters from the house palette.
 
         Args:
             cluster_ids: List of cluster identifiers
 
         Returns:
-            Dict mapping cluster IDs to hex colors
+            Dict mapping cluster IDs to hex colors (cycled above 14 clusters)
         """
-        try:
-            import matplotlib.pyplot as plt
-            import numpy as np
-
-            # Use matplotlib's tab20 colormap for consistency with scanpy
-            n_clusters = len(cluster_ids)
-            colors = plt.cm.tab20(np.linspace(0, 1, n_clusters))
-
-            color_palette = {}
-            for i, cluster_id in enumerate(cluster_ids):
-                hex_color = f"#{int(colors[i][0] * 255):02x}{int(colors[i][1] * 255):02x}{int(colors[i][2] * 255):02x}"
-                color_palette[str(cluster_id)] = hex_color
-
-            return color_palette
-
-        except Exception as e:
-            logger.error(f"Error generating cluster colors: {e}")
-            # Fallback to simple colors
-            simple_colors = [
-                "#1f77b4",
-                "#ff7f0e",
-                "#2ca02c",
-                "#d62728",
-                "#9467bd",
-                "#8c564b",
-                "#e377c2",
-                "#7f7f7f",
-                "#bcbd22",
-                "#17becf",
-            ]
-            return {
-                str(cluster_id): simple_colors[i % len(simple_colors)]
-                for i, cluster_id in enumerate(cluster_ids)
-            }
+        return {
+            str(cluster_id): HOUSE_COLORS[i % len(HOUSE_COLORS)]
+            for i, cluster_id in enumerate(cluster_ids)
+        }
 
     def rich_color_from_hex(self, hex_color: str) -> str:
         """
