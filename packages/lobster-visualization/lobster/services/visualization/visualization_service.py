@@ -50,9 +50,14 @@ def _add_centroid_labels(fig: go.Figure) -> None:
     if not 3 <= len(traces) <= 30:
         return
     for trace in traces:
+        xs = np.asarray(trace.x, dtype=float)
+        ys = np.asarray(trace.y, dtype=float)
+        finite = np.isfinite(xs) & np.isfinite(ys)
+        if not finite.any():
+            continue  # no finite position to put the label at
         fig.add_annotation(
-            x=float(np.median(trace.x)),
-            y=float(np.median(trace.y)),
+            x=float(np.median(xs[finite])),
+            y=float(np.median(ys[finite])),
             text=str(trace.name),
             showarrow=False,
             font=dict(color=INK, size=12),
@@ -614,8 +619,9 @@ class SingleCellVisualizationService:
                 else:
                     expr_data = data_source.X[:, gene_loc]
 
-                # Create violin for each group
-                for group in groups:
+                # Create violin for each group; a group keeps its colour in
+                # every gene panel, matching the legend
+                for group_idx, group in enumerate(groups):
                     mask = adata.obs[groupby].astype(str) == group
                     group_expr = expr_data[mask]
 
@@ -628,6 +634,9 @@ class SingleCellVisualizationService:
                             y=group_expr,
                             name=f"{groupby} {group}",
                             x=[group] * len(group_expr),
+                            marker_color=self.cluster_colors[
+                                group_idx % len(self.cluster_colors)
+                            ],
                             box_visible=True,
                             meanline_visible=True,
                             showlegend=(gene_idx == 0),
@@ -736,8 +745,13 @@ class SingleCellVisualizationService:
                 scale, limit = value_scale(
                     expr_data, unsigned=self.expression_colorscale
                 )
-                low = -limit if limit else expr_data.min()
-                high = limit if limit else expr_data.max()
+                given = [abs(v) for v in (vmin, vmax) if v is not None]
+                if limit:  # white stays at 0, also with a user range
+                    high = max(given) if given else limit
+                    low = -high
+                else:
+                    low = vmin if vmin is not None else expr_data.min()
+                    high = vmax if vmax is not None else expr_data.max()
 
                 # Create scatter plot
                 scatter = go.Scatter(
@@ -756,8 +770,8 @@ class SingleCellVisualizationService:
                             x=1.15 if ncols == 1 else 1.05,
                             outlinewidth=0,
                         ),
-                        cmin=vmin if vmin is not None else low,
-                        cmax=vmax if vmax is not None else high,
+                        cmin=low,
+                        cmax=high,
                     ),
                     customdata=list(
                         zip(

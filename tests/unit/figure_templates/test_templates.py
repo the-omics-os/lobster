@@ -263,11 +263,7 @@ def test_value_scale_decides_by_the_sign_of_finite_values():
 
 
 def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
-    from lobster.figure_templates._style import (
-        GL_LINE_DASHES,
-        HOUSE_COLORS,
-        _house_template,
-    )
+    from lobster.figure_templates._style import HOUSE_COLORS, _house_template
 
     template = _house_template()
     for kind in ("scatter", "scattergl"):
@@ -280,10 +276,21 @@ def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
         assert (red, green) == (1, 2)
         assert symbols[red] != symbols[green]
         assert dashes[red] != dashes[green]
-    scatter_dashes = [trace.line.dash for trace in template.data.scatter]
-    assert len(set(scatter_dashes)) == len(HOUSE_COLORS)
-    # Scattergl accepts only the named dashes: they repeat after 6.
-    assert {trace.line.dash for trace in template.data.scattergl} == set(GL_LINE_DASHES)
+    dashes = [trace.line.dash for trace in template.data.scatter]
+    assert dashes == [trace.line.dash for trace in template.data.scattergl]
+    # WebGL accepts only the named dashes, so they repeat; no red-family colour
+    # shares one with a green-family colour.
+    named = {"solid", "dot", "dash", "longdash", "dashdot", "longdashdot"}
+    assert set(dashes) == named
+    red_family, green_family = (1, 5, 8, 12), (2, 6, 9)
+    assert {HOUSE_COLORS[i] for i in red_family} == {
+        "#CC2C18",
+        "#F7A696",
+        "#8C1E10",
+        "#F3A3BB",
+    }
+    assert {HOUSE_COLORS[i] for i in green_family} == {"#0BAA6B", "#93DAB3", "#005732"}
+    assert not {dashes[i] for i in red_family} & {dashes[i] for i in green_family}
 
     # Plotly gives go trace n colorway n and template entry n together, so the
     # embedded template carries both cycles in step (no kaleido needed).
@@ -299,6 +306,35 @@ def test_scatter_cycle_never_separates_red_and_green_by_colour_alone():
         "diamond",
     ]
     assert all(t.marker.symbol is None for t in figure.data)
+
+
+def test_line_charts_above_1000_rows_switch_to_webgl_without_failing(house_session):
+    import plotly.express as px
+
+    from lobster.tools.plot_tools import _create_figure
+
+    groups = [f"g{i}" for i in range(8)]
+    table = pd.DataFrame(
+        {
+            "x": np.arange(1001),
+            "y": np.arange(1001) % 7,
+            "group": [groups[i % 8] for i in range(1001)],
+        }
+    )
+    figures = {
+        "px.line": px.line(table, x="x", y="y", color="group", line_dash="group"),
+        "generic.line": get_template("generic.line")(
+            table, x="x", y="y", color="group"
+        ),
+        "plot_tools.line": _create_figure(
+            "line", table, "x", "y", "", "group", "", "L"
+        ),
+    }
+    for name, figure in figures.items():
+        assert not isinstance(figure, str), (name, figure)
+        assert {trace.type for trace in figure.data} == {"scattergl"}, name
+        dashes = [trace.line.dash for trace in figure.data]
+        assert len(dashes) == 8 and dashes[1] != dashes[2], (name, dashes)
 
 
 def test_recipe_size_and_non_json_refuse_before_drawing():
@@ -413,6 +449,12 @@ def test_namespace_extension_and_duplicate_rejection(tmp_path, monkeypatch):
     finally:
         sys.modules.pop("lobster.figure_template_providers.extension_fixture", None)
         sys.modules.pop("lobster.figure_template_providers.duplicate_fixture", None)
+
+
+def test_generic_xy_reports_a_missing_colour_column_like_plotly():
+    table = pd.DataFrame({"x": [1, 2], "y": [2, 1]})
+    with pytest.raises(ValueError, match="missing"):
+        get_template("generic.scatter")(table, x="x", y="y", color="missing")
 
 
 def test_generic_explicit_ids_palette_and_aggregate_non_binding(cells):
@@ -542,7 +584,8 @@ def house_session():
         initialize_house_style()
         yield
     finally:
-        del pio.templates[HOUSE_STYLE_NAME]
+        if HOUSE_STYLE_NAME in pio.templates:
+            del pio.templates[HOUSE_STYLE_NAME]
         if previous is not None:
             pio.templates[HOUSE_STYLE_NAME] = previous
         pio.templates.default = previous_default

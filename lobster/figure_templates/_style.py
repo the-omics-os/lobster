@@ -68,19 +68,24 @@ SCATTER_SYMBOLS = [
     "hourglass",
     "bowtie",
 ]
-# The 6 named dashes, then dash-length lists, so 14 line series never share a
-# dash. Scattergl accepts only the named ones (GL_LINE_DASHES).
-GL_LINE_DASHES = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
+# Only the 6 named dashes: px switches line charts to scattergl above 1,000
+# rows and WebGL accepts no others. They repeat, ordered so no red-family
+# colour (positions 1, 5, 8, 12) shares a dash with a green-family one (2, 6, 9).
 LINE_DASHES = [
-    *GL_LINE_DASHES,
-    "2px,2px",
-    "1px,6px",
-    "6px,3px",
-    "20px,6px",
-    "12px,4px,3px,4px,3px,4px",
-    "18px,5px,6px,5px",
-    "4px,8px,12px,8px",
-    "24px,4px,2px,4px,2px,4px,2px,4px",
+    "solid",
+    "dot",
+    "dash",
+    "longdash",
+    "dashdot",
+    "longdashdot",
+    "longdash",
+    "dot",
+    "dashdot",
+    "solid",
+    "dash",
+    "longdashdot",
+    "dot",
+    "dashdot",
 ]
 
 
@@ -115,14 +120,10 @@ def _house_template():
     }
     colorbar = {"outlinewidth": 0, "tickfont": {"color": TICK}}
 
-    def cycle(dashes):
-        return [
-            {
-                "marker": {"symbol": symbol, "colorbar": colorbar},
-                "line": {"dash": dashes[i % len(dashes)]},
-            }
-            for i, symbol in enumerate(SCATTER_SYMBOLS)
-        ]
+    scatter_cycle = [
+        {"marker": {"symbol": symbol, "colorbar": colorbar}, "line": {"dash": dash}}
+        for symbol, dash in zip(SCATTER_SYMBOLS, LINE_DASHES)
+    ]
 
     return go.layout.Template(
         layout={
@@ -146,8 +147,8 @@ def _house_template():
             "shapedefaults": {"line": {"color": INK, "dash": "dash"}},
         },
         data={
-            "scatter": cycle(LINE_DASHES),
-            "scattergl": cycle(GL_LINE_DASHES),
+            "scatter": scatter_cycle,
+            "scattergl": scatter_cycle,
             "heatmap": [{"colorscale": SEQUENTIAL, "colorbar": colorbar}],
             "contour": [{"colorscale": SEQUENTIAL, "colorbar": colorbar}],
             "histogram2d": [{"colorscale": SEQUENTIAL, "colorbar": colorbar}],

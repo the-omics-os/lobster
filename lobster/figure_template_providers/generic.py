@@ -33,7 +33,7 @@ def _xy(kind, data, x, y, color, id_col, entity_kind, title, **kwargs):
                 "Entity IDs must be present and unique; row positions are not IDs"
             )
         table[id_col] = table[id_col].astype(str)
-    if color is not None:
+    if color is not None and color in table.columns:
         if kind == "line" or table[color].dtype.kind not in "iufc":
             # px pins every trace to circle/solid; mapping the same column makes
             # it cycle the template's symbols and dashes in step with the colours.

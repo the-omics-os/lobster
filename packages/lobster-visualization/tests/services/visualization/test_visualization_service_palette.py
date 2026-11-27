@@ -38,7 +38,8 @@ def house_style_session():
         initialize_house_style()
         yield
     finally:
-        del pio.templates[HOUSE_STYLE_NAME]
+        if HOUSE_STYLE_NAME in pio.templates:
+            del pio.templates[HOUSE_STYLE_NAME]
         if previous is not None:
             pio.templates[HOUSE_STYLE_NAME] = previous
         pio.templates.default = previous_default
@@ -287,3 +288,34 @@ def test_centroid_labels_stop_above_30_categories(cells):
     many.obs["leiden"] = pd.Categorical([str(i % 31) for i in range(many.n_obs)])
     figure = SingleCellVisualizationService().create_umap_plot(many, color_by="leiden")
     assert len(figure.data) == 31 and not figure.layout.annotations
+
+
+def test_violin_groups_keep_their_colour_in_every_gene_panel(cells):
+    from lobster.figure_templates._style import HOUSE_COLORS
+
+    figure = SingleCellVisualizationService().create_violin_plot(
+        cells, ["gene-a", "gene-b"], use_raw=False
+    )
+    colors = {}
+    for trace in figure.data:
+        colors.setdefault(trace.name, set()).add(trace.marker.color)
+    assert colors == {f"leiden {i}": {HOUSE_COLORS[i]} for i in range(3)}
+
+
+def test_centroid_labels_skip_categories_without_finite_points(cells):
+    missing = cells.copy()
+    missing.obsm["X_umap"][(missing.obs["leiden"] == "2").to_numpy()] = np.nan
+    figure = SingleCellVisualizationService().create_umap_plot(
+        missing, color_by="leiden"
+    )
+    assert {item.text for item in figure.layout.annotations} == {"0", "1"}
+
+
+def test_signed_feature_plot_keeps_white_at_zero_with_a_user_range(cells):
+    scaled = cells.copy()
+    scaled.X = scaled.X - scaled.X.mean(axis=0)
+    figure = SingleCellVisualizationService().create_feature_plot(
+        scaled, ["gene-a"], use_raw=False, vmin=-1.0, vmax=3.0
+    )
+    marker = figure.data[0].marker
+    assert (marker.cmin, marker.cmax) == (-3.0, 3.0)
