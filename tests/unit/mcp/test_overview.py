@@ -173,8 +173,8 @@ def test_next_leads_with_a_missing_key(project, monkeypatch):
         {"api_key": "omk_planted_000"},
         {
             "auth_mode": "oauth",
-            "access_token": "omk_planted_000",
-            "token_expiry": "2999-01-01T00:00:00+00:00",
+            "access_token": "omk_planted_000",  # nosec B105 # planted test token
+            "token_expiry": "2999-01-01T00:00:00+00:00",  # nosec B105 # an expiry date
         },
     ],
 )

@@ -146,7 +146,7 @@ def test_a_run_without_a_key_ignores_the_omics_os_cli_sign_in(
     home = tmp_path / "home"
     sign_in = home / ".config" / "omics-os" / "credentials.json"
     sign_in.parent.mkdir(parents=True)
-    sign_in.write_text(json.dumps({"auth_mode": "oauth", "access_token": "omc_000"}))
+    sign_in.write_text(json.dumps({"auth_mode": "oauth", "access_token": "omc_000"}))  # nosec B105 # test token  # fmt: skip
     before = sign_in.read_bytes()
     _opened, script = engine
     script["raise"] = StartupDiagnosticError(

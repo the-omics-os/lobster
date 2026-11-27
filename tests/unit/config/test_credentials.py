@@ -37,7 +37,7 @@ def cloud(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     sent = []
 
-    def validate(endpoint, key, token_type="API key"):
+    def validate(endpoint, key, token_type="API key"):  # nosec B107 # a label
         sent.append((endpoint, key))
         return dict(USAGE)
 

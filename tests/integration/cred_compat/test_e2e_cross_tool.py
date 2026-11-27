@@ -44,7 +44,7 @@ def _py_cli(args: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
     env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path / "xdg"), "NO_COLOR": "1"}
     env.pop("OMICS_OS_API_KEY", None)
     env.pop("OMICS_OS_ENDPOINT", None)
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", *args],
         cwd=str(tmp_path),
         env=env,
@@ -73,7 +73,7 @@ def test_npm_stays_signed_in_after_python_commands(real_sign_in, tmp_path):
         res = _py_cli(args, tmp_path)
         assert res.returncode == 0, (args, res.stderr[-300:])
     assert real_sign_in.read_bytes() == before
-    res = subprocess.run(
+    res = subprocess.run(  # nosec B603 # fixed argv, no shell
         [npm, "status"],
         capture_output=True,
         text=True,

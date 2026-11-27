@@ -10,7 +10,7 @@ with its own settings in a tmp XDG_CONFIG_HOME. Run pre-release:
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # nosec B404 # runs the lobster CLI under test
 import sys
 
 import pytest
@@ -29,7 +29,7 @@ def live_key():
 def test_live_status_with_a_lobster_key(live_key, tmp_path):
     env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path / "xdg"), "NO_COLOR": "1"}
     env.pop("OMICS_OS_ENDPOINT", None)
-    res = subprocess.run(
+    res = subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", "cloud", "status"],
         cwd=str(tmp_path),
         env=env,

@@ -20,7 +20,7 @@ def test_an_expired_sign_in_is_not_refreshed(
         default_endpoint=fake_gateway.base_url, tenant_endpoint=fake_gateway.base_url
     )
     for profile in shape["profiles"].values():
-        profile["token_expiry"] = "2000-01-01T00:00:00+00:00"
+        profile["token_expiry"] = "2000-01-01T00:00:00+00:00"  # nosec B105 # a date
     cred_file = isolated_home.write(shape)
     before = cred_file.read_bytes()
     res = isolated_home.run_cli(command, endpoint_override=fake_gateway.base_url)
