@@ -85,7 +85,10 @@ def test_the_printed_line_run_without_a_terminal_makes_the_project(
     line = overview(isolated)["start_lines"][0].removeprefix("In a terminal: ")
     argv = shlex.split(line)
     assert argv[0] == EXE
-    env = {**os.environ, "HOME": str(tmp_path / "home")}
+    # The child finds the global file where the fixture put it, also on a runner
+    # that sets XDG_CONFIG_HOME (GitHub's Ubuntu images do).
+    home = tmp_path / "home"
+    env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
     done = subprocess.run(
         [sys.executable, "-m", "lobster", *argv[1:]],
         stdin=subprocess.DEVNULL,

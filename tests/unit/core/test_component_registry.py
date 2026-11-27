@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from lobster.core.component_registry import (
+    ComponentConflictError,
     ComponentRegistry,
     component_registry,
     get_install_command,
@@ -339,8 +340,16 @@ class TestAgentAPI:
     def test_list_agents_merges_core_and_custom(self, mock_load_ep, fresh_registry):
         """list_agents should return all agents in the unified _agents dict."""
         # Add agents (in unified architecture, core and custom are all in _agents)
-        mock_core_config = Mock(name="research_agent", display_name="Research Agent")
-        mock_custom_config = Mock(name="premium_agent", display_name="Premium Agent")
+        mock_core_config = Mock(
+            name="research_agent",
+            display_name="Research Agent",
+            package_name="lobster-research",
+        )
+        mock_custom_config = Mock(
+            name="premium_agent",
+            display_name="Premium Agent",
+            package_name="lobster-custom-example",
+        )
         fresh_registry._agents["research_agent"] = mock_core_config
         fresh_registry._agents["premium_agent"] = mock_custom_config
         fresh_registry._loaded = True
@@ -361,24 +370,20 @@ class TestCustomAgentOverride:
     """Test that custom agent name collisions are detected and raise errors."""
 
     @patch("lobster.core.component_registry.ComponentRegistry._load_entry_point_group")
-    def test_custom_agents_override_core(self, mock_load_ep, fresh_registry):
-        """Custom agents with same names as core agents should override them (last-write-wins)."""
-        # Add a core agent first
-        core_research = Mock(name="research_agent", display_name="Core Research Agent")
-        fresh_registry._agents["research_agent"] = core_research
-        fresh_registry._loaded = True
-
-        # Override with custom agent of the same name
+    def test_custom_agent_with_a_core_name_is_refused(
+        self, mock_load_ep, fresh_registry
+    ):
+        """A custom package may not provide an agent under a first-party name."""
         custom_research = Mock(
-            name="research_agent", display_name="Custom Research Agent"
+            name="research_agent",
+            display_name="Custom Research Agent",
+            package_name="lobster-custom-example",
         )
         fresh_registry._agents["research_agent"] = custom_research
+        fresh_registry._loaded = True
 
-        # In unified registry, last-write-wins - no conflict error
-        all_agents = fresh_registry.list_agents()
-        assert "research_agent" in all_agents
-        # The custom agent should be the one stored
-        assert all_agents["research_agent"].display_name == "Custom Research Agent"
+        with pytest.raises(ComponentConflictError, match="research_agent"):
+            fresh_registry.list_agents()
 
 
 # =============================================================================

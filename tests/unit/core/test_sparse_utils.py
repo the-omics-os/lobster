@@ -73,9 +73,13 @@ class TestSparseConversionError:
 class TestCheckSparseConversionSafe:
     def test_dense_input_passes(self):
         """Dense arrays should always pass without checking memory."""
-        X = np.zeros((100_000, 50_000))  # Would be huge if sparse
-        # Should not raise — it's already dense, no conversion needed
-        check_sparse_conversion_safe(X)
+        X = np.zeros((1000, 500))
+        mock_mem = MagicMock()
+        mock_mem.available = 1024  # a sparse matrix this size would fail
+        with patch("lobster.core.sparse_utils.psutil") as mock_psutil:
+            mock_psutil.virtual_memory.return_value = mock_mem
+            # Should not raise — it's already dense, no conversion needed
+            check_sparse_conversion_safe(X)
 
     def test_small_sparse_passes(self):
         """Small sparse matrices should pass on any machine."""

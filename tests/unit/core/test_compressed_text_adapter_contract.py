@@ -230,7 +230,9 @@ def test_real_compressed_single_cell_numeric_policy_admitted(
             "Single-cell text matrix refused: values cannot be stored as finite float32.",
         ),
         (
-            float(np.finfo(np.float32).max),
+            # Just above float32's largest value, 3.4028234663852886e38, which
+            # itself is stored as it is.
+            3.4028235e38,
             "Single-cell text matrix refused: values cannot be stored as finite float32.",
         ),
         (
@@ -271,7 +273,7 @@ def test_real_compressed_single_cell_numeric_policy_refused(
 ):
     source = _table(True).astype(object if isinstance(value, str) else np.float64)
     source.iloc[0, 0] = value
-    if value in (1e40, float(np.finfo(np.float32).max)):
+    if value in (1e40, 3.4028235e38):
         source.iloc[1, 0] = 1.5
     path = tmp_path / f"matrix{suffix}"
     before = _write_table(path, source, "\t", compressed=True)

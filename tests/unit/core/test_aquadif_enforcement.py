@@ -10,8 +10,10 @@ def test_registry_warns_missing_tier_requirement(caplog):
     """Registry should warn when agent config lacks tier_requirement."""
     registry = ComponentRegistry()
 
-    # Simulate a loaded agent config missing tier_requirement
-    bad_config = MagicMock(spec=[])  # Empty spec = no attributes
+    # Simulate a loaded third-party agent config missing tier_requirement
+    # (first-party agents are not checked).
+    bad_config = MagicMock(spec=["package_name"])
+    bad_config.package_name = "lobster-example-plugin"
     registry._agents["bad_agent"] = bad_config
     registry._loaded = False  # Won't actually load, we'll call check directly
 

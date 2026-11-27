@@ -232,7 +232,16 @@ def test_a_startup_failure_without_the_key_gives_the_two_fixes(
 # start lines, expert names, start text, links, waits
 
 
-def test_a_global_provider_without_a_key_variable_gives_the_plain_line(tmp_path):
+def test_a_global_provider_without_a_key_variable_gives_the_plain_line(
+    monkeypatch, tmp_path
+):
+    from lobster.cli_internal.provider_hint import key_variables
+    from lobster.config.constants import VALID_PROVIDERS
+
+    # A key in the shell would name its provider on the line instead.
+    for provider in VALID_PROVIDERS:
+        for name in key_variables(provider):
+            monkeypatch.delenv(name, raising=False)
     global_config.GlobalProviderConfig(default_provider="ollama").save()
     empty = tmp_path / "empty"
     empty.mkdir()

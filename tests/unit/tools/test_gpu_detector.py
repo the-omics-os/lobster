@@ -44,11 +44,11 @@ class TestGPUDetector:
 
     def test_check_apple_silicon_mac(self):
         """Test Apple Silicon detection on Mac."""
+        # IS_MACOS is read once at import, so patch it, not platform.system.
         with (
-            patch("platform.system") as mock_system,
+            patch("lobster.tools.gpu_detector.IS_MACOS", True),
             patch("subprocess.run") as mock_run,
         ):
-            mock_system.return_value = "Darwin"
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "Apple M1"
