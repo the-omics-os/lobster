@@ -36,7 +36,7 @@ PINNED_TOO_LOW: Set[str] = set()
 # git at that release (its header has the commit and the command), or None for
 # the release being built, which this tree stands for. Replace None with a list
 # once that release exists.
-CORE_FILES = {"1.3.0": "core_1_3_0_files.txt", "1.3.1": None}
+CORE_FILES = {"1.3.0": "core_1_3_0_files.txt", "1.3.1": None, "1.3.2": None}
 # sha256 of each list's file lines, so a list is not edited by hand unnoticed
 CORE_FILES_SHA256 = {
     "core_1_3_0_files.txt": "e10595b6781b0a60bac160492c36ad4e99091fdb7b3b4d02b2a199c0b1d45ea9"
