@@ -5,6 +5,7 @@ This service extends the basic clustering functionality with doublet detection,
 cell type annotation, and advanced visualization capabilities.
 """
 
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -17,6 +18,11 @@ from scipy import sparse
 from scipy.stats import pearsonr
 
 from lobster.core.provenance.analysis_ir import AnalysisStep
+from lobster.core.runtime.buffer_sharing import (
+    has_no_stored_zeros,
+    is_read_only,
+    skip_noop_eliminate_zeros,
+)
 from lobster.core.utils.cluster_keys import ClusterKeyError, resolve_cluster_key
 from lobster.core.utils.h5ad_utils import repair_marker_names
 
@@ -72,6 +78,66 @@ class SingleCellError(Exception):
     """Base exception for single-cell analysis operations."""
 
     pass
+
+
+def _can_defer_x_copy(adata: anndata.AnnData) -> bool:
+    """Ranking reads ``.raw`` only when it exists, so ``.X`` can be copied last."""
+    return (
+        not adata.is_view
+        and not adata.isbacked
+        and adata.raw is not None
+        and adata.X is not None
+        and adata.X.dtype in (np.float32, np.float64)
+    )
+
+
+def _copy_without_x(adata: anndata.AnnData) -> anndata.AnnData:
+    """``adata.copy()`` minus ``.X``, which the caller sets once ranking is done.
+
+    Holding the input's ``.X``, its ``.raw`` and both copies at once is what
+    makes marker ranking a memory peak; ``.raw`` is the only matrix ranking needs.
+    """
+    result = anndata.AnnData(
+        obs=adata.obs.copy(),
+        var=adata.var.copy(),
+        uns=deepcopy(adata.uns),
+        obsm=adata.obsm.copy(),
+        varm=adata.varm.copy(),
+        obsp=adata.obsp.copy(),
+        varp=adata.varp.copy(),
+        # anndata >= 0.13 exposes .X as layers[None]; .X is set separately.
+        layers={k: v.copy() for k, v in adata.layers.items() if k is not None},
+    )
+    result.raw = anndata.AnnData(
+        X=_ranking_raw_matrix(adata.raw.X),
+        var=adata.raw.var.copy(),
+        varm=adata.raw.varm.copy(),
+    )
+    return result
+
+
+def _ranking_raw_matrix(raw_x):
+    """The ``.raw.X`` ranking works on: the stored buffers when nothing can change them.
+
+    Ranking only reads ``.raw.X`` apart from Scanpy's ``eliminate_zeros()``,
+    which is a no-op without stored zeros (and skipped for shared buffers by
+    ``skip_noop_eliminate_zeros``). A registry-frozen, log-normalized CSR matrix
+    is therefore wrapped, not copied; anything else is copied as before.
+    """
+    if (
+        isinstance(raw_x, sparse.csr_matrix)
+        and raw_x.dtype in (np.float32, np.float64)
+        and is_read_only(raw_x)
+        and has_no_stored_zeros(raw_x)
+        and not _looks_like_raw_counts(raw_x)
+    ):
+        return sparse.csr_matrix(
+            (raw_x.data, raw_x.indices, raw_x.indptr), shape=raw_x.shape, copy=False
+        )
+    return raw_x.copy()
+
+
+_is_read_only = is_read_only
 
 
 def _marker_matrix_view(matrix):
@@ -1508,8 +1574,10 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                     f"Group column '{groupby}' not found in observations"
                 )
 
-            # Create working copy
-            adata_markers = adata.copy()
+            # Create working copy. With .raw present, ranking never reads .X,
+            # so .X is attached after ranking instead of being held twice.
+            defer_x_copy = _can_defer_x_copy(adata)
+            adata_markers = _copy_without_x(adata) if defer_x_copy else adata.copy()
 
             # Ensure X and raw.X are float for log fold-change computation.
             # Integer sparse matrices cause ufunc 'log' errors in scanpy's
@@ -1517,7 +1585,9 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             # avoid duplicating the full matrix structure.
             import scipy.sparse as sp
 
-            if sp.issparse(adata_markers.X):
+            if defer_x_copy:
+                pass  # .X is float already (checked by _can_defer_x_copy)
+            elif sp.issparse(adata_markers.X):
                 if adata_markers.X.dtype not in (np.float32, np.float64):
                     adata_markers.X.data = adata_markers.X.data.astype(
                         np.float32, copy=False
@@ -1586,7 +1656,14 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             if groups is not None:
                 scanpy_kwargs["groups"] = groups
 
-            _rank_marker_genes(adata_markers, **scanpy_kwargs)
+            # A shared (read-only) .raw.X passes Scanpy's no-op eliminate_zeros().
+            shared_raw = (
+                adata_markers.raw.X
+                if adata_markers.raw is not None and is_read_only(adata_markers.raw.X)
+                else None
+            )
+            with skip_noop_eliminate_zeros(shared_raw):
+                _rank_marker_genes(adata_markers, **scanpy_kwargs)
 
             # Apply post-hoc filtering for marker specificity
             logger.info(
@@ -1601,14 +1678,15 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             pre_filter_counts = original_report["counts"]
 
             # Bind the already-established native keys; scientific defaults unchanged.
-            _filter_marker_rankings(
-                adata_markers,
-                key=result_keys["original"],
-                key_added=result_keys["filtered"],
-                min_fold_change=min_fold_change,
-                min_in_group_fraction=min_pct,
-                max_out_group_fraction=max_out_pct,
-            )
+            with skip_noop_eliminate_zeros(shared_raw):
+                _filter_marker_rankings(
+                    adata_markers,
+                    key=result_keys["original"],
+                    key_added=result_keys["filtered"],
+                    min_fold_change=min_fold_change,
+                    min_in_group_fraction=min_pct,
+                    max_out_group_fraction=max_out_pct,
+                )
             filtered_report = self._marker_result_report(
                 adata_markers, result_keys["filtered"]
             )
@@ -1693,6 +1771,11 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 max_out_pct=max_out_pct,
                 groups_analyzed=executed_groups,
             )
+
+            if defer_x_copy:
+                # A registry-frozen (shared, read-only) .X cannot be changed
+                # through either object, so the result may reference it.
+                adata_markers.X = adata.X if _is_read_only(adata.X) else adata.X.copy()
 
             return adata_markers, marker_stats, ir
 
