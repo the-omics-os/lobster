@@ -116,7 +116,7 @@ def _copy_without_x(adata: anndata.AnnData) -> anndata.AnnData:
     return result
 
 
-def _ranking_raw_matrix(raw_x):
+def _ranking_raw_matrix(raw_x: Any) -> Any:
     """The ``.raw.X`` ranking works on: the stored buffers when nothing can change them.
 
     Ranking only reads ``.raw.X`` apart from Scanpy's ``eliminate_zeros()``,
@@ -135,9 +135,6 @@ def _ranking_raw_matrix(raw_x):
             (raw_x.data, raw_x.indices, raw_x.indptr), shape=raw_x.shape, copy=False
         )
     return raw_x.copy()
-
-
-_is_read_only = is_read_only
 
 
 def _marker_matrix_view(matrix):
@@ -1775,7 +1772,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             if defer_x_copy:
                 # A registry-frozen (shared, read-only) .X cannot be changed
                 # through either object, so the result may reference it.
-                adata_markers.X = adata.X if _is_read_only(adata.X) else adata.X.copy()
+                adata_markers.X = adata.X if is_read_only(adata.X) else adata.X.copy()
 
             return adata_markers, marker_stats, ir
 

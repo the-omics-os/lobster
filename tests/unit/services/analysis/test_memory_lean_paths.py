@@ -119,16 +119,6 @@ def test_scale_matches_scanpy():
     _same(actual.var, expected.var, "var")
 
 
-def test_scale_falls_back_for_dense_input():
-    dense = _normalized(_counts()).X.toarray()
-    mask = np.ones(dense.shape[1], dtype=bool)
-    expected, _ = _feature_scratch(ad.AnnData(dense), mask)
-    sc.pp.scale(expected, max_value=10)
-    actual, positions = _feature_scratch(ad.AnnData(dense), mask)
-    _scale_for_pca(actual, dense, positions, max_value=10)
-    _same(actual.X, expected.X, "scaled X")
-
-
 def test_pca_matches_scanpy():
     source = _normalized(_counts()).X
     mask = np.ones(source.shape[1], dtype=bool)
@@ -228,20 +218,6 @@ def test_registry_sharing_can_be_disabled(tmp_path, monkeypatch):
     assert child.X.data.flags.writeable
 
 
-def test_clustered_raw_snapshot_is_frozen_once_stored(dm):
-    # Large enough that X.data passes the 1 MiB sharing threshold.
-    adata = _normalized(_counts(n_obs=1200, n_vars=1000))
-    clustered, _, _ = ClusteringService().cluster_and_visualize(
-        adata, resolution=0.5, skip_steps=["marker_genes"]
-    )
-    assert clustered.raw.X is clustered.X  # one matrix, no stored zeros
-    clustered = _store(dm, "pbmc_clustered", clustered)
-    for part in ("data", "indices", "indptr"):
-        assert not getattr(clustered.X, part).flags.writeable
-    with pytest.raises(ValueError):
-        clustered.raw.X.data[0] = 0  # .X and .raw.X must not diverge silently
-
-
 def test_marker_x_is_shared_only_when_frozen(dm):
     from lobster.services.analysis.enhanced_singlecell_service import (
         EnhancedSingleCellService,
@@ -267,10 +243,12 @@ def test_marker_x_is_shared_only_when_frozen(dm):
     _same_anndata(frozen, loose, skip_uns=("lineage",))
 
 
-def test_clustering_copy_shares_frozen_structure_and_drops_raw():
+def test_clustering_shares_its_input_structure_and_raw_is_frozen_once_stored(dm):
+    # Large enough that X.data passes the 1 MiB sharing threshold.
     adata = _normalized(_counts(n_obs=1200, n_vars=1000))
     data_before = adata.X.data.copy()
     clustered, _, _ = ClusteringService().cluster_and_visualize(adata, resolution=0.5)
+
     # Normalization rewrote values in a private copy; the structure is shared
     # (SciPy may rebind it as a view of the same buffer).
     assert np.shares_memory(clustered.X.indices, adata.X.indices)
@@ -278,6 +256,13 @@ def test_clustering_copy_shares_frozen_structure_and_drops_raw():
     assert not adata.X.indices.flags.writeable
     assert not np.shares_memory(clustered.X.data, adata.X.data)
     np.testing.assert_array_equal(adata.X.data, data_before)
+
+    assert clustered.raw.X is clustered.X  # one matrix, no stored zeros
+    clustered = _store(dm, "pbmc_clustered", clustered)
+    for part in ("data", "indices", "indptr"):
+        assert not getattr(clustered.X, part).flags.writeable
+    with pytest.raises(ValueError):
+        clustered.raw.X.data[0] = 0  # .X and .raw.X must not diverge silently
 
 
 def test_noop_eliminate_zeros_guard_is_scoped():

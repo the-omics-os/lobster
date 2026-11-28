@@ -78,7 +78,7 @@ _COMPRESSED_CLASSES = (
 
 
 @contextmanager
-def skip_noop_eliminate_zeros(*targets: Any):
+def skip_noop_eliminate_zeros(*targets: Any) -> Iterator[None]:
     """Let shared, read-only matrices pass through Scanpy's ``eliminate_zeros()``.
 
     ``sc.tl.rank_genes_groups`` and ``sc.pp.calculate_qc_metrics`` call
@@ -206,7 +206,7 @@ class BufferPool:
         self.shared_bytes = 0
         self.hashed_bytes = 0
 
-    def _key(self, array: np.ndarray):
+    def _key(self, array: np.ndarray) -> Tuple[Tuple[Any, ...], Optional[str]]:
         cached = self._by_id.get(id(array))
         if cached is not None and cached[0]() is array:
             return cached[1], cached[2]

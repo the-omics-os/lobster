@@ -9,7 +9,7 @@ import threading
 import time
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import anndata
 import numpy as np
@@ -62,7 +62,7 @@ def _scanpy_minor() -> Tuple[int, int]:
 
 
 def _feature_scratch(
-    adata: anndata.AnnData, columns
+    adata: anndata.AnnData, columns: Any
 ) -> Tuple[anndata.AnnData, np.ndarray]:
     """Feature subset for scaling and PCA, without ``.raw``/layers/obsm.
 
@@ -135,7 +135,7 @@ _SVDS_PATCH_LOCK = threading.Lock()
 
 
 @contextmanager
-def _real_adjoint_svds(target: np.ndarray):
+def _real_adjoint_svds(target: np.ndarray) -> Iterator[None]:
     """While active, ARPACK sees ``target`` through an operator whose adjoint is
     ``A.T`` rather than SciPy's ``conj(A.T)``.
 
