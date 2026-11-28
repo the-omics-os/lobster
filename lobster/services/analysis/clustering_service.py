@@ -16,6 +16,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import scanpy as sc
+from fast_array_utils.stats import mean_var as _mean_var  # used by sc.pp.scale
 from scipy import sparse
 from sklearn.metrics import (
     calinski_harabasz_score,
@@ -40,19 +41,6 @@ logger = get_logger(__name__)
 # The memory-lean helpers give the same results as the plain Scanpy calls and
 # fall back to them when their conditions do not hold.
 _SCALE_BLOCK_ROWS = 512
-
-try:
-    # The function Scanpy 1.12's sc.pp.scale uses (1.11 has its own helper).
-    from fast_array_utils.stats import mean_var as _mean_var
-except ImportError:  # pragma: no cover
-    _mean_var = None
-
-
-def _scanpy_minor() -> Tuple[int, int]:
-    from importlib.metadata import version
-
-    major, minor = version("scanpy").split(".")[:2]
-    return int(major), int(minor)
 
 
 def _feature_scratch(
@@ -89,9 +77,7 @@ def _scale_for_pca(
     """
     x = scratch.X
     if not (
-        _mean_var is not None
-        and _scanpy_minor() == (1, 12)
-        and isinstance(x, sparse.csr_matrix)
+        isinstance(x, sparse.csr_matrix)
         and isinstance(source, sparse.csr_matrix)
         and x.dtype == np.float32
         and source.dtype == np.float32
@@ -167,13 +153,11 @@ def _pca_for_clustering(
 ) -> None:
     """``sc.tl.pca(scratch, ...)`` that centers the scratch matrix in place.
 
-    ``scratch.X`` is dropped afterwards. The stored keys mirror Scanpy 1.12;
-    other versions use ``sc.tl.pca``.
+    ``scratch.X`` is dropped afterwards. The stored keys mirror Scanpy's.
     """
     x = scratch.X
     if not (
-        _scanpy_minor() == (1, 12)
-        and isinstance(x, np.ndarray)
+        isinstance(x, np.ndarray)
         and x.dtype == np.float64
         and x.flags.writeable
         and x.flags.c_contiguous
