@@ -74,6 +74,89 @@ class SingleCellError(Exception):
     pass
 
 
+def _marker_matrix_view(matrix):
+    if isinstance(matrix, sparse.csr_array):
+        return sparse.csr_matrix(matrix, copy=False)
+    if isinstance(matrix, sparse.csc_array):
+        return sparse.csc_matrix(matrix, copy=False)
+    return matrix
+
+
+def _rank_marker_genes(adata: anndata.AnnData, **kwargs) -> None:
+    use_raw = kwargs.get("use_raw", adata.raw is not None)
+    expression = adata.raw if use_raw else adata
+    matrix = expression.X
+    # Native filtering counts stored entries, including duplicates. The fractions
+    # from ranking count nonzero coordinates instead.
+    kwargs["pts"] = not sparse.issparse(matrix) or matrix.has_canonical_format
+    matrix_view = _marker_matrix_view(matrix)
+    if matrix_view is matrix:
+        sc.tl.rank_genes_groups(adata, **kwargs)
+        return
+
+    # Older Scanpy versions require sparse matrices during ranking. After they
+    # remove explicit zeros, rebuild the array from the resulting buffers.
+    if use_raw:
+        raw_view = anndata.AnnData(
+            X=matrix_view, var=expression.var, varm=expression.varm
+        )
+        adata.raw = raw_view
+    else:
+        adata.X = matrix_view
+    try:
+        sc.tl.rank_genes_groups(adata, **kwargs)
+    finally:
+        if use_raw:
+            raw_view.X = type(matrix)(adata.raw.X, copy=False)
+            adata.raw = raw_view
+        else:
+            adata.X = type(matrix)(adata.X, copy=False)
+
+
+def _filter_marker_rankings(
+    adata: anndata.AnnData,
+    *,
+    key: str,
+    key_added: str,
+    min_fold_change: float,
+    min_in_group_fraction: float,
+    max_out_group_fraction: float,
+) -> None:
+    ranking = adata.uns[key]
+    params = ranking["params"]
+    expression = adata.raw if params["use_raw"] else adata
+    matrix = expression.X
+    filter_input = adata
+
+    has_filter_stats = "pts_rest" in ranking and "logfoldchanges" in ranking
+    is_sparse_array = isinstance(matrix, (sparse.csr_array, sparse.csc_array))
+    if not has_filter_stats and (params["use_raw"] or is_sparse_array):
+        # Expose the expression as X so Scanpy can slice genes without copying .raw.
+        # Sparse matrix wrappers also supply getnnz() for the legacy filter.
+        filter_input = anndata.AnnData(
+            X=_marker_matrix_view(matrix), obs=adata.obs, var=expression.var
+        )
+        filter_input.uns[key] = {**ranking, "params": {**params, "use_raw": False}}
+        if "log1p" in adata.uns:
+            filter_input.uns["log1p"] = adata.uns["log1p"]
+
+    sc.tl.filter_rank_genes_groups(
+        filter_input,
+        key=key,
+        key_added=key_added,
+        min_fold_change=min_fold_change,
+        min_in_group_fraction=min_in_group_fraction,
+        max_out_group_fraction=max_out_group_fraction,
+    )
+    if filter_input is not adata:
+        adata.uns[key_added] = filter_input.uns[key_added]
+        adata.uns[key_added]["params"] = params
+
+    for result_key in (key, key_added):
+        adata.uns[result_key].pop("pts", None)
+        adata.uns[result_key].pop("pts_rest", None)
+
+
 def _looks_like_raw_counts(matrix: Any) -> bool:
     """Heuristic: does this matrix hold un-normalized integer counts?
 
@@ -1497,15 +1580,13 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 "method": method,
                 "n_genes": n_genes,
                 "use_raw": use_raw,
-                # Reuse detection fractions instead of slicing .raw for each group.
-                "pts": True,
                 "key_added": result_keys["original"],
             }
 
             if groups is not None:
                 scanpy_kwargs["groups"] = groups
 
-            sc.tl.rank_genes_groups(adata_markers, **scanpy_kwargs)
+            _rank_marker_genes(adata_markers, **scanpy_kwargs)
 
             # Apply post-hoc filtering for marker specificity
             logger.info(
@@ -1520,7 +1601,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             pre_filter_counts = original_report["counts"]
 
             # Bind the already-established native keys; scientific defaults unchanged.
-            sc.tl.filter_rank_genes_groups(
+            _filter_marker_rankings(
                 adata_markers,
                 key=result_keys["original"],
                 key_added=result_keys["filtered"],
@@ -1528,10 +1609,6 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 min_in_group_fraction=min_pct,
                 max_out_group_fraction=max_out_pct,
             )
-            for key in (result_keys["original"], result_keys["filtered"]):
-                adata_markers.uns[key].pop("pts", None)
-                adata_markers.uns[key].pop("pts_rest", None)
-
             filtered_report = self._marker_result_report(
                 adata_markers, result_keys["filtered"]
             )
@@ -1645,12 +1722,11 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
 import scanpy as sc
 
 # Step 1: Rank genes by differential expression
-sc.tl.rank_genes_groups(
+_rank_marker_genes(
     adata,
     groupby={{ groupby | string | repr }},
     method={{ method | string | repr }},
     n_genes={{ n_genes }},
-    pts=True,
     key_added={{ result_keys.original | repr }},
 {%- if groups is not none %}
     groups={{ groups | repr }},
@@ -1658,7 +1734,7 @@ sc.tl.rank_genes_groups(
 )
 
 # Step 2: Filter for marker specificity
-sc.tl.filter_rank_genes_groups(
+_filter_marker_rankings(
     adata,
     key={{ result_keys.original | repr }},
     key_added={{ result_keys.filtered | repr }},
@@ -1666,10 +1742,6 @@ sc.tl.filter_rank_genes_groups(
     min_in_group_fraction={{ min_pct }},       # Strict in-group fraction > threshold
     max_out_group_fraction={{ max_out_pct }},  # Strict out-group fraction < threshold
 )
-for key in ({{ result_keys.original | repr }}, {{ result_keys.filtered | repr }}):
-    adata.uns[key].pop("pts", None)
-    adata.uns[key].pop("pts_rest", None)
-
 # Step 3: Write-safe missing-name representation (numeric NaNs unchanged)
 repair_marker_names(adata)
 
@@ -1693,6 +1765,8 @@ repair_marker_names(adata)
             imports=[
                 "import scanpy as sc",
                 "from lobster.core.utils.h5ad_utils import repair_marker_names",
+                "from lobster.services.analysis.enhanced_singlecell_service import "
+                "_filter_marker_rankings, _rank_marker_genes",
             ],
             parameters={
                 "groupby": groupby,
