@@ -70,7 +70,8 @@ class BulkPreprocessingService:
         """
         try:
             logger.info("Starting bulk sample quality assessment")
-            adata = adata.copy()
+            # The input is only read until the results are attached; the
+            # returned copy is taken after the scratch matrices are released.
 
             # Get count matrix as dense
             X = adata.X
@@ -85,12 +86,21 @@ class BulkPreprocessingService:
             library_sizes = X.sum(axis=1, keepdims=True)
             # Guard against zero library size
             library_sizes = np.where(library_sizes == 0, 1, library_sizes)
-            log_cpm = np.log1p(X / library_sizes * 1e6)
+            # Same operations as np.log1p(X / library_sizes * 1e6), in one buffer.
+            log_cpm = X / library_sizes
+            log_cpm *= 1e6
+            np.log1p(log_cpm, out=log_cpm)
+            del X
+
+            # Pairwise Pearson correlation between samples. Computed before PCA,
+            # which centers log_cpm in place.
+            corr_matrix = np.corrcoef(log_cpm)
 
             # Sample-level PCA (sklearn, not scanpy -- this is sample-level)
             n_components = min(n_samples, n_genes, 10)
-            pca = PCA(n_components=n_components)
+            pca = PCA(n_components=n_components, copy=False)
             pca_coords = pca.fit_transform(log_cpm)
+            del log_cpm
 
             # Flag outlier samples (>3 SD from centroid)
             centroid = pca_coords.mean(axis=0)
@@ -100,11 +110,10 @@ class BulkPreprocessingService:
             threshold = dist_mean + 3 * dist_std if dist_std > 0 else dist_mean + 1
             is_outlier = distances > threshold
 
+            adata = adata.copy()
             adata.obs["is_outlier"] = is_outlier
             adata.obs["distance_from_centroid"] = distances
 
-            # Pairwise Pearson correlation between samples
-            corr_matrix = np.corrcoef(log_cpm)
             adata.uns["sample_correlation_matrix"] = corr_matrix
             median_corr = float(
                 np.median(corr_matrix[np.triu_indices_from(corr_matrix, k=1)])
@@ -412,7 +421,8 @@ print(f"Filtered to {adata.n_vars} genes (removed {int(np.sum(~keep))})")
 
             # Store raw counts
             if sparse.issparse(adata.X):
-                adata.layers["counts"] = adata.X.toarray().copy()
+                # toarray() already returns a new array.
+                adata.layers["counts"] = adata.X.toarray()
             else:
                 adata.layers["counts"] = np.asarray(adata.X).copy()
 
@@ -549,10 +559,11 @@ print(f"Filtered to {adata.n_vars} genes (removed {int(np.sum(~keep))})")
         """Counts-per-million normalization."""
         target = target_sum or 1e6
 
+        # astype() copies, so X is private and can be normalized in place once
+        # the library-size statistics have been read from it.
         X = adata.layers["counts"].astype(np.float64)
         library_sizes = X.sum(axis=1, keepdims=True)
         library_sizes = np.where(library_sizes == 0, 1, library_sizes)
-        adata.X = X / library_sizes * target
 
         stats = {
             "target_sum": target,
@@ -562,6 +573,10 @@ print(f"Filtered to {adata.n_vars} genes (removed {int(np.sum(~keep))})")
             ],
         }
 
+        # Same operations as X / library_sizes * target, without a second matrix.
+        X /= library_sizes
+        X *= target
+        adata.X = X
         return adata, stats
 
     def _create_normalize_ir(
