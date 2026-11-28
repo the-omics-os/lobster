@@ -104,6 +104,7 @@ def test_real_marker_producer_has_write_safe_names_without_science_rewrite(
         "method": "wilcoxon",
         "n_genes": 4,
         "use_raw": raw,
+        "pts": True,
         "key_added": "rank_genes_groups",
     }
     assert filter_markers.call_args.kwargs == {

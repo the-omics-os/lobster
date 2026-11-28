@@ -569,30 +569,31 @@ print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")"""
                 f"Starting clustering analysis with method: {clustering_method}"
             )
 
-            # Create working copy
-            adata_clustered = adata.copy()
-            original_shape = adata_clustered.shape
+            # The input is only read; the returned copy is taken last.
+            original_shape = adata.shape
             logger.info(
                 f"Input data shape: {original_shape[0]} samples × {original_shape[1]} proteins"
             )
 
-            X = adata_clustered.X.copy()
+            X = adata.X
 
-            # Handle missing values
+            # Handle missing values (SimpleImputer returns a new array)
             from sklearn.impute import SimpleImputer
 
             imputer = SimpleImputer(strategy="mean")
             X_imputed = imputer.fit_transform(X)
 
-            # Standardize data
-            scaler = StandardScaler()
+            # Standardize data (in place on the imputed scratch array)
+            scaler = StandardScaler(copy=False)
             X_scaled = scaler.fit_transform(X_imputed)
 
-            # Optionally reduce dimensions with PCA
+            # Optionally reduce dimensions with PCA (X_scaled is not reused)
             if use_pca:
-                pca = PCA(n_components=min(n_pca_components, min(X_scaled.shape) - 1))
+                pca = PCA(
+                    n_components=min(n_pca_components, min(X_scaled.shape) - 1),
+                    copy=False,
+                )
                 X_for_clustering = pca.fit_transform(X_scaled)
-                adata_clustered.obsm["X_pca_clustering"] = X_for_clustering
             else:
                 X_for_clustering = X_scaled
 
@@ -613,6 +614,11 @@ print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")"""
                 raise ProteomicsAnalysisError(
                     f"Unknown clustering method: {clustering_method}"
                 )
+
+            del X, X_imputed, X_scaled
+            adata_clustered = adata.copy()
+            if use_pca:
+                adata_clustered.obsm["X_pca_clustering"] = X_for_clustering
 
             # Store cluster assignments
             adata_clustered.obs["cluster"] = clustering_results["labels"].astype(str)

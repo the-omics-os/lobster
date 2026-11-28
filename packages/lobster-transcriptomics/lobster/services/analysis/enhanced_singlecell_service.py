@@ -5,6 +5,7 @@ This service extends the basic clustering functionality with doublet detection,
 cell type annotation, and advanced visualization capabilities.
 """
 
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -17,6 +18,11 @@ from scipy import sparse
 from scipy.stats import pearsonr
 
 from lobster.core.provenance.analysis_ir import AnalysisStep
+from lobster.core.runtime.buffer_sharing import (
+    has_no_stored_zeros,
+    is_read_only,
+    skip_noop_eliminate_zeros,
+)
 from lobster.core.utils.cluster_keys import ClusterKeyError, resolve_cluster_key
 from lobster.core.utils.h5ad_utils import repair_marker_names
 
@@ -72,6 +78,136 @@ class SingleCellError(Exception):
     """Base exception for single-cell analysis operations."""
 
     pass
+
+
+def _can_defer_x_copy(adata: anndata.AnnData) -> bool:
+    """Ranking reads ``.raw`` only when it exists, so ``.X`` can be copied last."""
+    return (
+        not adata.is_view
+        and not adata.isbacked
+        and adata.raw is not None
+        and adata.X is not None
+        and adata.X.dtype in (np.float32, np.float64)
+    )
+
+
+def _copy_without_x(adata: anndata.AnnData) -> anndata.AnnData:
+    """``adata.copy()`` minus ``.X``, which the caller sets once ranking is done."""
+    result = anndata.AnnData(
+        obs=adata.obs.copy(),
+        var=adata.var.copy(),
+        uns=deepcopy(adata.uns),
+        obsm=adata.obsm.copy(),
+        varm=adata.varm.copy(),
+        obsp=adata.obsp.copy(),
+        varp=adata.varp.copy(),
+        # anndata >= 0.13 exposes .X as layers[None]; .X is set separately.
+        layers={k: v.copy() for k, v in adata.layers.items() if k is not None},
+    )
+    result.raw = anndata.AnnData(
+        X=_ranking_raw_matrix(adata.raw.X),
+        var=adata.raw.var.copy(),
+        varm=adata.raw.varm.copy(),
+    )
+    return result
+
+
+def _ranking_raw_matrix(raw_x: Any) -> Any:
+    """Wrap a frozen, log-normalized ``.raw.X`` with no stored zeros; else copy."""
+    if (
+        isinstance(raw_x, sparse.csr_matrix)
+        and raw_x.dtype in (np.float32, np.float64)
+        and is_read_only(raw_x)
+        and has_no_stored_zeros(raw_x)
+        and not _looks_like_raw_counts(raw_x)
+    ):
+        return sparse.csr_matrix(
+            (raw_x.data, raw_x.indices, raw_x.indptr), shape=raw_x.shape, copy=False
+        )
+    return raw_x.copy()
+
+
+def _marker_matrix_view(matrix):
+    if isinstance(matrix, sparse.csr_array):
+        return sparse.csr_matrix(matrix, copy=False)
+    if isinstance(matrix, sparse.csc_array):
+        return sparse.csc_matrix(matrix, copy=False)
+    return matrix
+
+
+def _rank_marker_genes(adata: anndata.AnnData, **kwargs) -> None:
+    use_raw = kwargs.get("use_raw", adata.raw is not None)
+    expression = adata.raw if use_raw else adata
+    matrix = expression.X
+    # Native filtering counts stored entries, including duplicates. The fractions
+    # from ranking count nonzero coordinates instead.
+    kwargs["pts"] = not sparse.issparse(matrix) or matrix.has_canonical_format
+    matrix_view = _marker_matrix_view(matrix)
+    if matrix_view is matrix:
+        sc.tl.rank_genes_groups(adata, **kwargs)
+        return
+
+    # Older Scanpy versions require sparse matrices during ranking. After they
+    # remove explicit zeros, rebuild the array from the resulting buffers.
+    if use_raw:
+        raw_view = anndata.AnnData(
+            X=matrix_view, var=expression.var, varm=expression.varm
+        )
+        adata.raw = raw_view
+    else:
+        adata.X = matrix_view
+    try:
+        sc.tl.rank_genes_groups(adata, **kwargs)
+    finally:
+        if use_raw:
+            raw_view.X = type(matrix)(adata.raw.X, copy=False)
+            adata.raw = raw_view
+        else:
+            adata.X = type(matrix)(adata.X, copy=False)
+
+
+def _filter_marker_rankings(
+    adata: anndata.AnnData,
+    *,
+    key: str,
+    key_added: str,
+    min_fold_change: float,
+    min_in_group_fraction: float,
+    max_out_group_fraction: float,
+) -> None:
+    ranking = adata.uns[key]
+    params = ranking["params"]
+    expression = adata.raw if params["use_raw"] else adata
+    matrix = expression.X
+    filter_input = adata
+
+    has_filter_stats = "pts_rest" in ranking and "logfoldchanges" in ranking
+    is_sparse_array = isinstance(matrix, (sparse.csr_array, sparse.csc_array))
+    if not has_filter_stats and (params["use_raw"] or is_sparse_array):
+        # Expose the expression as X so Scanpy can slice genes without copying .raw.
+        # Sparse matrix wrappers also supply getnnz() for the legacy filter.
+        filter_input = anndata.AnnData(
+            X=_marker_matrix_view(matrix), obs=adata.obs, var=expression.var
+        )
+        filter_input.uns[key] = {**ranking, "params": {**params, "use_raw": False}}
+        if "log1p" in adata.uns:
+            filter_input.uns["log1p"] = adata.uns["log1p"]
+
+    sc.tl.filter_rank_genes_groups(
+        filter_input,
+        key=key,
+        key_added=key_added,
+        min_fold_change=min_fold_change,
+        min_in_group_fraction=min_in_group_fraction,
+        max_out_group_fraction=max_out_group_fraction,
+    )
+    if filter_input is not adata:
+        adata.uns[key_added] = filter_input.uns[key_added]
+        adata.uns[key_added]["params"] = params
+
+    for result_key in (key, key_added):
+        adata.uns[result_key].pop("pts", None)
+        adata.uns[result_key].pop("pts_rest", None)
 
 
 def _looks_like_raw_counts(matrix: Any) -> bool:
@@ -1425,8 +1561,9 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                     f"Group column '{groupby}' not found in observations"
                 )
 
-            # Create working copy
-            adata_markers = adata.copy()
+            # Create working copy; with .raw present, .X is attached after ranking.
+            defer_x_copy = _can_defer_x_copy(adata)
+            adata_markers = _copy_without_x(adata) if defer_x_copy else adata.copy()
 
             # Ensure X and raw.X are float for log fold-change computation.
             # Integer sparse matrices cause ufunc 'log' errors in scanpy's
@@ -1434,7 +1571,9 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             # avoid duplicating the full matrix structure.
             import scipy.sparse as sp
 
-            if sp.issparse(adata_markers.X):
+            if defer_x_copy:
+                pass  # .X is float already (checked by _can_defer_x_copy)
+            elif sp.issparse(adata_markers.X):
                 if adata_markers.X.dtype not in (np.float32, np.float64):
                     adata_markers.X.data = adata_markers.X.data.astype(
                         np.float32, copy=False
@@ -1503,7 +1642,14 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             if groups is not None:
                 scanpy_kwargs["groups"] = groups
 
-            sc.tl.rank_genes_groups(adata_markers, **scanpy_kwargs)
+            # A shared (read-only) .raw.X passes Scanpy's no-op eliminate_zeros().
+            shared_raw = (
+                adata_markers.raw.X
+                if adata_markers.raw is not None and is_read_only(adata_markers.raw.X)
+                else None
+            )
+            with skip_noop_eliminate_zeros(shared_raw):
+                _rank_marker_genes(adata_markers, **scanpy_kwargs)
 
             # Apply post-hoc filtering for marker specificity
             logger.info(
@@ -1518,15 +1664,15 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             pre_filter_counts = original_report["counts"]
 
             # Bind the already-established native keys; scientific defaults unchanged.
-            sc.tl.filter_rank_genes_groups(
-                adata_markers,
-                key=result_keys["original"],
-                key_added=result_keys["filtered"],
-                min_fold_change=min_fold_change,
-                min_in_group_fraction=min_pct,
-                max_out_group_fraction=max_out_pct,
-            )
-
+            with skip_noop_eliminate_zeros(shared_raw):
+                _filter_marker_rankings(
+                    adata_markers,
+                    key=result_keys["original"],
+                    key_added=result_keys["filtered"],
+                    min_fold_change=min_fold_change,
+                    min_in_group_fraction=min_pct,
+                    max_out_group_fraction=max_out_pct,
+                )
             filtered_report = self._marker_result_report(
                 adata_markers, result_keys["filtered"]
             )
@@ -1612,6 +1758,10 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 groups_analyzed=executed_groups,
             )
 
+            if defer_x_copy:
+                # A frozen (shared, read-only) .X can be referenced, not copied.
+                adata_markers.X = adata.X if is_read_only(adata.X) else adata.X.copy()
+
             return adata_markers, marker_stats, ir
 
         except Exception as e:
@@ -1640,7 +1790,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
 import scanpy as sc
 
 # Step 1: Rank genes by differential expression
-sc.tl.rank_genes_groups(
+_rank_marker_genes(
     adata,
     groupby={{ groupby | string | repr }},
     method={{ method | string | repr }},
@@ -1652,7 +1802,7 @@ sc.tl.rank_genes_groups(
 )
 
 # Step 2: Filter for marker specificity
-sc.tl.filter_rank_genes_groups(
+_filter_marker_rankings(
     adata,
     key={{ result_keys.original | repr }},
     key_added={{ result_keys.filtered | repr }},
@@ -1660,7 +1810,6 @@ sc.tl.filter_rank_genes_groups(
     min_in_group_fraction={{ min_pct }},       # Strict in-group fraction > threshold
     max_out_group_fraction={{ max_out_pct }},  # Strict out-group fraction < threshold
 )
-
 # Step 3: Write-safe missing-name representation (numeric NaNs unchanged)
 repair_marker_names(adata)
 
@@ -1684,6 +1833,8 @@ repair_marker_names(adata)
             imports=[
                 "import scanpy as sc",
                 "from lobster.core.utils.h5ad_utils import repair_marker_names",
+                "from lobster.services.analysis.enhanced_singlecell_service import "
+                "_filter_marker_rankings, _rank_marker_genes",
             ],
             parameters={
                 "groupby": groupby,

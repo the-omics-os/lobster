@@ -4090,7 +4090,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=1.5.0" },
     { name = "plotly", specifier = ">=5.0.0" },
     { name = "pydeseq2", specifier = ">=0.5.2" },
-    { name = "scanpy", specifier = ">=1.11.4" },
+    { name = "scanpy", specifier = ">=1.12" },
     { name = "scikit-misc", marker = "extra == 'seurat-v3'", specifier = ">=0.5.1" },
     { name = "scipy", specifier = ">=1.10.0" },
     { name = "scrublet", marker = "extra == 'doublet-detection'", specifier = ">=0.2.3" },

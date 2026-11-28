@@ -70,6 +70,13 @@ from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
+from lobster.core.runtime.buffer_sharing import (
+    BufferPool,
+)
+from lobster.core.runtime.buffer_sharing import (
+    sharing_enabled as buffer_sharing_enabled,
+)
+from lobster.core.runtime.buffer_sharing import unique_resident_bytes
 from lobster.core.runtime.workspace import resolve_workspace
 from lobster.core.session_identity import (
     display_client_session_id as _display_client_session_id,
@@ -895,6 +902,10 @@ class DataManagerV2:
         self._modality_memory_budget: int = _resolve_modality_memory_budget()
         self._modality_spilled: Dict[str, Path] = {}
         self._modality_spill_dir = self.workspace_path / ".lobster" / "spill"
+        # Keep one copy of byte-identical buffers across versions (buffer_sharing).
+        self._buffer_pool: Optional[BufferPool] = (
+            BufferPool() if buffer_sharing_enabled() else None
+        )
 
         # Track modality sources and dirty state for efficient auto-save
         self._modality_sources: Dict[str, Path] = (
@@ -2163,6 +2174,18 @@ class DataManagerV2:
 
         # Store in modalities dict + backend if attached
         with self._state_lock:
+            if self._buffer_pool is not None:
+                try:
+                    released = self._buffer_pool.share(
+                        name, adata, self.modalities.keys()
+                    )
+                    if released:
+                        logger.debug(
+                            f"Modality '{name}' shares {released / 1024**2:.1f} MiB "
+                            "of identical buffers with stored modalities"
+                        )
+                except Exception as e:  # pragma: no cover - never fail a store
+                    logger.warning(f"Buffer sharing skipped for '{name}': {e}")
             self.modalities[name] = adata
             if hasattr(self.modalities, "move_to_end"):
                 self.modalities.move_to_end(name)
@@ -2662,7 +2685,11 @@ class DataManagerV2:
             if freed is None:
                 # Spill failed; stop rather than spin on the same entry.
                 break
-            total -= freed
+            if self._buffer_pool is not None:
+                # A spilled entry frees only buffers no resident entry shares.
+                total = self._resident_bytes()
+            else:
+                total -= freed
 
         if total > self._modality_memory_budget:
             logger.warning(
@@ -2674,7 +2701,12 @@ class DataManagerV2:
             )
 
     def _resident_bytes(self) -> int:
-        """Estimated total resident bytes held by the modality registry."""
+        """Estimated total resident bytes held by the modality registry.
+
+        With buffer sharing on, a buffer held by several modalities counts once.
+        """
+        if self._buffer_pool is not None:
+            return unique_resident_bytes(self.modalities.values())
         return sum(estimate_anndata_bytes(a) for a in self.modalities.values())
 
     def _spill_modality(self, name: str) -> Optional[int]:

@@ -5,14 +5,18 @@ This service provides methods for clustering single-cell RNA-seq data
 and generating visualizations of the results.
 """
 
+import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from contextlib import contextmanager
+from copy import deepcopy
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import anndata
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import scanpy as sc
+from fast_array_utils.stats import mean_var as _mean_var  # used by sc.pp.scale
 from scipy import sparse
 from sklearn.metrics import (
     calinski_harabasz_score,
@@ -22,12 +26,221 @@ from sklearn.metrics import (
 )
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.runtime.buffer_sharing import (
+    has_no_stored_zeros,
+    sharing_enabled,
+    skip_noop_eliminate_zeros,
+)
 from lobster.core.utils.cluster_keys import resolve_cluster_key
 from lobster.utils.deviance import calculate_deviance
 from lobster.utils.logger import get_logger
 from lobster.utils.progress_wrapper import with_periodic_progress
 
 logger = get_logger(__name__)
+
+# The memory-lean helpers give the same results as the plain Scanpy calls and
+# fall back to them when their conditions do not hold.
+_SCALE_BLOCK_ROWS = 512
+
+
+def _feature_scratch(
+    adata: anndata.AnnData, columns: Any
+) -> Tuple[anndata.AnnData, np.ndarray]:
+    """Feature subset for scaling and PCA, and the column positions it uses.
+
+    A view would make Scanpy copy all of it, ``.raw`` included, when scaling.
+    """
+    mask = np.asarray(columns)
+    if mask.dtype == bool:
+        positions = np.flatnonzero(mask)
+    else:
+        positions = adata.var_names.get_indexer(columns)
+        if (positions < 0).any():
+            raise KeyError("feature subset names missing from var_names")
+    return (
+        anndata.AnnData(
+            X=adata.X[:, positions],
+            obs=adata.obs.copy(),
+            var=adata.var.iloc[positions].copy(),
+        ),
+        positions,
+    )
+
+
+def _scale_for_pca(
+    scratch: anndata.AnnData, source, positions, max_value: float = 10
+) -> None:
+    """``sc.pp.scale(scratch, max_value=...)`` that frees the sparse subset first.
+
+    The dense matrix is filled block by block from ``source`` with the same
+    arithmetic as Scanpy.
+    """
+    x = scratch.X
+    if not (
+        isinstance(x, sparse.csr_matrix)
+        and isinstance(source, sparse.csr_matrix)
+        and x.dtype == np.float32
+        and source.dtype == np.float32
+    ):
+        sc.pp.scale(scratch, max_value=max_value)
+        return
+    mean, variance = _mean_var(x, axis=0, correction=1)
+    std = np.sqrt(variance)
+    std[std == 0] = 1
+    shape = x.shape
+    del scratch.X, x
+    scaled = np.empty(shape, dtype=np.float64)
+    for start in range(0, shape[0], _SCALE_BLOCK_ROWS):
+        rows = slice(start, start + _SCALE_BLOCK_ROWS)
+        np.subtract(source[rows][:, positions].toarray(), mean, out=scaled[rows])
+    np.divide(scaled, std, out=scaled)
+    np.clip(scaled, -max_value, max_value, out=scaled)
+    scratch.X = scaled
+    scratch.var["mean"] = mean
+    scratch.var["std"] = std
+
+
+_SVDS_PATCH_LOCK = threading.Lock()
+
+
+@contextmanager
+def _real_adjoint_svds(target: np.ndarray) -> Iterator[None]:
+    """Give ARPACK an ``A.T`` adjoint for ``target`` instead of ``conj(A.T)``.
+
+    For a real matrix the values are the same, but ``conj`` copies the matrix.
+    Other ``svds`` calls pass through unchanged.
+    """
+    try:
+        from scipy.sparse.linalg import aslinearoperator
+
+        # PCA has no public hook for svds, so it is swapped for this call only.
+        # noinspection PyProtectedMember
+        from sklearn.decomposition import _pca as sklearn_pca  # noqa: PLC2701
+    except ImportError:  # pragma: no cover
+        yield
+        return
+    original = getattr(sklearn_pca, "svds", None)
+    if original is None or target.dtype.kind != "f":
+        yield
+        return
+    matrix_operator = type(aslinearoperator(np.zeros((1, 1))))
+
+    class _RealMatrixOperator(matrix_operator):
+        # _adjoint is LinearOperator's documented override point.
+        def _adjoint(self):
+            return matrix_operator(self.A.T)
+
+    def svds(A, *args, **kwargs):
+        if (
+            isinstance(A, np.ndarray)
+            and A.dtype.kind == "f"
+            and (A.flags.c_contiguous or A.flags.f_contiguous)
+            and np.shares_memory(A, target)
+        ):
+            A = _RealMatrixOperator(A)
+        return original(A, *args, **kwargs)
+
+    with _SVDS_PATCH_LOCK:
+        sklearn_pca.svds = svds
+        try:
+            yield
+        finally:
+            sklearn_pca.svds = original
+
+
+def _pca_for_clustering(
+    scratch: anndata.AnnData, n_comps: int, svd_solver: str = "arpack"
+) -> None:
+    """``sc.tl.pca(scratch, ...)`` that centers the scratch matrix in place.
+
+    ``scratch.X`` is dropped afterwards. The stored keys mirror Scanpy's.
+    """
+    x = scratch.X
+    if not (
+        isinstance(x, np.ndarray)
+        and x.dtype == np.float64
+        and x.flags.writeable
+        and x.flags.c_contiguous
+        and not scratch.is_view
+        and "highly_variable" not in scratch.var
+    ):
+        sc.tl.pca(scratch, svd_solver=svd_solver, n_comps=n_comps)
+        return
+    from sklearn.decomposition import PCA
+
+    pca = PCA(n_components=n_comps, svd_solver=svd_solver, random_state=0, copy=False)
+    with _real_adjoint_svds(x):
+        coordinates = pca.fit_transform(x)
+    scratch.obsm["X_pca"] = coordinates.astype(np.float32)
+    scratch.varm["PCs"] = pca.components_.T
+    scratch.uns["pca"] = {
+        "params": {"zero_center": True, "use_highly_variable": False, "mask_var": None},
+        "variance": pca.explained_variance_,
+        "variance_ratio": pca.explained_variance_ratio_,
+    }
+    # x was centered in place and is no longer the scaled matrix.
+    del scratch.X, x
+
+
+def _raw_snapshot(adata: anndata.AnnData) -> None:
+    """``adata.raw = adata.copy()``, sharing ``X`` when it has no stored zeros.
+
+    ``rank_genes_groups`` compacts stored zeros of ``.raw.X`` in place.
+    """
+    x = adata.X
+    shareable = (
+        sparse.issparse(x)
+        and x.format == "csr"
+        and x.has_canonical_format
+        and x.indptr[-1] == x.data.size
+        and np.count_nonzero(x.data) == x.data.size
+    )
+    adata.raw = anndata.AnnData(
+        X=x if shareable else x.copy(), var=adata.var.copy(), varm=adata.varm.copy()
+    )
+
+
+def _clustering_working_copy(
+    adata: anndata.AnnData, drops_raw: bool
+) -> anndata.AnnData:
+    """``adata.copy()`` without ``.raw``, sharing the input's sparse structure.
+
+    The PCA workflow replaces ``.raw`` and rewrites only the values of ``X``.
+    The shared ``indices``/``indptr`` are made read-only.
+    """
+    if not (
+        drops_raw
+        and not adata.is_view
+        and not adata.isbacked
+        and adata.X is not None
+    ):
+        return adata.copy()
+    x = adata.X
+    if (
+        sharing_enabled()
+        and isinstance(x, sparse.csr_matrix)
+        and x.dtype in (np.float32, np.float64)
+        and has_no_stored_zeros(x)
+    ):
+        x.indices.flags.writeable = False
+        x.indptr.flags.writeable = False
+        x = sparse.csr_matrix(
+            (x.data.copy(), x.indices, x.indptr), shape=x.shape, copy=False
+        )
+    else:
+        x = x.copy()
+    return anndata.AnnData(
+        X=x,
+        obs=adata.obs.copy(),
+        var=adata.var.copy(),
+        uns=deepcopy(adata.uns),
+        obsm=adata.obsm.copy(),
+        varm=adata.varm.copy(),
+        obsp=adata.obsp.copy(),
+        varp=adata.varp.copy(),
+        # anndata >= 0.13 exposes .X as layers[None]; .X is set above.
+        layers={k: v.copy() for k, v in adata.layers.items() if k is not None},
+    )
 
 
 class ClusteringError(Exception):
@@ -1227,8 +1440,9 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
 
             logger.debug(f"Performing clustering with resolution {resolution}")
 
-            # Create working copy
-            adata_clustered = adata.copy()
+            # Create working copy (without .raw for the standard PCA workflow)
+            drops_raw = use_rep is None and not batch_correction
+            adata_clustered = _clustering_working_copy(adata, drops_raw)
             original_shape = adata_clustered.shape
 
             logger.debug(
@@ -1339,21 +1553,28 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 else "Batch check completed"
             )
 
-            # Perform clustering
-            adata_clustered = self._perform_clustering(
-                adata_clustered,
-                resolution,
-                use_rep,
-                demo_mode,
-                skip_steps,
-                feature_selection_method,
-                n_features,
-                resolutions,
-                algorithm,
-                n_neighbors=n_neighbors,
-                n_pcs=n_pcs,
-                execution_details=execution_details,
+            # Perform clustering; a shared structure passes no-op eliminate_zeros()
+            working_x = adata_clustered.X
+            shared_structure = (
+                working_x
+                if sparse.issparse(working_x) and not working_x.indices.flags.writeable
+                else None
             )
+            with skip_noop_eliminate_zeros(shared_structure):
+                adata_clustered = self._perform_clustering(
+                    adata_clustered,
+                    resolution,
+                    use_rep,
+                    demo_mode,
+                    skip_steps,
+                    feature_selection_method,
+                    n_features,
+                    resolutions,
+                    algorithm,
+                    n_neighbors=n_neighbors,
+                    n_pcs=n_pcs,
+                    execution_details=execution_details,
+                )
 
             # Compile clustering statistics
             cluster_col = algorithm
@@ -1761,6 +1982,9 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     f"Custom embedding '{use_rep}' not found in adata.obsm, using standard PCA workflow"
                 )
 
+            # .raw is replaced by the normalized X below; release it now.
+            adata.raw = None
+
             # Feature selection: deviance (recommended) or HVG (traditional)
             logger.info(
                 f"Using '{feature_selection_method}' feature selection method with n_features={n_features}"
@@ -1798,9 +2022,6 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 sc.pp.normalize_total(adata, target_sum=1e4)
                 sc.pp.log1p(adata)
                 self._update_progress("Normalization completed")
-
-                # Store raw data before scaling
-                adata.raw = adata.copy()
 
                 # Step 3: Subset to selected features
                 if n_selected == 0:
@@ -1853,9 +2074,13 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                         .head(1000)
                         .index
                     )
-                    adata_selected = adata[:, most_deviant_genes]
+                    adata_selected, selected_positions = _feature_scratch(
+                        adata, most_deviant_genes
+                    )
                 else:
-                    adata_selected = adata[:, adata.var["highly_deviant"]]
+                    adata_selected, selected_positions = _feature_scratch(
+                        adata, adata.var["highly_deviant"]
+                    )
 
             elif feature_selection_method == "hvg":
                 # TRADITIONAL HVG FEATURE SELECTION (AFTER NORMALIZATION)
@@ -1871,9 +2096,6 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     adata, min_mean=0.0125, max_mean=3, min_disp=0.5, flavor="seurat"
                 )
                 self._update_progress("Highly variable genes identified")
-
-                # Store raw data before scaling
-                adata.raw = adata.copy()
 
                 # Step 3: Subset to selected features
                 n_hvg = sum(adata.var.highly_variable)
@@ -1923,9 +2145,13 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                         .head(1000)
                         .index
                     )
-                    adata_selected = adata[:, most_variable_genes]
+                    adata_selected, selected_positions = _feature_scratch(
+                        adata, most_variable_genes
+                    )
                 else:
-                    adata_selected = adata[:, adata.var.highly_variable]
+                    adata_selected, selected_positions = _feature_scratch(
+                        adata, adata.var.highly_variable
+                    )
 
             else:
                 raise ClusteringError(
@@ -1961,13 +2187,13 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
             )
             # Preserve the existing numerical algorithm and scaling policy.
             logger.info("Scaling data")
-            sc.pp.scale(adata_selected, max_value=10)
+            _scale_for_pca(adata_selected, adata.X, selected_positions, max_value=10)
             self._update_progress("Data scaling completed")
             logger.info(f"Using {n_pcs} principal components for neighborhood graph")
 
             # PCA (using 'arpack' SVD solver for better performance with sparse matrices)
             logger.info("Running PCA")
-            sc.tl.pca(adata_selected, svd_solver="arpack", n_comps=n_pcs)
+            _pca_for_clustering(adata_selected, n_comps=n_pcs, svd_solver="arpack")
             self._update_progress("PCA completed")
 
             # Compute neighborhood graph
@@ -2113,6 +2339,10 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 adata.uns["umap_distance_warning"] = adata_selected.uns[
                     "umap_distance_warning"
                 ]
+
+            # .raw = normalized X, for marker gene analysis
+            del adata_selected
+            _raw_snapshot(adata)
 
         # Find marker genes for each cluster, unless skipped
         if "marker_genes" not in skip_steps:

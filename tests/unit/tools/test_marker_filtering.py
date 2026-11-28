@@ -12,12 +12,13 @@ import numpy as np
 import pandas as pd
 import pytest
 import scanpy as sc
-from scipy.sparse import csr_matrix
+from scipy.sparse import csc_array, csc_matrix, csr_array, csr_matrix
 
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
 )
+from lobster.testing.provenance_replay import replay_ir
 
 
 @pytest.fixture
@@ -248,7 +249,7 @@ class TestDEGFiltering:
         # Check code template contains both steps
         assert ir.code_template is not None, "Missing code template"
         assert "rank_genes_groups" in ir.code_template, "Missing rank_genes_groups call"
-        assert "filter_rank_genes_groups" in ir.code_template, "Missing filter call"
+        assert "_filter_marker_rankings" in ir.code_template, "Missing filter call"
 
         # Check parameters
         assert "min_fold_change" in ir.parameters, "Missing min_fold_change in IR"
@@ -312,13 +313,14 @@ class TestDEGFiltering:
             assert "filtering_params" in stats
 
     def test_sparse_matrix_support(self, service):
-        """Test that filtering works with sparse matrices."""
+        """Reused detection fractions match native filtering on sparse raw data."""
         np.random.seed(42)
         n_cells = 100
         n_genes = 50
 
         # Create sparse data
         X_dense = np.random.rand(n_cells, n_genes) * 0.5
+        X_dense[X_dense < 0.3] = 0.0
         X_dense[0:33, 0:10] += 2.0
         X_dense[34:66, 10:20] += 2.0
         X_dense[67:99, 20:30] += 2.0
@@ -329,19 +331,97 @@ class TestDEGFiltering:
         adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
         adata.obs["leiden"] = pd.Categorical(["0"] * 33 + ["1"] * 33 + ["2"] * 34)
 
-        # Preprocess
-        # Store raw counts before normalization
-        adata.raw = adata.copy()
         sc.pp.normalize_total(adata, target_sum=1e4)
         sc.pp.log1p(adata)
+        adata.raw = adata.copy()
 
-        # Should work without errors
-        adata_result, stats, ir = service.find_marker_genes(
-            adata, groupby="leiden", min_fold_change=1.5, min_pct=0.25
+        groups = ["2", "0"]
+        expected = adata.copy()
+        sc.tl.rank_genes_groups(
+            expected, "leiden", groups=groups, method="wilcoxon", n_genes=25
         )
+        sc.tl.filter_rank_genes_groups(expected, min_fold_change=1.5)
 
-        assert "filtering_params" in stats
-        assert stats["total_genes_filtered"] >= 0
+        actual, _, _ = service.find_marker_genes(adata, groupby="leiden", groups=groups)
+        for key in ("rank_genes_groups", "rank_genes_groups_filtered"):
+            expected_names = pd.DataFrame(expected.uns[key]["names"]).fillna("")
+            actual_names = pd.DataFrame(actual.uns[key]["names"])
+            pd.testing.assert_frame_equal(actual_names, expected_names)
+            assert actual.uns[key].keys() == expected.uns[key].keys()
+
+    @pytest.mark.parametrize(
+        ("matrix_type", "method", "duplicate_entries", "use_raw"),
+        [
+            pytest.param(csr_matrix, "wilcoxon", True, True, id="duplicate-csr-matrix"),
+            pytest.param(csr_array, "wilcoxon", True, True, id="duplicate-csr-array"),
+            pytest.param(csr_array, "wilcoxon", False, True, id="canonical-csr-array"),
+            pytest.param(csr_array, "logreg", False, True, id="csr-array-raw-fallback"),
+            pytest.param(csc_array, "logreg", False, False, id="csc-array-fallback"),
+        ],
+    )
+    def test_sparse_filter_preserves_legacy_results(
+        self, service, matrix_type, method, duplicate_entries, use_raw, mocker
+    ):
+        rng = np.random.default_rng(72)
+        counts = rng.poisson(0.8, size=(144, 60)).astype(np.float32)
+        for group in range(3):
+            rows = slice(group * 48, (group + 1) * 48)
+            columns = slice(group * 15, (group + 1) * 15)
+            counts[rows, columns] += rng.poisson(8, size=(48, 15))
+        logged = np.log1p(counts / counts.sum(axis=1, keepdims=True) * 1e4)
+        matrix = matrix_type(logged)
+        if matrix_type in (csr_array, csc_array):
+            matrix.data[0] = 0
+        if duplicate_entries:
+            matrix = matrix_type(
+                (
+                    np.repeat(matrix.data / 2, 2),
+                    np.repeat(matrix.indices, 2),
+                    matrix.indptr * 2,
+                ),
+                shape=matrix.shape,
+            )
+            assert not matrix.has_canonical_format
+
+        adata = anndata.AnnData(X=matrix)
+        adata.obs["leiden"] = pd.Categorical(np.repeat(["0", "1", "2"], 48))
+        adata.uns["log1p"] = {"base": None}
+        matrix_class = csr_matrix if matrix.format == "csr" else csc_matrix
+        expected = anndata.AnnData(X=matrix_class(matrix, copy=True), obs=adata.obs)
+        expected.uns["log1p"] = adata.uns["log1p"].copy()
+        if use_raw:
+            adata.raw = adata.copy()
+            expected.raw = expected.copy()
+        sc.tl.rank_genes_groups(expected, "leiden", method=method, n_genes=25)
+        sc.tl.filter_rank_genes_groups(expected, min_fold_change=1.5)
+
+        rank = mocker.spy(sc.tl, "rank_genes_groups")
+        filter_ranked = mocker.spy(sc.tl, "filter_rank_genes_groups")
+        actual, _, ir = service.find_marker_genes(adata, method=method)
+        assert rank.call_args.kwargs["pts"] is (not duplicate_entries)
+        if duplicate_entries or method == "logreg":
+            scratch = filter_ranked.call_args.args[0]
+            expression = actual.raw if use_raw else actual
+            assert scratch.raw is None
+            assert np.shares_memory(scratch.X.data, expression.X.data)
+        assert type((actual.raw if use_raw else actual).X) is matrix_type
+        if matrix_type in (csr_array, csc_array):
+            ranked_matrix = (actual.raw if use_raw else actual).X
+            assert ranked_matrix.indptr[-1] == len(ranked_matrix.data)
+            assert np.all(ranked_matrix.data != 0)
+            assert (adata.raw if use_raw else adata).X.data[0] == 0
+        replayed = replay_ir(ir, adata=adata.copy())["adata"]
+        for key in ("rank_genes_groups", "rank_genes_groups_filtered"):
+            for result in (actual, replayed):
+                assert result.uns[key].keys() == expected.uns[key].keys()
+                assert result.uns[key]["params"] == expected.uns[key]["params"]
+                for field in expected.uns[key].keys() - {"params"}:
+                    legacy = pd.DataFrame(expected.uns[key][field])
+                    if field == "names":
+                        legacy = legacy.fillna("")
+                    pd.testing.assert_frame_equal(
+                        pd.DataFrame(result.uns[key][field]), legacy, check_exact=True
+                    )
 
     def test_zero_fold_change_threshold(self, service, clustered_adata):
         """Test behavior with zero fold-change threshold (no FC filtering)."""

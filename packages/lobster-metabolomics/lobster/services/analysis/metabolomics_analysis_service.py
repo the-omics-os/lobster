@@ -529,12 +529,12 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
         """
         try:
             logger.info(f"Starting PCA with {n_components} components")
-            adata_pca = adata.copy()
-
-            if hasattr(adata_pca.X, "toarray"):
-                X = adata_pca.X.toarray().astype(np.float64)
+            # The input is only read; the returned copy is taken last.
+            if hasattr(adata.X, "toarray"):
+                # Cast the sparse values first so densifying needs one buffer.
+                X = adata.X.astype(np.float64, copy=False).toarray()
             else:
-                X = np.array(adata_pca.X, dtype=np.float64)
+                X = np.array(adata.X, dtype=np.float64)
 
             # Impute NaN for PCA (mean imputation as fallback)
             from sklearn.impute import SimpleImputer
@@ -543,14 +543,17 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                 imputer = SimpleImputer(strategy="mean")
                 X = imputer.fit_transform(X)
 
-            # Scale
-            scaler = StandardScaler()
+            # Scale (X is a private float64 array)
+            scaler = StandardScaler(copy=False)
             X_scaled = scaler.fit_transform(X)
 
-            # PCA
+            # PCA (X_scaled is not reused)
             n_comp = min(n_components, min(X_scaled.shape) - 1)
-            pca = PCA(n_components=n_comp)
+            pca = PCA(n_components=n_comp, copy=False)
             scores = pca.fit_transform(X_scaled)
+
+            del X, X_scaled
+            adata_pca = adata.copy()
 
             # Store results
             adata_pca.obsm["X_pca"] = scores
