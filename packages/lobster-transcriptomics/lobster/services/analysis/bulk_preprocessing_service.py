@@ -70,8 +70,7 @@ class BulkPreprocessingService:
         """
         try:
             logger.info("Starting bulk sample quality assessment")
-            # The input is only read until the results are attached; the
-            # returned copy is taken after the scratch matrices are released.
+            # The input is only read; the returned copy is taken last.
 
             # Get count matrix as dense
             X = adata.X
@@ -92,8 +91,7 @@ class BulkPreprocessingService:
             np.log1p(log_cpm, out=log_cpm)
             del X
 
-            # Pairwise Pearson correlation between samples. Computed before PCA,
-            # which centers log_cpm in place.
+            # Pairwise Pearson correlation, before PCA centers log_cpm in place.
             corr_matrix = np.corrcoef(log_cpm)
 
             # Sample-level PCA (sklearn, not scanpy -- this is sample-level)
@@ -559,8 +557,7 @@ print(f"Filtered to {adata.n_vars} genes (removed {int(np.sum(~keep))})")
         """Counts-per-million normalization."""
         target = target_sum or 1e6
 
-        # astype() copies, so X is private and can be normalized in place once
-        # the library-size statistics have been read from it.
+        # astype() copies, so X can be normalized in place after the stats.
         X = adata.layers["counts"].astype(np.float64)
         library_sizes = X.sum(axis=1, keepdims=True)
         library_sizes = np.where(library_sizes == 0, 1, library_sizes)

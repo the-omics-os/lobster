@@ -529,8 +529,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
         """
         try:
             logger.info(f"Starting PCA with {n_components} components")
-            # The input is only read below; the returned copy is taken once the
-            # scratch matrices are released.
+            # The input is only read; the returned copy is taken last.
             if hasattr(adata.X, "toarray"):
                 # Cast the sparse values first so densifying needs one buffer.
                 X = adata.X.astype(np.float64, copy=False).toarray()

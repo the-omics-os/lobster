@@ -92,11 +92,7 @@ def _can_defer_x_copy(adata: anndata.AnnData) -> bool:
 
 
 def _copy_without_x(adata: anndata.AnnData) -> anndata.AnnData:
-    """``adata.copy()`` minus ``.X``, which the caller sets once ranking is done.
-
-    Holding the input's ``.X``, its ``.raw`` and both copies at once is what
-    makes marker ranking a memory peak; ``.raw`` is the only matrix ranking needs.
-    """
+    """``adata.copy()`` minus ``.X``, which the caller sets once ranking is done."""
     result = anndata.AnnData(
         obs=adata.obs.copy(),
         var=adata.var.copy(),
@@ -117,13 +113,7 @@ def _copy_without_x(adata: anndata.AnnData) -> anndata.AnnData:
 
 
 def _ranking_raw_matrix(raw_x: Any) -> Any:
-    """The ``.raw.X`` ranking works on: the stored buffers when nothing can change them.
-
-    Ranking only reads ``.raw.X`` apart from Scanpy's ``eliminate_zeros()``,
-    which is a no-op without stored zeros (and skipped for shared buffers by
-    ``skip_noop_eliminate_zeros``). A registry-frozen, log-normalized CSR matrix
-    is therefore wrapped, not copied; anything else is copied as before.
-    """
+    """Wrap a frozen, log-normalized ``.raw.X`` with no stored zeros; else copy."""
     if (
         isinstance(raw_x, sparse.csr_matrix)
         and raw_x.dtype in (np.float32, np.float64)
@@ -1571,8 +1561,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                     f"Group column '{groupby}' not found in observations"
                 )
 
-            # Create working copy. With .raw present, ranking never reads .X,
-            # so .X is attached after ranking instead of being held twice.
+            # Create working copy; with .raw present, .X is attached after ranking.
             defer_x_copy = _can_defer_x_copy(adata)
             adata_markers = _copy_without_x(adata) if defer_x_copy else adata.copy()
 
@@ -1770,8 +1759,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             )
 
             if defer_x_copy:
-                # A registry-frozen (shared, read-only) .X cannot be changed
-                # through either object, so the result may reference it.
+                # A frozen (shared, read-only) .X can be referenced, not copied.
                 adata_markers.X = adata.X if is_read_only(adata.X) else adata.X.copy()
 
             return adata_markers, marker_stats, ir

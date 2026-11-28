@@ -37,18 +37,13 @@ from lobster.utils.progress_wrapper import with_periodic_progress
 
 logger = get_logger(__name__)
 
-# Memory-lean clustering: a feature subset without .raw, scaling and PCA that
-# hold one dense matrix, and a .raw snapshot taken after clustering. Each piece
-# reproduces the plain Scanpy path bit for bit and falls back to it whenever its
-# preconditions do not hold. False restores the original code path exactly
-# (tests compare the two).
+# Memory-lean clustering gives the same results as the plain Scanpy calls and
+# falls back to them when its conditions do not hold. False runs the original code.
 MEMORY_LEAN_CLUSTERING = True
 _SCALE_BLOCK_ROWS = 512
 
 try:
-    # Scanpy 1.12's sc.pp.scale takes its column statistics from this public
-    # function (scanpy depends on fast-array-utils). Scanpy 1.11 uses its own
-    # helper instead, so the scaling fast path is limited to Scanpy 1.12.
+    # The function Scanpy 1.12's sc.pp.scale uses (1.11 has its own helper).
     from fast_array_utils.stats import mean_var as _mean_var
 except ImportError:  # pragma: no cover
     _mean_var = None
@@ -64,13 +59,9 @@ def _scanpy_minor() -> Tuple[int, int]:
 def _feature_scratch(
     adata: anndata.AnnData, columns: Any
 ) -> Tuple[anndata.AnnData, np.ndarray]:
-    """Feature subset for scaling and PCA, without ``.raw``/layers/obsm.
+    """Feature subset for scaling and PCA, and the column positions it uses.
 
-    ``adata[:, columns]`` is a view; scaling it in place makes Scanpy copy the
-    whole view, ``.raw`` included. Scaling, PCA, neighbors, clustering and UMAP
-    read only ``X``, ``obs`` and their own outputs, so nothing else is carried.
-    ``columns`` is a boolean mask or gene names (kept in the given order).
-    Returns the subset and the column positions it was cut from.
+    A view would make Scanpy copy all of it, ``.raw`` included, when scaling.
     """
     mask = np.asarray(columns)
     if mask.dtype == bool:
@@ -94,13 +85,10 @@ def _feature_scratch(
 def _scale_for_pca(
     scratch: anndata.AnnData, source, positions, max_value: float = 10
 ) -> None:
-    """``sc.pp.scale(scratch, max_value=...)`` with one dense buffer.
+    """``sc.pp.scale(scratch, max_value=...)`` that frees the sparse subset first.
 
-    For a float32 CSR subset Scanpy densifies the subset while it is still
-    alive. Here the column statistics are taken from the subset, the subset is
-    released, and the float64 matrix is filled block by block from ``source``
-    (the full-gene matrix the subset was cut from) with the same arithmetic:
-    float32 values minus the float64 mean, divided in place by the std, clipped.
+    The dense matrix is filled block by block from ``source`` with the same
+    arithmetic as Scanpy.
     """
     x = scratch.X
     if not (
@@ -124,7 +112,6 @@ def _scale_for_pca(
         rows = slice(start, start + _SCALE_BLOCK_ROWS)
         np.subtract(source[rows][:, positions].toarray(), mean, out=scaled[rows])
     np.divide(scaled, std, out=scaled)
-    # Scanpy clips elementwise in place to [-max_value, max_value]; same values.
     np.clip(scaled, -max_value, max_value, out=scaled)
     scratch.X = scaled
     scratch.var["mean"] = mean
@@ -136,19 +123,15 @@ _SVDS_PATCH_LOCK = threading.Lock()
 
 @contextmanager
 def _real_adjoint_svds(target: np.ndarray) -> Iterator[None]:
-    """While active, ARPACK sees ``target`` through an operator whose adjoint is
-    ``A.T`` rather than SciPy's ``conj(A.T)``.
+    """Give ARPACK an ``A.T`` adjoint for ``target`` instead of ``conj(A.T)``.
 
-    For a real matrix both are the same values, but ``conj`` allocates a full
-    copy of the matrix, which on a large dense PCA input is as large as the
-    input itself. Only arrays sharing memory with ``target`` are wrapped; any
-    other concurrent ``svds`` call passes through unchanged.
+    For a real matrix the values are the same, but ``conj`` copies the matrix.
+    Other ``svds`` calls pass through unchanged.
     """
     try:
         from scipy.sparse.linalg import aslinearoperator
 
-        # PCA(svd_solver="arpack") calls the svds name bound in this module and
-        # offers no public hook, so it is swapped here for one call only.
+        # PCA has no public hook for svds, so it is swapped for this call only.
         # noinspection PyProtectedMember
         from sklearn.decomposition import _pca as sklearn_pca  # noqa: PLC2701
     except ImportError:  # pragma: no cover
@@ -186,12 +169,10 @@ def _real_adjoint_svds(target: np.ndarray) -> Iterator[None]:
 def _pca_for_clustering(
     scratch: anndata.AnnData, n_comps: int, svd_solver: str = "arpack"
 ) -> None:
-    """``sc.tl.pca(scratch, ...)`` that centers the disposable matrix in place.
+    """``sc.tl.pca(scratch, ...)`` that centers the scratch matrix in place.
 
-    scikit-learn's PCA copies its input before centering; the scaled matrix is
-    scratch, so the fast path lets it center in place (``copy=False``) and then
-    drops ``scratch.X``, which neighbors, clustering and UMAP never read. The
-    stored keys mirror Scanpy 1.12; other versions use ``sc.tl.pca``.
+    ``scratch.X`` is dropped afterwards. The stored keys mirror Scanpy 1.12;
+    other versions use ``sc.tl.pca``.
     """
     x = scratch.X
     if not (
@@ -223,11 +204,9 @@ def _pca_for_clustering(
 
 
 def _raw_snapshot(adata: anndata.AnnData) -> None:
-    """``adata.raw = adata.copy()``, sharing ``X`` when nothing can diverge.
+    """``adata.raw = adata.copy()``, sharing ``X`` when it has no stored zeros.
 
-    ``rank_genes_groups`` compacts stored zeros of ``.raw.X`` in place. When
-    ``X`` has none, that is a no-op and one matrix can serve as both; otherwise
-    ``.raw`` gets its own copy as before.
+    ``rank_genes_groups`` compacts stored zeros of ``.raw.X`` in place.
     """
     x = adata.X
     shareable = (
@@ -246,19 +225,10 @@ def _raw_snapshot(adata: anndata.AnnData) -> None:
 def _clustering_working_copy(
     adata: anndata.AnnData, drops_raw: bool
 ) -> anndata.AnnData:
-    """``adata.copy()`` for the standard PCA workflow, without what it discards.
+    """``adata.copy()`` without ``.raw``, sharing the input's sparse structure.
 
-    That workflow replaces ``.raw`` with the normalized ``X`` and only rewrites
-    the values of ``X`` (normalization), never its sparsity structure. So:
-
-    * ``.raw`` is not copied (it is released immediately anyway);
-    * for a CSR ``X`` with no stored zeros, only ``data`` is copied, while
-      ``indices``/``indptr`` are shared with the input and made read-only. When
-      the result is stored, the registry would share and freeze those identical
-      arrays anyway; read-only means an in-place structural write fails loudly
-      instead of reaching the input.
-
-    Anything else is a plain ``adata.copy()``.
+    The PCA workflow replaces ``.raw`` and rewrites only the values of ``X``.
+    The shared ``indices``/``indptr`` are made read-only.
     """
     if not (
         MEMORY_LEAN_CLUSTERING
@@ -1493,8 +1463,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
 
             logger.debug(f"Performing clustering with resolution {resolution}")
 
-            # Create working copy. The standard PCA workflow (no use_rep, no
-            # batch correction) replaces .raw and rewrites only X's values.
+            # Create working copy (without .raw for the standard PCA workflow)
             drops_raw = use_rep is None and not batch_correction
             adata_clustered = _clustering_working_copy(adata, drops_raw)
             original_shape = adata_clustered.shape
@@ -1607,8 +1576,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 else "Batch check completed"
             )
 
-            # Perform clustering. A shared (read-only) structure passes Scanpy's
-            # no-op eliminate_zeros() calls; any real structural write still fails.
+            # Perform clustering; a shared structure passes no-op eliminate_zeros()
             working_x = adata_clustered.X
             shared_structure = (
                 working_x
@@ -2037,8 +2005,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     f"Custom embedding '{use_rep}' not found in adata.obsm, using standard PCA workflow"
                 )
 
-            # The caller's .raw is replaced by the normalized X below and never
-            # read before that; release it instead of holding it through PCA.
+            # .raw is replaced by the normalized X below; release it now.
             if MEMORY_LEAN_CLUSTERING:
                 adata.raw = None
 
@@ -2080,8 +2047,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 sc.pp.log1p(adata)
                 self._update_progress("Normalization completed")
 
-                # Store raw data before scaling. The lean path attaches the
-                # same snapshot after clustering (X is not modified in between).
+                # Store raw data before scaling (the lean path does it after clustering)
                 if not MEMORY_LEAN_CLUSTERING:
                     adata.raw = adata.copy()
 
@@ -2159,8 +2125,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 )
                 self._update_progress("Highly variable genes identified")
 
-                # Store raw data before scaling. The lean path attaches the
-                # same snapshot after clustering (X is not modified in between).
+                # Store raw data before scaling (the lean path does it after clustering)
                 if not MEMORY_LEAN_CLUSTERING:
                     adata.raw = adata.copy()
 
@@ -2408,8 +2373,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 ]
 
             if MEMORY_LEAN_CLUSTERING:
-                # Release the scratch subset, then attach .raw = normalized X
-                # for marker gene analysis.
+                # .raw = normalized X, for marker gene analysis
                 del adata_selected
                 _raw_snapshot(adata)
 

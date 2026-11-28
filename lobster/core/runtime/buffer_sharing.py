@@ -1,24 +1,10 @@
 """Share byte-identical array buffers between stored modalities.
 
-A pipeline stores one AnnData per step, and consecutive steps often carry the
-same matrix forward unchanged: quality assessment adds ``.obs`` columns but
-keeps ``.X``; clustering keeps ``.X`` and snapshots it as ``.raw``; marker
-ranking returns the clustered matrix again. Without sharing, every version owns
-its own copy.
-
-When a modality is stored, each large numpy buffer it holds (dense arrays and
-the ``data``/``indices``/``indptr`` of CSR/CSC matrices) is hashed. If a
-modality that is still resident already owns a buffer with the same dtype,
-shape and bytes, the new object is pointed at that buffer and its duplicate is
-released. Values are never changed, only the ownership of identical bytes.
-
-Every buffer that ends up shared, and every buffer one object exposes in two
-places (``.X`` and ``.raw.X``), is made read-only. An in-place write to a
-shared buffer then raises ``ValueError`` instead of silently changing another
-stored version. Buffers that are not shared stay writeable, so code that edits
-a stored modality it alone owns is unaffected.
-
-Set ``LOBSTER_SHARE_MODALITY_BUFFERS=0`` to disable sharing.
+Consecutive steps often store the same matrix again (quality assessment keeps
+``.X``, clustering snapshots it as ``.raw``). On store, large buffers already
+held by a resident modality are reused instead of kept twice. Shared buffers
+are made read-only, so an in-place write raises instead of changing another
+version. Set ``LOBSTER_SHARE_MODALITY_BUFFERS=0`` to disable sharing.
 """
 
 from __future__ import annotations
@@ -34,7 +20,7 @@ import numpy as np
 from scipy import sparse
 
 ENV_VAR = "LOBSTER_SHARE_MODALITY_BUFFERS"
-# Smaller buffers are not worth a hash; obs/var-sized arrays fall below this.
+# Smaller buffers are not worth a hash.
 MIN_SHARED_BYTES = 1 << 20
 _SPARSE_PARTS = ("data", "indices", "indptr")
 
@@ -55,10 +41,7 @@ def is_read_only(matrix: Any) -> bool:
 
 
 def has_no_stored_zeros(matrix: Any) -> bool:
-    """Canonical CSR/CSC with no explicit zeros and no slack after ``nnz``.
-
-    For such a matrix ``eliminate_zeros()`` removes nothing.
-    """
+    """True for a canonical CSR/CSC that ``eliminate_zeros()`` would not change."""
     return (
         sparse.issparse(matrix)
         and matrix.format in ("csr", "csc")
@@ -79,15 +62,11 @@ _COMPRESSED_CLASSES = (
 
 @contextmanager
 def skip_noop_eliminate_zeros(*targets: Any) -> Iterator[None]:
-    """Let shared, read-only matrices pass through Scanpy's ``eliminate_zeros()``.
+    """Skip ``eliminate_zeros()`` for ``targets`` while it would remove nothing.
 
-    ``sc.tl.rank_genes_groups`` and ``sc.pp.calculate_qc_metrics`` call
-    ``X.eliminate_zeros()`` on the matrix they are given. With no stored zeros
-    that removes nothing, yet SciPy still rewrites every buffer, which a
-    read-only shared buffer refuses. While active, the call returns early for
-    matrices that share memory with ``targets`` *and* have nothing to remove.
-    Every other matrix, including a target that does hold stored zeros (which
-    then fails loudly on its read-only buffer), runs SciPy's method unchanged.
+    Scanpy calls it on its input, and SciPy rewrites every buffer even when
+    nothing changes, which a read-only shared buffer refuses. Other matrices,
+    and targets that do hold stored zeros, run SciPy's method unchanged.
     """
     target_parts = [
         getattr(t, p)
@@ -130,12 +109,8 @@ def skip_noop_eliminate_zeros(*targets: Any) -> Iterator[None]:
 
 
 def _iter_matrices(adata: Any) -> Iterator[Tuple[str, Any, Any, Any]]:
-    """Yield (location, matrix, container, key) for every matrix-scale slot.
-
-    ``container``/``key`` say how to rebind a dense array: ``container[key] = new``
-    for mappings, ``setattr(adata, "X", new)`` when container is the AnnData.
-    """
-    # Backed .X lives on disk; annotations are still in memory.
+    """Yield (location, matrix, container, key) for every matrix-scale slot."""
+    # Backed .X lives on disk.
     if not getattr(adata, "isbacked", False) and getattr(adata, "X", None) is not None:
         yield "X", adata.X, adata, "X"
     raw = getattr(adata, "raw", None)
@@ -159,7 +134,6 @@ def _iter_matrices(adata: Any) -> Iterator[Tuple[str, Any, Any, Any]]:
 def _iter_buffers(adata: Any) -> Iterator[np.ndarray]:
     for _, matrix, _, _ in _iter_matrices(adata):
         if sparse.issparse(matrix):
-            # CSR/CSC: data/indices/indptr; COO: data/row/col.
             for part in ("data", "indices", "indptr", "row", "col"):
                 buffer = getattr(matrix, part, None)
                 if isinstance(buffer, np.ndarray):
@@ -169,11 +143,7 @@ def _iter_buffers(adata: Any) -> Iterator[np.ndarray]:
 
 
 def unique_resident_bytes(adatas: Iterable[Any]) -> int:
-    """Bytes held by the given AnnData objects, counting a shared buffer once.
-
-    Mirrors ``estimate_anndata_bytes`` (matrix-scale containers only) but
-    deduplicates by buffer identity, so sharing is reflected in the budget.
-    """
+    """Like ``estimate_anndata_bytes`` summed, but a shared buffer counts once."""
     from lobster.core.runtime.data_manager import estimate_anndata_bytes
 
     seen = set()
@@ -189,8 +159,7 @@ def unique_resident_bytes(adatas: Iterable[Any]) -> int:
                 continue
             seen.add(id(buffer))
             own += int(buffer.nbytes)
-        # Objects without numpy buffers (mocks, backed or exotic arrays) fall
-        # back to the per-object estimate.
+        # No numpy buffers (mocks, backed or exotic arrays): use the estimate.
         total += own if found else estimate_anndata_bytes(adata)
     return total
 
@@ -231,7 +200,7 @@ class BufferPool:
         if id(array) in seen_now or (
             owner is not None and owner != name and owner in resident
         ):
-            # The same object is reachable from two places: freeze it in place.
+            # The same object is reachable from two places.
             array.flags.writeable = False
         seen_now.add(id(array))
 
@@ -255,11 +224,10 @@ class BufferPool:
         return array
 
     def share(self, name: str, adata: Any, resident: Iterable[str]) -> int:
-        """Point ``adata`` at identical buffers already held by ``resident``.
+        """Point ``adata`` at identical buffers in ``resident``; return bytes saved.
 
-        ``resident`` lists the other modalities still held in memory; buffers
-        owned by anything else (spilled, removed, or the entry ``name`` itself
-        is replacing) are never shared. Returns the bytes released.
+        Buffers of anything not resident, including the entry ``name`` replaces,
+        are never shared.
         """
         resident = set(resident)
         resident.discard(name)
@@ -272,8 +240,7 @@ class BufferPool:
                     target = self._resolve(current, name, resident, seen_now)
                     if target is not current:
                         setattr(matrix, part, target)
-                # A matrix is frozen as a whole: indptr is small enough to skip
-                # sharing, but in-place writers (eliminate_zeros) rewrite it too.
+                # Freeze the whole matrix: eliminate_zeros rewrites indptr too.
                 parts = [getattr(matrix, part) for part in _SPARSE_PARTS]
                 if any(not p.flags.writeable for p in parts):
                     for p in parts:

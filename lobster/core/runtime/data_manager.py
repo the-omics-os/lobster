@@ -902,8 +902,7 @@ class DataManagerV2:
         self._modality_memory_budget: int = _resolve_modality_memory_budget()
         self._modality_spilled: Dict[str, Path] = {}
         self._modality_spill_dir = self.workspace_path / ".lobster" / "spill"
-        # Versions stored by consecutive steps often hold the same matrix; keep
-        # one copy of byte-identical buffers (see buffer_sharing).
+        # Keep one copy of byte-identical buffers across versions (buffer_sharing).
         self._buffer_pool: Optional[BufferPool] = (
             BufferPool() if buffer_sharing_enabled() else None
         )

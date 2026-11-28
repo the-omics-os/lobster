@@ -569,8 +569,7 @@ print(f"Identified {stats['n_clusters']} clusters using {clustering_method}")"""
                 f"Starting clustering analysis with method: {clustering_method}"
             )
 
-            # The input is only read below; the returned copy is taken once the
-            # scratch matrices are released.
+            # The input is only read; the returned copy is taken last.
             original_shape = adata.shape
             logger.info(
                 f"Input data shape: {original_shape[0]} samples × {original_shape[1]} proteins"
