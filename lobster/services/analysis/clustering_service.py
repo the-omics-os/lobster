@@ -37,9 +37,8 @@ from lobster.utils.progress_wrapper import with_periodic_progress
 
 logger = get_logger(__name__)
 
-# Memory-lean clustering gives the same results as the plain Scanpy calls and
-# falls back to them when its conditions do not hold. False runs the original code.
-MEMORY_LEAN_CLUSTERING = True
+# The memory-lean helpers give the same results as the plain Scanpy calls and
+# fall back to them when their conditions do not hold.
 _SCALE_BLOCK_ROWS = 512
 
 try:
@@ -70,8 +69,6 @@ def _feature_scratch(
         positions = adata.var_names.get_indexer(columns)
         if (positions < 0).any():
             raise KeyError("feature subset names missing from var_names")
-    if not MEMORY_LEAN_CLUSTERING:
-        return adata[:, columns], positions
     return (
         anndata.AnnData(
             X=adata.X[:, positions],
@@ -92,8 +89,7 @@ def _scale_for_pca(
     """
     x = scratch.X
     if not (
-        MEMORY_LEAN_CLUSTERING
-        and _mean_var is not None
+        _mean_var is not None
         and _scanpy_minor() == (1, 12)
         and isinstance(x, sparse.csr_matrix)
         and isinstance(source, sparse.csr_matrix)
@@ -176,8 +172,7 @@ def _pca_for_clustering(
     """
     x = scratch.X
     if not (
-        MEMORY_LEAN_CLUSTERING
-        and _scanpy_minor() == (1, 12)
+        _scanpy_minor() == (1, 12)
         and isinstance(x, np.ndarray)
         and x.dtype == np.float64
         and x.flags.writeable
@@ -210,8 +205,7 @@ def _raw_snapshot(adata: anndata.AnnData) -> None:
     """
     x = adata.X
     shareable = (
-        MEMORY_LEAN_CLUSTERING
-        and sparse.issparse(x)
+        sparse.issparse(x)
         and x.format == "csr"
         and x.has_canonical_format
         and x.indptr[-1] == x.data.size
@@ -231,8 +225,7 @@ def _clustering_working_copy(
     The shared ``indices``/``indptr`` are made read-only.
     """
     if not (
-        MEMORY_LEAN_CLUSTERING
-        and drops_raw
+        drops_raw
         and not adata.is_view
         and not adata.isbacked
         and adata.X is not None
@@ -2006,8 +1999,7 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 )
 
             # .raw is replaced by the normalized X below; release it now.
-            if MEMORY_LEAN_CLUSTERING:
-                adata.raw = None
+            adata.raw = None
 
             # Feature selection: deviance (recommended) or HVG (traditional)
             logger.info(
@@ -2046,10 +2038,6 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 sc.pp.normalize_total(adata, target_sum=1e4)
                 sc.pp.log1p(adata)
                 self._update_progress("Normalization completed")
-
-                # Store raw data before scaling (the lean path does it after clustering)
-                if not MEMORY_LEAN_CLUSTERING:
-                    adata.raw = adata.copy()
 
                 # Step 3: Subset to selected features
                 if n_selected == 0:
@@ -2124,10 +2112,6 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     adata, min_mean=0.0125, max_mean=3, min_disp=0.5, flavor="seurat"
                 )
                 self._update_progress("Highly variable genes identified")
-
-                # Store raw data before scaling (the lean path does it after clustering)
-                if not MEMORY_LEAN_CLUSTERING:
-                    adata.raw = adata.copy()
 
                 # Step 3: Subset to selected features
                 n_hvg = sum(adata.var.highly_variable)
@@ -2372,10 +2356,9 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     "umap_distance_warning"
                 ]
 
-            if MEMORY_LEAN_CLUSTERING:
-                # .raw = normalized X, for marker gene analysis
-                del adata_selected
-                _raw_snapshot(adata)
+            # .raw = normalized X, for marker gene analysis
+            del adata_selected
+            _raw_snapshot(adata)
 
         # Find marker genes for each cluster, unless skipped
         if "marker_genes" not in skip_steps:
